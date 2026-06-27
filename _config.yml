@@ -15,3 +15,25 @@ description: >-
   A 5-day investigation to surface your values, passions, and purpose —
   and turn them into a reference you can use for real decisions.
 theme: jekyll-theme-cayman
+
+# Project site lives under /<repo>, so the base path must be set or every
+# asset and link 404s. For a user/org site (served at the domain root) set
+# baseurl to "" instead.
+url: https://timzander.github.io
+baseurl: /life-compass
+
+# These are auto-enabled on GitHub Pages, but listing them makes local
+# builds match and keeps behavior explicit.
+plugins:
+  - jekyll-readme-index
+  - jekyll-optional-front-matter
+  - jekyll-relative-links
+  - jekyll-titles-from-headings
+
+# Apply the theme's layout to every page (README + all .md files).
+# Without this, pages render as unstyled HTML fragments with no <head>.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
