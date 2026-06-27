@@ -171,3 +171,9 @@ The whole enterprise sits in a long lineage of structured self-examination:
 > **A caveat in the spirit of the rigorous track:** these are attributions of *influence and
 > resemblance*, assembled in good faith — not a peer-reviewed citation trail. If you want to go
 > deeper on any one exercise, the names above are the threads to pull.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Tim Zander. The workbook content was generated through conversations with Claude models; use, adapt, and share it freely.
