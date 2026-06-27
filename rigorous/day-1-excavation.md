@@ -9,7 +9,7 @@ coded dataset that Day 2 reads directly. If naming a quality or value feels hard
 most people — use the starter palette just below. It's a primer to scan when you're stuck, not
 a checklist: reach for the word that *clicks*, and if your own word fits better, use that.
 
-### ✦ Naming help — a starter palette
+### Naming help — a starter palette
 
 **Qualities that can make a moment feel alive** *(for peak experiences and the things that
 energize you)*:
@@ -101,23 +101,36 @@ The original looks back one month — a small, possibly unrepresentative sample.
 add a **one-year** window (◆). When the month and the year disagree, the year is usually the
 truer signal.
 
-**Past month — 5 that energized you / 5 that drained you** (tag each with its quality):
+**Past month — five that energized you, five that drained you.** Name each, then tag the
+quality it carried.
 
-*Energized me* — five, each with its quality tag:
+<p class="eg">e.g. a long, unhurried dinner with old friends — <em>connection, ease</em>.</p>
 
-1. ______ — tag: ______
-2. ______ — tag: ______
-3. ______ — tag: ______
-4. ______ — tag: ______
-5. ______ — tag: ______
+*Energized me:*
 
-*Drained me* — five, each with its quality tag:
+1. **What it was:** ______________________
+   - *quality it carried:* ____________
+2. **What it was:** ______________________
+   - *quality it carried:* ____________
+3. **What it was:** ______________________
+   - *quality it carried:* ____________
+4. **What it was:** ______________________
+   - *quality it carried:* ____________
+5. **What it was:** ______________________
+   - *quality it carried:* ____________
 
-1. ______ — tag: ______
-2. ______ — tag: ______
-3. ______ — tag: ______
-4. ______ — tag: ______
-5. ______ — tag: ______
+*Drained me:*
+
+1. **What it was:** ______________________
+   - *quality it carried:* ____________
+2. **What it was:** ______________________
+   - *quality it carried:* ____________
+3. **What it was:** ______________________
+   - *quality it carried:* ____________
+4. **What it was:** ______________________
+   - *quality it carried:* ____________
+5. **What it was:** ______________________
+   - *quality it carried:* ____________
 
 **◆ Past year — 5 energizing / 5 draining moments that stand out across the whole year:**
 
