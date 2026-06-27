@@ -46,14 +46,20 @@ then note whether it matches what you'd have guessed.
 - **Spending:** what do you spend on without resentment, even when money is tight? Discretionary
   spend is a revealed vote.
 
-- **Calendar** — what it actually shows: ______ · matches what I'd have guessed? ______
-- **History** — what it actually shows: ______ · matches what I'd have guessed? ______
-- **Spending** — what it actually shows: ______ · matches what I'd have guessed? ______
+- **Calendar:**
+  - *what it actually shows:* ______________________
+  - *did it match what I'd have guessed?* ____________
+- **History:**
+  - *what it actually shows:* ______________________
+  - *did it match what I'd have guessed?* ____________
+- **Spending:**
+  - *what it actually shows:* ______________________
+  - *did it match what I'd have guessed?* ____________
 
 *(No Day 0 data? Use the "lose track of time" recall instead: list every activity in the past
 year where you looked up and hours had passed.)*
 
-> ______
+> *flow activities:* ______________________
 
 ---
 
@@ -62,7 +68,7 @@ year where you looked up and hours had passed.)*
 What do you read about, watch, or research when no one is paying you and no one is watching?
 Your history is more honest than your résumé. Tally the recurring subjects.
 
-> ______
+> *subjects:* ______________________
 
 ---
 
@@ -71,7 +77,7 @@ Your history is more honest than your résumé. Tally the recurring subjects.
 You have 5 years and enough money. No external expectations. What would you actually do? Write
 the **honest** version, not the heroic one.
 
-> ______
+> *what I'd do:* ______________________
 
 Now treat this as your *weakest* input. When the hypothetical and the data disagree, **trust
 the data.** Note any disagreement explicitly:
@@ -89,13 +95,16 @@ one *data* example (◆), not only a remembered one.**
 > learned · solving puzzles · making people feel seen.
 
 ### Theme 1 — ______
-- Data example: ______ · Other example: ______
+- *Data example:* ______________________
+- *Other example:* ______________________
 
 ### Theme 2 — ______
-- Data example: ______ · Other example: ______
+- *Data example:* ______________________
+- *Other example:* ______________________
 
 ### Theme 3 — ______
-- Data example: ______ · Other example: ______
+- *Data example:* ______________________
+- *Other example:* ______________________
 
 ### Theme 4 (optional) — ______
 - Data example: ______

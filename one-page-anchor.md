@@ -24,9 +24,7 @@ Add one more that you'd defend even when it's costly → ______
 **Now rank them 1–2–3.** When two of your choices collide, #1 wins. That ranking is the
 whole point — it's what does the work in a hard decision.
 
-1. ______
-2. ______
-3. ______
+1. ______   2. ______   3. ______
 
 ### 2. A theme for this season (5 min)
 

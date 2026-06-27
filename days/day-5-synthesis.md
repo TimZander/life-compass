@@ -67,8 +67,7 @@ gap?**
 From the five "one change" answers, pick the **1–2** you'll actually do in the next 90
 days. Be ruthless.
 
-1. ______
-2. ______
+1. ______   2. ______
 
 ---
 

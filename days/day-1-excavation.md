@@ -87,23 +87,23 @@ Look back at the past month.
 
 **5 activities or interactions that energized you:**
 
-1. ______
-2. ______
-3. ______
-4. ______
-5. ______
+1. *activity:* ______________________
+2. *activity:* ______________________
+3. *activity:* ______________________
+4. *activity:* ______________________
+5. *activity:* ______________________
 
 **5 that drained you:**
 
-1. ______
-2. ______
-3. ______
-4. ______
-5. ______
+1. *drainer:* ______________________
+2. *drainer:* ______________________
+3. *drainer:* ______________________
+4. *drainer:* ______________________
+5. *drainer:* ______________________
 
 **Patterns** — what kind of work, what kind of people, what kind of environments?
 
-> ______
+> *patterns:* ______________________
 
 ---
 
@@ -112,7 +112,7 @@ Look back at the past month.
 What did you love doing at age 10 that you no longer do? What were you naturally drawn
 to before anyone told you what you *should* be?
 
-> ______
+> *threads:* ______________________
 
 ---
 

@@ -16,7 +16,7 @@ your best. Add your own.
 
 **Words that feel like me:**
 
-> ______
+> *words:* ______________________
 
 ---
 
@@ -26,16 +26,8 @@ From your circled list, pick the 10 that feel most non-negotiable.
 
 > The test: if a value were taken from your life, would it feel like a loss of self?
 
-1. ______
-2. ______
-3. ______
-4. ______
-5. ______
-6. ______
-7. ______
-8. ______
-9. ______
-10. ______
+1. ______   2. ______   3. ______   4. ______   5. ______
+6. ______   7. ______   8. ______   9. ______   10. ______
 
 ---
 
@@ -44,11 +36,7 @@ From your circled list, pick the 10 that feel most non-negotiable.
 The hardest step. Force-rank down to 5. When two compete, ask: **which one, if I had to
 give it up, would hurt more?**
 
-1. ______
-2. ______
-3. ______
-4. ______
-5. ______
+1. ______   2. ______   3. ______   4. ______   5. ______
 
 ---
 
@@ -105,11 +93,7 @@ If not, your stated ranking is wrong — adjust it.
 
 **Adjusted ranking (if it changed):**
 
-1. ______
-2. ______
-3. ______
-4. ______
-5. ______
+1. ______   2. ______   3. ______   4. ______   5. ______
 
 ---
 

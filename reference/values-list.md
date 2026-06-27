@@ -17,6 +17,6 @@ Stability · Stewardship · Strength · Tradition · Truth · Vitality · Wisdom
 
 **My own additions:**
 
-- ______
-- ______
-- ______
+- *value:* ______________________
+- *value:* ______________________
+- *value:* ______________________

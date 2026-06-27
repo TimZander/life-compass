@@ -61,19 +61,31 @@ sentence on what you learned.
 ## 2. Peak experiences (20 min)
 
 List 5 moments where you felt most alive, most yourself, most in flow. A specific day works
-better than a general era. For each, answer what you were doing, who you were with (or were
-you alone), and — **◆ tag it** — the one-word underlying quality.
+better than a general era. For each: what you were doing, who you were with, and — **◆ tag
+it** — the one-word underlying quality.
 
-1. **Moment:** ______
-   - Doing: ______ · With: ______ · **Quality tag:** ______
-2. **Moment:** ______
-   - Doing: ______ · With: ______ · **Quality tag:** ______
-3. **Moment:** ______
-   - Doing: ______ · With: ______ · **Quality tag:** ______
-4. **Moment:** ______
-   - Doing: ______ · With: ______ · **Quality tag:** ______
-5. **Moment:** ______
-   - Doing: ______ · With: ______ · **Quality tag:** ______
+<p class="eg">e.g. the afternoon I taught my niece to ride a bike — patience, delight.</p>
+
+1. **Moment:** ______________________
+   - *Doing:* ______________________
+   - *With, or alone:* ______________________
+   - *Quality tag:* ____________
+2. **Moment:** ______________________
+   - *Doing:* ______________________
+   - *With, or alone:* ______________________
+   - *Quality tag:* ____________
+3. **Moment:** ______________________
+   - *Doing:* ______________________
+   - *With, or alone:* ______________________
+   - *Quality tag:* ____________
+4. **Moment:** ______________________
+   - *Doing:* ______________________
+   - *With, or alone:* ______________________
+   - *Quality tag:* ____________
+5. **Moment:** ______________________
+   - *Doing:* ______________________
+   - *With, or alone:* ______________________
+   - *Quality tag:* ____________
 
 ---
 
@@ -83,15 +95,18 @@ List 3 hard chapters or moments. A violated value is often the *clearest* signal
 one — so for each, name what was being violated or missing, and **◆ tag** the value it points
 to.
 
-1. **Hard moment:** ______
-   - Violated / missing: ______ · **Value it points to (tag):** ______
-   - Taught me I need / won't accept: ______
-2. **Hard moment:** ______
-   - Violated / missing: ______ · **Value it points to (tag):** ______
-   - Taught me I need / won't accept: ______
-3. **Hard moment:** ______
-   - Violated / missing: ______ · **Value it points to (tag):** ______
-   - Taught me I need / won't accept: ______
+1. **Hard moment:** ______________________
+   - *What was violated or missing:* ______________________
+   - *Value it points to (tag):* ____________
+   - *What it taught me I need / won't accept:* ______________________
+2. **Hard moment:** ______________________
+   - *What was violated or missing:* ______________________
+   - *Value it points to (tag):* ____________
+   - *What it taught me I need / won't accept:* ______________________
+3. **Hard moment:** ______________________
+   - *What was violated or missing:* ______________________
+   - *Value it points to (tag):* ____________
+   - *What it taught me I need / won't accept:* ______________________
 
 ---
 
@@ -139,7 +154,7 @@ quality it carried.
 
 **Patterns** — what kind of work, people, and environments recur?
 
-> ______
+> *patterns:* ______________________
 
 ---
 
@@ -148,7 +163,7 @@ quality it carried.
 What did you love doing at age 10 that you no longer do? What were you naturally drawn to
 before anyone told you what you *should* be?
 
-> ______
+> *threads:* ______________________
 
 ---
 

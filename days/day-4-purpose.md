@@ -14,19 +14,19 @@ isn't bragging, it's inventory.
 
 **Skills (technical and otherwise):**
 
-> ______
+> *skills:* ______________________
 
 **Experiences that gave you unusual perspective:**
 
-> ______
+> *experiences:* ______________________
 
 **Networks or access:**
 
-> ______
+> *networks:* ______________________
 
 **Ways of thinking that feel natural to you but aren't to others:**
 
-> ______
+> *ways of thinking:* ______________________
 
 ---
 
@@ -35,15 +35,15 @@ isn't bragging, it's inventory.
 - **Who do you want to be useful to?** Be specific — not "people" but a particular kind
   of person or group.
 
-  > ______
+  > *who:* ______________________
 
 - **What problem of theirs do you want to help with?**
 
-  > ______
+  > *problem:* ______________________
 
 - **What would change in their world if you did your work well?**
 
-  > ______
+  > *what changes:* ______________________
 
 ---
 
@@ -66,13 +66,13 @@ any one perfect.
 > **Format:** "To [verb] [for/with whom] [so that what]."
 >
 > Examples:
-> - "To help small engineering teams ship software they're proud of, so good craft
->   doesn't lose to bad incentives."
+> - "To help the people I love feel genuinely known, so no one close to me carries
+>   things alone."
 > - "To make the backcountry more accessible to people who weren't raised in it."
 
-1. ______
-2. ______
-3. ______
+1. To ______________________________
+2. To ______________________________
+3. To ______________________________
 
 ---
 
@@ -81,7 +81,7 @@ any one perfect.
 Imagine someone who knows you well speaking at your funeral. What would you want them to
 be able to say **honestly** about what you spent your life on?
 
-> ______
+> *eulogy:* ______________________
 
 **Compare against your three drafts. Which one rings truest?**
 
