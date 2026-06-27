@@ -89,7 +89,7 @@ be able to say **honestly** about what you spent your life on?
 
 ---
 
-### ✅ End of Day 4 deliverable
+### ✓ End of Day 4 deliverable
 
 A working purpose statement. It will keep evolving — that's fine. → Continue to
 [Day 5 — Synthesis](day-5-synthesis.md).

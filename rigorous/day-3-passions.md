@@ -36,7 +36,7 @@ For each energizing activity (aim for 5):
 
 ---
 
-## 2. 🔵 Mine the real data (15 min)
+## 2. ◇ Mine the real data (15 min)
 
 Memory flatters; the records don't. Read your Day 0 data and write what it *actually* shows —
 then note whether it matches what you'd have guessed.
@@ -66,7 +66,7 @@ Your history is more honest than your résumé. Tally the recurring subjects.
 
 ---
 
-## 4. 🟢 The hypothetical — weighted *least* (15 min)
+## 4. ◆ The hypothetical — weighted *least* (15 min)
 
 You have 5 years and enough money. No external expectations. What would you actually do? Write
 the **honest** version, not the heroic one.
@@ -83,7 +83,7 @@ the data.** Note any disagreement explicitly:
 ## 5. Themes (15 min)
 
 Group everything above into 3–5 themes, specific to you. **Each theme must point to at least
-one *data* example (🟢), not only a remembered one.**
+one *data* example (◆), not only a remembered one.**
 
 > Examples (not yours): building things that work · being in wild places · teaching what I've
 > learned · solving puzzles · making people feel seen.
@@ -105,6 +105,6 @@ one *data* example (🟢), not only a remembered one.**
 
 ---
 
-### ✅ End of Day 3
+### ✓ End of Day 3
 
 3–5 passion themes, each anchored to real evidence. → Next: **[Day 4 — Purpose](day-4-purpose.md)**.

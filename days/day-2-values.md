@@ -113,7 +113,7 @@ If not, your stated ranking is wrong — adjust it.
 
 ---
 
-### ✅ End of Day 2 deliverable
+### ✓ End of Day 2 deliverable
 
 Your 5 core values, ranked, each with a personal definition. → Continue to
 [Day 3 — Passions](day-3-passions.md).

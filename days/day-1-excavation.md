@@ -116,6 +116,6 @@ to before anyone told you what you *should* be?
 
 ---
 
-### ✅ End of Day 1 deliverable
+### ✓ End of Day 1 deliverable
 
 Raw notes. **Don't synthesize yet.** → Continue to [Day 2 — Values](day-2-values.md).
