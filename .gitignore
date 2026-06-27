@@ -1,0 +1,10 @@
+# Your personal, filled-in compass — kept private by default.
+# Remove this line if you want to version your answers.
+my-compass.md
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
