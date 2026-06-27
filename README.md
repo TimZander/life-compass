@@ -61,12 +61,13 @@ genuinely useful but entirely opt-in; every process here works fully without the
 **Doing it with a friend?** Read [`with-a-partner.md`](with-a-partner.md) first — the
 protocol for using an accountability partner without contaminating each other's answers.
 
-**Want a harder pass?** [`life-compass-rigorous.md`](life-compass-rigorous.md) is an
-optional, more demanding edition built to resist the ways self-reflection misleads you —
-anchoring, confirmation bias, single-observer blindness, and bad future-prediction. It
-adds evidence-grounding, outside input, and measurement on top of these five days. The
-original stays exactly as it is; use the rigorous edition when you want the tougher run
-(or on an annual redo).
+**Want a harder pass?** The [`rigorous/`](rigorous/README.md) track is an optional, more
+demanding edition built to resist the ways self-reflection misleads you — anchoring,
+confirmation bias, single-observer blindness, and bad future-prediction. It's **self-contained**:
+one standalone file per day (Day 0 through Day 5), each with the full exercises and the
+evidence-grounding, measurement, and disconfirmation steps woven in — no jumping between
+documents. The original five days above stay exactly as they are; use the rigorous track when
+you want the tougher run (or on an annual redo).
 
 ---
 

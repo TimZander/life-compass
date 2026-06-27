@@ -54,7 +54,7 @@ lowest-friction 360 there is. Swap the two questions before you start:
   the next. A quick *"did you do it?"* is a complete check-in.
 - **The fallback.** What happens if one of you slips, so a single missed day doesn't sink
   both of you.
-- **Day 0 lead time.** Both do the [data pull](life-compass-rigorous.md#b-pull-objective-data-15-min-closes-gap-3)
+- **Day 0 lead time.** Both do the [data pull](rigorous/day-0-prep.md)
   and exchange the two questions above a few days early.
 
 ---

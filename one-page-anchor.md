@@ -4,7 +4,7 @@
 
 This is the minimum viable version of this whole repo. A finished small thing beats an
 abandoned big one — so if you only ever do one thing here, do this. The
-[5-day workbook](README.md) and the [rigorous edition](life-compass-rigorous.md) are here
+[5-day workbook](README.md) and the [rigorous track](rigorous/README.md) are here
 when (if) you want to go deeper. You don't need them to start.
 
 Copy this to `answers/anchor.md` (gitignored) and fill in the blanks. Don't polish.

@@ -1,7 +1,7 @@
 # Optional Add-ons
 
 **Skip these freely.** Nothing in the [one-page anchor](one-page-anchor.md), the
-[5-day workbook](README.md), or the [rigorous edition](life-compass-rigorous.md) depends
+[5-day workbook](README.md), or the [rigorous track](rigorous/README.md) depends
 on anything here. The core of every process is solo desk work you can finish in a few days.
 
 These two add-ons are separated out because they're the only parts that reach beyond that:
