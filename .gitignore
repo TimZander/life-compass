@@ -10,3 +10,9 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Jekyll / GitHub Pages local build output
+_site/
+.jekyll-cache/
+.jekyll-metadata
+Gemfile.lock
