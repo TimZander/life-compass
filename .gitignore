@@ -1,6 +1,8 @@
-# Your personal, filled-in compass — kept private by default.
-# Remove this line if you want to version your answers.
+# Your personal answers — kept private by default so the repo stays publishable.
+# Do your writing in here (copy a day file in, or keep free-form notes), and the
+# blank worksheets under days/ stay clean. Remove these lines to version your answers.
 my-compass.md
+answers/
 
 # OS / editor cruft
 .DS_Store
