@@ -43,13 +43,16 @@ for stray thoughts between sessions and feed them in.
 
 ## The five days
 
-| Day | Theme | Question | Deliverable |
-| --- | --- | --- | --- |
-| [1](days/day-1-excavation.md) | **Excavation** | What raw material is in my own life? | Raw notes (don't synthesize yet) |
-| [2](days/day-2-values.md) | **Values** | What do I stand for? | 5 core values, ranked, each defined |
-| [3](days/day-3-passions.md) | **Passions** | What fuels me? | 3–5 passion themes with examples |
-| [4](days/day-4-purpose.md) | **Purpose** | What am I here to contribute? | A working purpose statement |
-| [5](days/day-5-synthesis.md) | **Synthesis** | How do I align my life to this? | A filled-in Life Compass + 90-day moves |
+- **[Day 1 · Excavation](days/day-1-excavation.md)** — *What raw material is in my own life?*
+  → Raw notes (don't synthesize yet).
+- **[Day 2 · Values](days/day-2-values.md)** — *What do I stand for?*
+  → 5 core values, ranked, each defined.
+- **[Day 3 · Passions](days/day-3-passions.md)** — *What fuels me?*
+  → 3–5 passion themes with examples.
+- **[Day 4 · Purpose](days/day-4-purpose.md)** — *What am I here to contribute?*
+  → A working purpose statement.
+- **[Day 5 · Synthesis](days/day-5-synthesis.md)** — *How do I align my life to this?*
+  → A filled-in Life Compass + 90-day moves.
 
 **Reference:** the [values starter list](reference/values-list.md) is pulled out so
 you can mark it up on Day 2.
