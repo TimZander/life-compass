@@ -105,7 +105,7 @@ Look across steps 1–4. Group everything into 3–5 themes. Make them **specifi
 
 ---
 
-### ✅ End of Day 3 deliverable
+### ✓ End of Day 3 deliverable
 
 3–5 passion themes, each with 2–3 concrete examples from your life. → Continue to
 [Day 4 — Purpose](day-4-purpose.md).

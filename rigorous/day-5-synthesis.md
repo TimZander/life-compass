@@ -71,7 +71,7 @@ commitments don't? · **One change:** ______
 
 ---
 
-## 3. 🔵 Establish a real baseline (15 min)
+## 3. ◇ Establish a real baseline (15 min)
 
 "What % served the compass?" only bites if it's defined and measured, not estimated:
 
@@ -85,7 +85,7 @@ commitments don't? · **One change:** ______
 
 ---
 
-## 4. 🔵 Version the compass (5 min)
+## 4. ◇ Version the compass (5 min)
 
 You saved a dated file in step 1. **Never overwrite it.** Each annual redo becomes a new dated
 file, and you **diff against the prior one**, asking the key question:
@@ -118,7 +118,7 @@ ruthless — the compass is useless if it doesn't change what you do.
 
 ---
 
-### ✅ End of the rigorous track
+### ✓ End of the rigorous track
 
 A completed, dated, measured Life Compass and 1–2 concrete 90-day moves. Now **use it**: when
 you feel off, re-read it; when you face a big decision, run it through the five dimensions and

@@ -8,7 +8,7 @@ days that use them. Don't analyze anything yet today; just gather.
 
 ---
 
-## A. 🔵 Pull objective data
+## A. ◇ Pull objective data
 
 Memory is a lossy, self-serving compressor. It remembers the version of your month that
 flatters you. These records don't. You'll mine them on **Day 3** (passions) and **Day 5**
@@ -24,7 +24,7 @@ flatters you. These records don't. You'll mine them on **Day 3** (passions) and 
 
 ---
 
-## B. 🔵 Outside input — optional
+## B. ◇ Outside input — optional
 
 You are the most biased possible witness to yourself. Other people often see your patterns —
 especially your strengths — more clearly than you do, because the things you're best at feel
@@ -60,7 +60,7 @@ the two questions above this week and you've got the whole step for free.
 
 ---
 
-### ✅ End of Day 0
+### ✓ End of Day 0
 
 A folder (or note) holding your calendar, spending, and history data, and — if you opted in —
 a few outside-input answers. → Next: **[Day 1 — Excavation](day-1-excavation.md)**.

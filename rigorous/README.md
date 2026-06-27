@@ -22,8 +22,8 @@ most biased possible witness to yourself.
 
 Rigor trades off against finishing, so every added step is labeled:
 
-- **🟢 Core** — do it. Adds little time; it's what makes this rigorous rather than just longer.
-- **🔵 Optional** — adds real friction (real-world data, or input from other people). Genuinely
+- **◆ Core** — do it. Adds little time; it's what makes this rigorous rather than just longer.
+- **◇ Optional** — adds real friction (real-world data, or input from other people). Genuinely
   valuable, but nothing downstream depends on it. Skip freely; a finished core compass beats
   an abandoned perfect one.
 

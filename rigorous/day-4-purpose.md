@@ -21,7 +21,7 @@ not bragging.
 
 ---
 
-## 2. 🔵 Cross-check against outside input (5 min, optional)
+## 2. ◇ Cross-check against outside input (5 min, optional)
 
 If you gathered outside input (Day 0), compare it against the list above. Where someone named
 a strength you *didn't* — take it seriously. A strength so native you've stopped seeing it is
@@ -50,7 +50,7 @@ Finish these (multiple times if it helps):
 
 ---
 
-## 5. 🟢 Compute the intersection (15 min)
+## 5. ◆ Compute the intersection (15 min)
 
 Don't jump to a statement yet. Fill in all three below from your work so far, then write only
 what lands in the **overlap of all three** — that overlap is your purpose's raw ore.
@@ -94,7 +94,7 @@ able to say **honestly** about what you spent your life on?
 
 ---
 
-## 8. 🟢 Disconfirmation on the draft (5 min)
+## 8. ◆ Disconfirmation on the draft (5 min)
 
 For your truest draft, ask: **what would I expect to see in my actual life if this were
 genuinely my purpose — and do I see it?** If the purpose predicts behavior that's wholly absent
@@ -105,7 +105,7 @@ already supports.
 
 ---
 
-### ✅ End of Day 4
+### ✓ End of Day 4
 
 A working purpose statement that survives the evidence test. → Next:
 **[Day 5 — Synthesis](day-5-synthesis.md)**.

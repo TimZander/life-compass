@@ -9,7 +9,7 @@ coded dataset that Day 2 reads directly. If naming a quality or value feels hard
 most people — use the starter palette just below. It's a primer to scan when you're stuck, not
 a checklist: reach for the word that *clicks*, and if your own word fits better, use that.
 
-### 🧭 Naming help — a starter palette
+### ✦ Naming help — a starter palette
 
 **Qualities that can make a moment feel alive** *(for peak experiences and the things that
 energize you)*:
@@ -62,7 +62,7 @@ sentence on what you learned.
 
 List 5 moments where you felt most alive, most yourself, most in flow. A specific day works
 better than a general era. For each, answer what you were doing, who you were with (or were
-you alone), and — **🟢 tag it** — the one-word underlying quality.
+you alone), and — **◆ tag it** — the one-word underlying quality.
 
 1. **Moment:** ______
    - Doing: ______ · With: ______ · **Quality tag:** ______
@@ -80,7 +80,7 @@ you alone), and — **🟢 tag it** — the one-word underlying quality.
 ## 3. Low points (15 min)
 
 List 3 hard chapters or moments. A violated value is often the *clearest* signal of a held
-one — so for each, name what was being violated or missing, and **🟢 tag** the value it points
+one — so for each, name what was being violated or missing, and **◆ tag** the value it points
 to.
 
 1. **Hard moment:** ______
@@ -98,7 +98,7 @@ to.
 ## 4. Energy audit (20 min)
 
 The original looks back one month — a small, possibly unrepresentative sample. Here you also
-add a **one-year** window (🟢). When the month and the year disagree, the year is usually the
+add a **one-year** window (◆). When the month and the year disagree, the year is usually the
 truer signal.
 
 **Past month — 5 that energized you / 5 that drained you** (tag each with its quality):
@@ -119,7 +119,7 @@ truer signal.
 4. ______ — tag: ______
 5. ______ — tag: ______
 
-**🟢 Past year — 5 energizing / 5 draining moments that stand out across the whole year:**
+**◆ Past year — 5 energizing / 5 draining moments that stand out across the whole year:**
 
 - Energizing: ______ · ______ · ______ · ______ · ______
 - Draining: ______ · ______ · ______ · ______ · ______
@@ -139,7 +139,7 @@ before anyone told you what you *should* be?
 
 ---
 
-## 6. 🔵 Fold in outside input (optional, 10 min)
+## 6. ◇ Fold in outside input (optional, 10 min)
 
 If you gathered outside input on Day 0 (even the 2-minute from-memory version), read it now.
 For each item, ask:
@@ -153,7 +153,7 @@ For each item, ask:
 
 ---
 
-### ✅ End of Day 1
+### ✓ End of Day 1
 
 Tagged raw notes — peaks, lows, energy, threads. **Don't synthesize yet.** → Next:
 **[Day 2 — Values](day-2-values.md)**.

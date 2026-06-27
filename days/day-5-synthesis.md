@@ -83,7 +83,7 @@ days. Be ruthless.
 
 ---
 
-### ✅ End of Day 5 deliverable
+### ✓ End of Day 5 deliverable
 
 A completed [Life Compass](../templates/life-compass.md) and 1–2 concrete 90-day moves.
 

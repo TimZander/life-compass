@@ -11,7 +11,7 @@ toward words that merely *sound* good. Every value you keep must point back to r
 
 ---
 
-## 1. 🟢 Generate from Day 1 (15 min)
+## 1. ◆ Generate from Day 1 (15 min)
 
 **Before looking at any list,** read back over your tagged Day 1 material — the peak-experience
 tags, the values your low points pointed to, the patterns in your energy audit. What
@@ -37,7 +37,7 @@ Each as *value (in my words) — the Day 1 evidence for it*:
 
 ---
 
-## 2. 🟢 Now consult the list — only to fill gaps (10 min)
+## 2. ◆ Now consult the list — only to fill gaps (10 min)
 
 *Now* scan the list below. Add only words that name something **real you missed** — not words
 you'd like to be true. If a word here has no Day 1 evidence behind it, it does not make the cut.
@@ -56,7 +56,7 @@ you'd like to be true. If a word here has no Day 1 evidence behind it, it does n
 
 ---
 
-## 3. 🟢 The disconfirmation pass (10 min)
+## 3. ◆ The disconfirmation pass (10 min)
 
 Before you narrow, run the contrarian check — this is where you catch the values you *claim*
 but don't actually live:
@@ -96,7 +96,7 @@ would hurt more?** This ranking is what does the work in a real decision — get
 ## 6. Operationalize (15 min)
 
 For each of your 5: a one-sentence definition **in your own words**, what living it looks like,
-what betraying it looks like — and the Day 1 evidence it rests on (🟢; no evidence → it's an
+what betraying it looks like — and the Day 1 evidence it rests on (◆; no evidence → it's an
 *aspiration*, move it to the list at the bottom).
 
 ### Value 1 — ______
@@ -128,7 +128,7 @@ what betraying it looks like — and the Day 1 evidence it rests on (🟢; no ev
 
 ---
 
-## 7. 🟢 Conflict test (10 min)
+## 7. ◆ Conflict test (10 min)
 
 The strongest check in the whole process. Test your ranking against **3 recent hard
 decisions**. Does your stated ranking match how you *actually* chose? If not, your stated
@@ -142,7 +142,7 @@ ranking is wrong — adjust it.
 
 ---
 
-### ✅ End of Day 2
+### ✓ End of Day 2
 
 Your 5 core values, ranked, each defined in your words and resting on Day 1 evidence. → Next:
 **[Day 3 — Passions](day-3-passions.md)**.
