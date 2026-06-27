@@ -9,6 +9,10 @@ write your answers directly into the files. At the end you'll have a single
 artifact — your **[Life Compass](templates/life-compass.md)** — that you return to
 whenever you feel off, face a big decision, or forget who you are.
 
+> **Short on time? Start here → [`one-page-anchor.md`](one-page-anchor.md).** One sitting,
+> ~25 minutes, and you finish today with a usable anchor. A small thing you actually do
+> beats a five-day process you never complete. Go deeper later only if it earns it.
+
 ---
 
 ## Before you start
