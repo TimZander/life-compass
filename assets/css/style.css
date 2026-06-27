@@ -1,0 +1,46 @@
+/* ZEN — chrome-free, narrow, large type, lots of air */
+:root{
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,Cambria,"Source Serif 4",serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --bg:#f6f4ee;--ink:#33373a;--ink-strong:#23262a;--muted:#9a948a;
+  --accent:#9a6b3f;--accent-dark:#7c5430;--rule:#e3ded2;--quote-bg:#efe9dc;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:1.22rem;line-height:1.85;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wordmark{display:block;text-align:center;font-family:var(--sans);font-size:.72rem;font-weight:600;letter-spacing:.22em;color:var(--muted);text-decoration:none;padding:2.4rem 1rem 0}
+.wordmark:hover{color:var(--accent-dark)}
+main{padding:3.2rem 0 2rem}
+article{max-width:34rem;margin:0 auto;padding:0 1.4rem}
+h1,h2,h3,h4{font-family:var(--serif);color:var(--ink-strong);line-height:1.2;font-weight:600}
+article>h1:first-child{margin-top:0;font-size:2.5rem;text-align:center;letter-spacing:-.01em;margin-bottom:.9em}
+h2{font-size:1.55rem;margin:2.4em 0 .6em}
+h3{font-size:1.2rem;margin:2em 0 .4em}
+h4{font-size:1.05rem;margin:1.7em 0 .3em;font-style:italic;font-weight:600;color:var(--muted)}
+p,ul,ol,blockquote,table,pre{margin:0 0 1.4em}
+a{color:var(--accent-dark);text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(154,107,63,.4)}
+a:hover{text-decoration-color:currentColor}
+strong{color:var(--ink-strong)}
+em{font-style:italic}
+ul,ol{padding-left:1.3em}li{margin:.45em 0}li::marker{color:var(--muted)}
+blockquote{margin:1.6em 0;padding:.2em 0 .2em 1.3em;border-left:2px solid var(--accent);color:#5c564b;font-style:italic}
+blockquote p:last-child{margin-bottom:0}
+hr{border:0;text-align:center;margin:2.8em 0}
+hr::before{content:"❦";color:var(--muted);font-size:1.1rem}
+code{font-family:var(--mono);font-size:.84em;background:#ece6d8;padding:.12em .38em;border-radius:4px}
+pre{background:#2b2620;color:#ece4d4;padding:1em 1.15em;border-radius:8px;overflow:auto;font-size:.8rem;line-height:1.6;font-style:normal}
+pre code{background:none;padding:0;color:inherit}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:.5em .7em;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.endnav{max-width:34rem;margin:3rem auto 0;padding:1.6rem 1.4rem 3.5rem;border-top:1px solid var(--rule);display:flex;flex-wrap:wrap;gap:.6rem 1.3rem;justify-content:center}
+.endnav a{font-family:var(--sans);font-size:.76rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-decoration:none}
+.endnav a:hover{color:var(--accent-dark)}
+@media(max-width:540px){body{font-size:1.1rem}article>h1:first-child{font-size:2rem}}
+
+/* Wide tables break out of the narrow reading column on roomy screens,
+   re-centering on the text column. Prose keeps its calm measure;
+   on small screens tables fall back to full width. */
+@media (min-width:52rem){
+  article table{width:46rem;max-width:88vw;margin-left:50%;transform:translateX(-50%)}
+}

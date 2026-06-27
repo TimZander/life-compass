@@ -14,7 +14,9 @@ title: Life Compass
 description: >-
   A 5-day investigation to surface your values, passions, and purpose —
   and turn them into a reference you can use for real decisions.
-theme: jekyll-theme-cayman
+# Custom layout + stylesheet live in _layouts/ and assets/css/, so no
+# packaged `theme:` is set — this site is themed by hand for a calm,
+# journal-style reading experience.
 
 # Project site lives under /<repo>, so the base path must be set or every
 # asset and link 404s. For a user/org site (served at the domain root) set
