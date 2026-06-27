@@ -103,13 +103,21 @@ truer signal.
 
 **Past month — 5 that energized you / 5 that drained you** (tag each with its quality):
 
-| Energized me | Tag | | Drained me | Tag |
-| --- | --- | --- | --- | --- |
-| ______ | ______ | | ______ | ______ |
-| ______ | ______ | | ______ | ______ |
-| ______ | ______ | | ______ | ______ |
-| ______ | ______ | | ______ | ______ |
-| ______ | ______ | | ______ | ______ |
+*Energized me* — five, each with its quality tag:
+
+1. ______ — tag: ______
+2. ______ — tag: ______
+3. ______ — tag: ______
+4. ______ — tag: ______
+5. ______ — tag: ______
+
+*Drained me* — five, each with its quality tag:
+
+1. ______ — tag: ______
+2. ______ — tag: ______
+3. ______ — tag: ______
+4. ______ — tag: ______
+5. ______ — tag: ______
 
 **🟢 Past year — 5 energizing / 5 draining moments that stand out across the whole year:**
 

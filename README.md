@@ -108,65 +108,53 @@ an honest "intellectual provenance," not a claim that any one source is *the* or
 
 ### Day 1 — Excavation
 
-| Exercise | Traces to |
-| --- | --- |
-| Life chapters timeline | **Narrative identity** / the "life story" interview — Dan McAdams; life review — Robert Butler (gerontology); the "lifeline" used across coaching |
-| Peak experiences | **"Peak experiences"** — Abraham Maslow, humanistic psychology |
-| Low points / what was violated | **Narrative therapy** — Michael White & David Epston; meaning-making and post-traumatic-growth research |
-| Energy audit | The **"Good Time Journal"** — *Designing Your Life*, Bill Burnett & Dave Evans (Stanford d.school); energy management — *The Power of Full Engagement*, Schwartz & Loehr |
-| Childhood threads | Career-counseling staple; *The Element* — Ken Robinson; echoes Joseph Campbell's "follow your bliss" |
+- **Life chapters timeline** — **Narrative identity** / the "life story" interview — Dan McAdams; life review — Robert Butler (gerontology); the "lifeline" used across coaching.
+- **Peak experiences** — **"Peak experiences"** — Abraham Maslow, humanistic psychology.
+- **Low points / what was violated** — **Narrative therapy** — Michael White & David Epston; meaning-making and post-traumatic-growth research.
+- **Energy audit** — the **"Good Time Journal"** — *Designing Your Life*, Bill Burnett & Dave Evans (Stanford d.school); energy management — *The Power of Full Engagement*, Schwartz & Loehr.
+- **Childhood threads** — career-counseling staple; *The Element* — Ken Robinson; echoes Joseph Campbell's "follow your bliss."
 
 ### Day 2 — Values
 
-| Exercise | Traces to |
-| --- | --- |
-| Values list, circle & narrow | **Values clarification in ACT** (Acceptance & Commitment Therapy) — Steven Hayes; the **Personal Values Card Sort** — Miller et al. (Motivational Interviewing); the academic ancestor, the **Rokeach Value Survey** |
-| Force-rank / "what would hurt to give up" | Values card-sort prioritization methods |
-| Operationalize (living it / betraying it) | ACT's **"valued living"** — values stated as behavior, not feeling |
-| Conflict test (stated vs. actual choices) | **Revealed preference** — Paul Samuelson, behavioral economics |
+- **Values list, circle & narrow** — **Values clarification in ACT** (Acceptance & Commitment Therapy) — Steven Hayes; the **Personal Values Card Sort** — Miller et al. (Motivational Interviewing); the academic ancestor, the **Rokeach Value Survey**.
+- **Force-rank / "what would hurt to give up"** — values card-sort prioritization methods.
+- **Operationalize (living it / betraying it)** — ACT's **"valued living"** — values stated as behavior, not feeling.
+- **Conflict test (stated vs. actual choices)** — **Revealed preference** — Paul Samuelson, behavioral economics.
 
 ### Day 3 — Passions
 
-| Exercise | Traces to |
-| --- | --- |
-| "Lose track of time" test | **Flow** — Mihaly Csikszentmihalyi |
-| Unprompted attention / history | Revealed preference (again) |
-| The hypothetical ("5 years + enough money") | **Financial life planning** — George Kinder's "three questions"; the **Miracle Question** of Solution-Focused Brief Therapy (Steve de Shazer) |
-| Clustering into themes | **Thematic analysis / grounded theory** (qualitative research) applied to yourself; strengths-theme work — Gallup **CliftonStrengths** |
+- **"Lose track of time" test** — **Flow** — Mihaly Csikszentmihalyi.
+- **Unprompted attention / history** — revealed preference (again).
+- **The hypothetical ("5 years + enough money")** — **Financial life planning** — George Kinder's "three questions"; the **Miracle Question** of Solution-Focused Brief Therapy (Steve de Shazer).
+- **Clustering into themes** — **Thematic analysis / grounded theory** (qualitative research) applied to yourself; strengths-theme work — Gallup **CliftonStrengths**.
 
 ### Day 4 — Purpose
 
-| Exercise | Traces to |
-| --- | --- |
-| Unfair advantages | **"Unfair advantage"** — Lean Canvas, Ash Maurya; **"Zone of Genius"** — *The Big Leap*, Gay Hendricks |
-| Good-at × energizes × world-needs intersection | **Ikigai** — Japanese (Okinawan) concept *(note: the popular four-circle Venn is a Western adaptation by Marc Winn over Andrés Zuzunaga's diagram; authentic ikigai needn't include "what you're paid for")*; the **"Hedgehog Concept"** — *Good to Great*, Jim Collins; purpose research — William Damon |
-| Contribution sentences | Purpose / mission articulation in coaching |
-| Purpose-statement format | The **personal mission statement** — *7 Habits*, Stephen Covey |
-| Eulogy test | **"Begin with the end in mind"** — Covey; **"eulogy vs. résumé virtues"** — *The Road to Character*, David Brooks; Stoic **memento mori** |
+- **Unfair advantages** — **"Unfair advantage"** — Lean Canvas, Ash Maurya; **"Zone of Genius"** — *The Big Leap*, Gay Hendricks.
+- **Good-at × energizes × world-needs intersection** — **Ikigai** — Japanese (Okinawan) concept *(note: the popular four-circle Venn is a Western adaptation by Marc Winn over Andrés Zuzunaga's diagram; authentic ikigai needn't include "what you're paid for")*; the **"Hedgehog Concept"** — *Good to Great*, Jim Collins; purpose research — William Damon.
+- **Contribution sentences** — purpose / mission articulation in coaching.
+- **Purpose-statement format** — the **personal mission statement** — *7 Habits*, Stephen Covey.
+- **Eulogy test** — **"Begin with the end in mind"** — Covey; **"eulogy vs. résumé virtues"** — *The Road to Character*, David Brooks; Stoic **memento mori**.
 
 ### Day 5 — Synthesis
 
-| Exercise | Traces to |
-| --- | --- |
-| Five-dimension alignment audit | The **"Wheel of Life"** — life coaching (Paul J. Meyer / SMI) |
-| 90-day realignment moves | Goal-setting & behavior-change literature; **OKRs** |
-| Review cadence (quarterly / annual) | Higher-altitude reviews of **GTD** — David Allen; **"yearly themes"** — *Cortex* (CGP Grey & Myke Hurley) |
-| Theme (in the [one-page anchor](one-page-anchor.md)) | **Yearly themes** — *Cortex* |
+- **Five-dimension alignment audit** — the **"Wheel of Life"** — life coaching (Paul J. Meyer / SMI).
+- **90-day realignment moves** — goal-setting & behavior-change literature; **OKRs**.
+- **Review cadence (quarterly / annual)** — higher-altitude reviews of **GTD** — David Allen; **"yearly themes"** — *Cortex* (CGP Grey & Myke Hurley).
+- **Theme (in the [one-page anchor](one-page-anchor.md))** — **Yearly themes** — *Cortex*.
 
 ### The rigorous overlay
 
 The [rigorous track](rigorous/README.md) adds a layer drawn mostly from research methods and
 cognitive-bias science:
 
-| Addition | Traces to |
-| --- | --- |
-| Evidence traceability / quality tags | **Thematic coding / grounded theory** (qualitative research) |
-| Generate-before-anchor ordering | **Anchoring bias** — Kahneman & Tversky |
-| Disconfirmation passes | **Falsifiability** — Karl Popper; confirmation-bias research — Peter Wason |
-| Outside input / 360 | **360-degree feedback** (organizational psychology); methodological **triangulation** |
-| "Trust the data over the hypothetical" | **Affective forecasting** — Daniel Gilbert, *Stumbling on Happiness*; Tim Wilson |
-| Baseline, targets, versioning | **OKRs**; the **Quantified Self** ethos |
-| One small action / experiment ([add-ons](optional-add-ons.md)) | **Prototyping** — *Designing Your Life*; **"act your way into a new identity"** — *Working Identity*, Herminia Ibarra; **build-measure-learn** — *The Lean Startup*, Eric Ries; **make it tiny** — *Tiny Habits*, BJ Fogg |
+- **Evidence traceability / quality tags** — **Thematic coding / grounded theory** (qualitative research).
+- **Generate-before-anchor ordering** — **Anchoring bias** — Kahneman & Tversky.
+- **Disconfirmation passes** — **Falsifiability** — Karl Popper; confirmation-bias research — Peter Wason.
+- **Outside input / 360** — **360-degree feedback** (organizational psychology); methodological **triangulation**.
+- **"Trust the data over the hypothetical"** — **Affective forecasting** — Daniel Gilbert, *Stumbling on Happiness*; Tim Wilson.
+- **Baseline, targets, versioning** — **OKRs**; the **Quantified Self** ethos.
+- **One small action / experiment ([add-ons](optional-add-ons.md))** — **Prototyping** — *Designing Your Life*; **"act your way into a new identity"** — *Working Identity*, Herminia Ibarra; **build-measure-learn** — *The Lean Startup*, Eric Ries; **make it tiny** — *Tiny Habits*, BJ Fogg.
 
 ### Cultural & philosophical roots
 

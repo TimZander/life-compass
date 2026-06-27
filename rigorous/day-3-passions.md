@@ -16,13 +16,23 @@ strongest — because we're poor predictors of what will actually fulfill us.
 Return to Day 1's energy audit. For each energizing activity, go deeper: what about it fuels
 you — the **what** (subject), the **how** (mode of work), or the **who** (people)?
 
-| Energizing activity | What / How / Who? | What specifically fuels me |
-| --- | --- | --- |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
+For each energizing activity (aim for 5):
+
+1. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+2. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+3. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+4. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+5. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
 
 ---
 
@@ -36,11 +46,9 @@ then note whether it matches what you'd have guessed.
 - **Spending:** what do you spend on without resentment, even when money is tight? Discretionary
   spend is a revealed vote.
 
-| Source | What the data actually shows | Match what I'd have guessed? |
-| --- | --- | --- |
-| Calendar | ______ | ______ |
-| History | ______ | ______ |
-| Spending | ______ | ______ |
+- **Calendar** — what it actually shows: ______ · matches what I'd have guessed? ______
+- **History** — what it actually shows: ______ · matches what I'd have guessed? ______
+- **Spending** — what it actually shows: ______ · matches what I'd have guessed? ______
 
 *(No Day 0 data? Use the "lose track of time" recall instead: list every activity in the past
 year where you looked up and hours had passed.)*
