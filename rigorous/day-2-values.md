@@ -18,6 +18,10 @@ tags, the values your low points pointed to, the patterns in your energy audit. 
 principles were you actually operating by? Write **10–15 candidate values in your own words**,
 each next to the Day 1 entry that evidences it.
 
+> You met a short quality/need palette on Day 1 — that's fine. Here, pull from your *evidence*,
+> not from a word list; the fuller list comes in step 2, on purpose, only after you've
+> generated your own.
+
 | Candidate value (my words) | Day 1 evidence it comes from |
 | --- | --- |
 | ______ | ______ |

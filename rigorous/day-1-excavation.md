@@ -5,8 +5,31 @@
 Today is **not** about conclusions. It's about collecting honest data that the later days
 will draw on — so don't synthesize, just gather. One thing that makes this version rigorous:
 as you write, you'll **tag** each entry with a one-word quality, turning your notes into a
-coded dataset that Day 2 reads directly. Tags to draw from: *challenge, creation, connection,
-mastery, service, freedom, beauty, autonomy, order, growth, play* — or your own.
+coded dataset that Day 2 reads directly. If naming a quality or value feels hard — it does for
+most people — use the starter palette just below. It's a primer to scan when you're stuck, not
+a checklist: reach for the word that *clicks*, and if your own word fits better, use that.
+
+### 🧭 Naming help — a starter palette
+
+**Qualities that can make a moment feel alive** *(for peak experiences and the things that
+energize you)*:
+
+> Challenge · Mastery · Competence · Creation · Craft · Discovery · Curiosity · Learning ·
+> Growth · Connection · Intimacy · Belonging · Community · Service · Contribution · Care ·
+> Leadership · Recognition · Freedom · Autonomy · Independence · Adventure · Risk · Movement ·
+> Beauty · Wonder · Play · Humor · Absorption / flow · Order · Calm · Solitude · Impact · Purpose
+
+**What might have been missing or violated** *(for low points and the things that drain you —
+name the unmet need)*:
+
+> Safety · Stability · Respect · Fairness · Honesty · Trust · Autonomy · Control · Competence ·
+> Recognition · Belonging · Connection · Being seen · Meaning · Growth · Freedom · Rest ·
+> Support · Boundaries · Dignity · Voice / agency
+
+> **Stuck on a low point?** First name the **feeling** (angry, trapped, invisible, drained,
+> resentful), then ask: *"what need or value, if it had been met, would have changed that?"*
+> That answer is your tag. (This feeling → need move comes from Nonviolent Communication, and
+> it's the most reliable way in when no word comes to mind.)
 
 ---
 
