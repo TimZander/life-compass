@@ -54,6 +54,9 @@ you can mark it up on Day 2.
 higher-friction extras — outside input from others, and one small real-world step. They're
 genuinely useful but entirely opt-in; every process here works fully without them.
 
+**Doing it with a friend?** Read [`with-a-partner.md`](with-a-partner.md) first — the
+protocol for using an accountability partner without contaminating each other's answers.
+
 **Want a harder pass?** [`life-compass-rigorous.md`](life-compass-rigorous.md) is an
 optional, more demanding edition built to resist the ways self-reflection misleads you —
 anchoring, confirmation bias, single-observer blindness, and bad future-prediction. It
