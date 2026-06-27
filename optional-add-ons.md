@@ -25,9 +25,9 @@ Two versions, lightest first. The light one needs no one but you.
 Don't ask anyone anything. Just recall:
 
 - **What do people consistently come to you for?** (advice, a specific kind of help, a
-  perspective) → ______
+  perspective) → <span class="fill">______</span>
 - **What compliment do you brush off** because it feels too easy to be worth anything?
-  That's usually a real strength hiding behind how effortless it feels. → ______
+  That's usually a real strength hiding behind how effortless it feels. → <span class="fill">______</span>
 
 This captures most of the value of a full survey with none of the social cost. If the
 add-on makes you hesitate, do *only* this and move on.
@@ -64,9 +64,9 @@ Pick **one** small, cheap, reversible step you could finish in a single afternoo
 email, one conversation with someone already doing the thing, one evening building a rough
 version, one class signed up for.
 
-- The step: ______
-- By when (pick a date): ______
-- Done = ______
+- The step: <span class="fill">______</span>
+- By when (pick a date): <span class="fill">______</span>
+- Done = <span class="fill">______</span>
 
 > **The only rule that matters:** it has to be small enough that it *will* happen. If you
 > doubt it will, cut it in half. A trivial step you actually take beats an ambitious one you

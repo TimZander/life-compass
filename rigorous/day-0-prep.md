@@ -36,9 +36,9 @@ blind spot. Two versions; the light one needs no one but you.
 Don't ask anyone. Just recall and write down:
 
 - **What do people consistently come to you for?** (advice, a kind of help, a perspective)
-  → ______
+  → <span class="fill">______</span>
 - **What compliment do you brush off** because it feels too easy to count? That's usually a
-  real strength hiding behind how effortless it feels. → ______
+  real strength hiding behind how effortless it feels. → <span class="fill">______</span>
 
 This captures most of the value with zero social cost. If you do nothing else here, do this.
 

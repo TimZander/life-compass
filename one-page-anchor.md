@@ -15,32 +15,34 @@ Copy this to `answers/anchor.md` (gitignored) and fill in the blanks. Don't poli
 
 Don't use a list. Instead, recall two things:
 
-- The last time you felt genuinely **alive / right**. What value was being honored? → ______
+- The last time you felt genuinely **alive / right**. What value was being honored? → <span class="fill">______</span>
 - The last time you felt **angry or wronged**. What value was being violated? (Anger is a
-  reliable pointer to a held value.) → ______
+  reliable pointer to a held value.) → <span class="fill">______</span>
 
-Add one more that you'd defend even when it's costly → ______
+Add one more that you'd defend even when it's costly → <span class="fill">______</span>
 
 **Now rank them 1–2–3.** When two of your choices collide, #1 wins. That ranking is the
 whole point — it's what does the work in a hard decision.
 
-1. ______   2. ______   3. ______
+1. <span class="fill">______</span>
+2. <span class="fill">______</span>
+3. <span class="fill">______</span>
 
 ### 2. A theme for this season (5 min)
 
 Not a five-year plan — one sentence for the **next 90 days**. Themes flex where goals snap.
 
-> "For the next 90 days I'm optimizing for ______ over ______."
+> "For the next 90 days I'm optimizing for <span class="fill-sm">______</span> over <span class="fill-sm">______</span>."
 
 ### 3. One decision rule (3 min)
 
 A single if-then you can apply on a Tuesday without re-reading anything.
 
-> "When I'm stuck between options, I default to the one that ______."
+> "When I'm stuck between options, I default to the one that <span class="fill-sm">______</span>."
 
 ### 4. One review date (2 min)
 
-> Re-read this on **______** (≈90 days out) and ask two questions:
+> Re-read this on **<span class="fill-sm">______</span>** (≈90 days out) and ask two questions:
 > 1. Do my three values still rank in that order?
 > 2. Does my theme still fit, or does the next season need a new one?
 
