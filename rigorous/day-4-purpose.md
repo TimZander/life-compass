@@ -63,7 +63,7 @@ what lands in the **overlap of all three** — that overlap is your purpose's ra
 
 **In all three (the intersection):**
 
-> ______
+> *intersection:* ______________________
 
 ---
 
@@ -73,13 +73,12 @@ Three versions — different angles, different lengths. Don't try to make any on
 them from the intersection above.
 
 > **Format:** "To [verb] [for/with whom] [so that what]."
-> Examples: "To help small engineering teams ship software they're proud of, so good craft
-> doesn't lose to bad incentives." · "To make the backcountry more accessible to people who
-> weren't raised in it."
+> Examples: "To help the people I love feel genuinely known, so no one close to me carries
+> things alone." · "To make the backcountry more accessible to people who weren't raised in it."
 
-1. ______
-2. ______
-3. ______
+1. To ______________________________
+2. To ______________________________
+3. To ______________________________
 
 ---
 
@@ -88,7 +87,7 @@ them from the intersection above.
 Imagine someone who knows you well speaking at your funeral. What would you want them to be
 able to say **honestly** about what you spent your life on?
 
-> ______
+> *eulogy:* ______________________
 
 **Which of your three drafts rings truest against that?** → Draft # ______ , because ______
 

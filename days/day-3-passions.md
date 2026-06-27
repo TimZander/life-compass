@@ -38,11 +38,11 @@ For each energizing activity (aim for 5):
 List every activity in the past year where you looked up and hours had passed. These
 flow states reveal where your brain wants to live.
 
-1. ______
-2. ______
-3. ______
-4. ______
-5. ______
+1. *activity:* ______________________
+2. *activity:* ______________________
+3. *activity:* ______________________
+4. *activity:* ______________________
+5. *activity:* ______________________
 
 ---
 
@@ -51,7 +51,7 @@ flow states reveal where your brain wants to live.
 What do you read about, watch, or research when no one is paying you and no one is
 watching? Your browser history is more honest than your résumé.
 
-> ______
+> *subjects:* ______________________
 
 ---
 
@@ -60,11 +60,11 @@ watching? Your browser history is more honest than your résumé.
 You have 5 years and enough money. No external expectations. What would you actually do?
 Don't write the heroic version — write the **honest** one.
 
-> ______
+> *what I'd do:* ______________________
 
 **What does this reveal about what you're drawn to?**
 
-> ______
+> *reveals:* ______________________
 
 ---
 

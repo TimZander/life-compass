@@ -103,8 +103,7 @@ your drift.
 From the five "one change" answers, pick the **1–2** you'll actually do in the next 90 days. Be
 ruthless — the compass is useless if it doesn't change what you do.
 
-1. ______
-2. ______
+1. ______   2. ______
 
 ---
 

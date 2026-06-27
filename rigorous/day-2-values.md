@@ -24,6 +24,8 @@ each next to the Day 1 entry that evidences it.
 
 Each as *value (in my words) — the Day 1 evidence for it*:
 
+<p class="eg">e.g. <em>loyalty</em> — the year I drove home every weekend to help my dad rebuild the porch.</p>
+
 1. ______ — *evidence:* ______
 2. ______ — *evidence:* ______
 3. ______ — *evidence:* ______
@@ -85,11 +87,7 @@ From everything above, pick the 10 that feel most non-negotiable.
 The hardest step. Force-rank to 5. When two compete, ask: **which one, if I had to give it up,
 would hurt more?** This ranking is what does the work in a real decision — get it right.
 
-1. ______
-2. ______
-3. ______
-4. ______
-5. ______
+1. ______   2. ______   3. ______   4. ______   5. ______
 
 ---
 
@@ -100,29 +98,34 @@ what betraying it looks like — and the Day 1 evidence it rests on (◆; no evi
 *aspiration*, move it to the list at the bottom).
 
 ### Value 1 — ______
-- My definition: ______
-- Living it: ______ · Betraying it: ______
-- Day 1 evidence: ______
+- *My definition:* ______________________
+- *Living it looks like:* ______________________
+- *Betraying it looks like:* ______________________
+- *Day 1 evidence:* ______________________
 
 ### Value 2 — ______
-- My definition: ______
-- Living it: ______ · Betraying it: ______
-- Day 1 evidence: ______
+- *My definition:* ______________________
+- *Living it looks like:* ______________________
+- *Betraying it looks like:* ______________________
+- *Day 1 evidence:* ______________________
 
 ### Value 3 — ______
-- My definition: ______
-- Living it: ______ · Betraying it: ______
-- Day 1 evidence: ______
+- *My definition:* ______________________
+- *Living it looks like:* ______________________
+- *Betraying it looks like:* ______________________
+- *Day 1 evidence:* ______________________
 
 ### Value 4 — ______
-- My definition: ______
-- Living it: ______ · Betraying it: ______
-- Day 1 evidence: ______
+- *My definition:* ______________________
+- *Living it looks like:* ______________________
+- *Betraying it looks like:* ______________________
+- *Day 1 evidence:* ______________________
 
 ### Value 5 — ______
-- My definition: ______
-- Living it: ______ · Betraying it: ______
-- Day 1 evidence: ______
+- *My definition:* ______________________
+- *Living it looks like:* ______________________
+- *Betraying it looks like:* ______________________
+- *Day 1 evidence:* ______________________
 
 > **Aspirations** (wanted, but not yet evidenced — honestly labeled): ______
 
@@ -134,9 +137,12 @@ The strongest check in the whole process. Test your ranking against **3 recent h
 decisions**. Does your stated ranking match how you *actually* chose? If not, your stated
 ranking is wrong — adjust it.
 
-1. **Decision:** ______ → the value I actually chose by: ______
-2. **Decision:** ______ → the value I actually chose by: ______
-3. **Decision:** ______ → the value I actually chose by: ______
+1. **Decision:** ______________________
+   - *The value I actually chose by:* ______________________
+2. **Decision:** ______________________
+   - *The value I actually chose by:* ______________________
+3. **Decision:** ______________________
+   - *The value I actually chose by:* ______________________
 
 **Adjusted ranking (if it changed):** 1. ______ 2. ______ 3. ______ 4. ______ 5. ______
 
