@@ -13,13 +13,23 @@ Return to Day 1's energy audit. Go deeper on the energizing activities: what abo
 fuels you? Is it the **what** (the subject), the **how** (mode of work), or the **who**
 (people involved)?
 
-| Energizing activity | What / How / Who? | What specifically fuels me |
-| --- | --- | --- |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
+For each energizing activity (aim for 5):
+
+1. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+2. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+3. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+4. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
+5. **Activity:** ______
+   - *What / how / who?* ______
+   - *What specifically fuels me:* ______
 
 ---
 

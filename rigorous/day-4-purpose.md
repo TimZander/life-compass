@@ -52,16 +52,16 @@ Finish these (multiple times if it helps):
 
 ## 5. 🟢 Compute the intersection (15 min)
 
-Don't jump to a statement yet. Fill the three columns from your work so far, then write only
+Don't jump to a statement yet. Fill in all three below from your work so far, then write only
 what lands in the **overlap of all three** — that overlap is your purpose's raw ore.
 
-| Good at (step 1 advantages) | Energizes me (Day 3 themes) | World needs / who I'd serve (step 3) |
-| --- | --- | --- |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
-| ______ | ______ | ______ |
+**Good at** (my step-1 unfair advantages): ______
 
-**In all three columns (the intersection):**
+**Energizes me** (my Day 3 themes): ______
+
+**The world needs / who I'd serve** (from step 3): ______
+
+**In all three (the intersection):**
 
 > ______
 

@@ -22,16 +22,18 @@ each next to the Day 1 entry that evidences it.
 > not from a word list; the fuller list comes in step 2, on purpose, only after you've
 > generated your own.
 
-| Candidate value (my words) | Day 1 evidence it comes from |
-| --- | --- |
-| ______ | ______ |
-| ______ | ______ |
-| ______ | ______ |
-| ______ | ______ |
-| ______ | ______ |
-| ______ | ______ |
-| ______ | ______ |
-| ______ | ______ |
+Each as *value (in my words) — the Day 1 evidence for it*:
+
+1. ______ — *evidence:* ______
+2. ______ — *evidence:* ______
+3. ______ — *evidence:* ______
+4. ______ — *evidence:* ______
+5. ______ — *evidence:* ______
+6. ______ — *evidence:* ______
+7. ______ — *evidence:* ______
+8. ______ — *evidence:* ______
+9. ______ — *evidence:* ______
+10. ______ — *evidence:* ______
 
 ---
 

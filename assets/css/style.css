@@ -37,10 +37,3 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .endnav a{font-family:var(--sans);font-size:.76rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-decoration:none}
 .endnav a:hover{color:var(--accent-dark)}
 @media(max-width:540px){body{font-size:1.1rem}article>h1:first-child{font-size:2rem}}
-
-/* Wide tables break out of the narrow reading column on roomy screens,
-   re-centering on the text column. Prose keeps its calm measure;
-   on small screens tables fall back to full width. */
-@media (min-width:52rem){
-  article table{width:46rem;max-width:88vw;margin-left:50%;transform:translateX(-50%)}
-}
