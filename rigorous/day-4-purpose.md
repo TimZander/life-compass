@@ -14,10 +14,10 @@ against the evidence of your real life so it's a compass, not a costume.
 What can you do, or see, that most people can't or don't? Don't be modest — this is inventory,
 not bragging.
 
-- **Skills (technical and otherwise):** ______
-- **Experiences that gave you unusual perspective:** ______
-- **Networks or access:** ______
-- **Ways of thinking that feel natural to you but aren't to others:** ______
+- **Skills (technical and otherwise):** <span class="fill">______</span>
+- **Experiences that gave you unusual perspective:** <span class="fill">______</span>
+- **Networks or access:** <span class="fill">______</span>
+- **Ways of thinking that feel natural to you but aren't to others:** <span class="fill">______</span>
 
 ---
 
@@ -27,16 +27,16 @@ If you gathered outside input (Day 0), compare it against the list above. Where 
 a strength you *didn't* — take it seriously. A strength so native you've stopped seeing it is
 often exactly where purpose lives.
 
-> Strengths others named that I'd missed: ______
+> Strengths others named that I'd missed: <span class="fill">______</span>
 
 ---
 
 ## 3. Who and what (20 min)
 
 - **Who do you want to be useful to?** Be specific — not "people" but a particular kind of
-  person or group. → ______
-- **What problem of theirs do you want to help with?** → ______
-- **What would change in their world if you did your work well?** → ______
+  person or group. → <span class="fill">______</span>
+- **What problem of theirs do you want to help with?** → <span class="fill">______</span>
+- **What would change in their world if you did your work well?** → <span class="fill">______</span>
 
 ---
 
@@ -44,9 +44,9 @@ often exactly where purpose lives.
 
 Finish these (multiple times if it helps):
 
-- "The world has enough ______. It needs more ______."
-- "When I'm gone, I want it to be harder for people to ______ because of work I did."
-- "The unique combination I bring is ______ + ______ + ______."
+- "The world has enough <span class="fill-sm">______</span>. It needs more <span class="fill-sm">______</span>."
+- "When I'm gone, I want it to be harder for people to <span class="fill-sm">______</span> because of work I did."
+- "The unique combination I bring is <span class="fill-sm">______</span> + <span class="fill-sm">______</span> + <span class="fill-sm">______</span>."
 
 ---
 
@@ -55,15 +55,15 @@ Finish these (multiple times if it helps):
 Don't jump to a statement yet. Fill in all three below from your work so far, then write only
 what lands in the **overlap of all three** — that overlap is your purpose's raw ore.
 
-**Good at** (my step-1 unfair advantages): ______
+**Good at** (my step-1 unfair advantages): <span class="fill">______</span>
 
-**Energizes me** (my Day 3 themes): ______
+**Energizes me** (my Day 3 themes): <span class="fill">______</span>
 
-**The world needs / who I'd serve** (from step 3): ______
+**The world needs / who I'd serve** (from step 3): <span class="fill">______</span>
 
 **In all three (the intersection):**
 
-> *intersection:* ______________________
+> *intersection:* <span class="fill">______________________</span>
 
 ---
 
@@ -76,9 +76,9 @@ them from the intersection above.
 > Examples: "To help the people I love feel genuinely known, so no one close to me carries
 > things alone." · "To make the backcountry more accessible to people who weren't raised in it."
 
-1. To ______________________________
-2. To ______________________________
-3. To ______________________________
+1. To <span class="fill">______________________________</span>
+2. To <span class="fill">______________________________</span>
+3. To <span class="fill">______________________________</span>
 
 ---
 
@@ -87,9 +87,9 @@ them from the intersection above.
 Imagine someone who knows you well speaking at your funeral. What would you want them to be
 able to say **honestly** about what you spent your life on?
 
-> *eulogy:* ______________________
+> *eulogy:* <span class="fill">______________________</span>
 
-**Which of your three drafts rings truest against that?** → Draft # ______ , because ______
+**Which of your three drafts rings truest against that?** → Draft # <span class="fill-sm">______</span> , because <span class="fill-sm">______</span>
 
 ---
 
@@ -100,7 +100,7 @@ genuinely my purpose — and do I see it?** If the purpose predicts behavior tha
 from your last five years, it's a costume, not a compass. Revise toward what the evidence
 already supports.
 
-> Revised purpose statement: ______
+> Revised purpose statement: <span class="fill">______</span>
 
 ---
 

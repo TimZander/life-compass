@@ -18,21 +18,21 @@ you — the **what** (subject), the **how** (mode of work), or the **who** (peop
 
 For each energizing activity (aim for 5):
 
-1. **Activity:** ______
-   - *What / how / who?* ______
-   - *What specifically fuels me:* ______
-2. **Activity:** ______
-   - *What / how / who?* ______
-   - *What specifically fuels me:* ______
-3. **Activity:** ______
-   - *What / how / who?* ______
-   - *What specifically fuels me:* ______
-4. **Activity:** ______
-   - *What / how / who?* ______
-   - *What specifically fuels me:* ______
-5. **Activity:** ______
-   - *What / how / who?* ______
-   - *What specifically fuels me:* ______
+1. **Activity:** <span class="fill">______</span>
+   - *What / how / who?* <span class="fill">______</span>
+   - *What specifically fuels me:* <span class="fill">______</span>
+2. **Activity:** <span class="fill">______</span>
+   - *What / how / who?* <span class="fill">______</span>
+   - *What specifically fuels me:* <span class="fill">______</span>
+3. **Activity:** <span class="fill">______</span>
+   - *What / how / who?* <span class="fill">______</span>
+   - *What specifically fuels me:* <span class="fill">______</span>
+4. **Activity:** <span class="fill">______</span>
+   - *What / how / who?* <span class="fill">______</span>
+   - *What specifically fuels me:* <span class="fill">______</span>
+5. **Activity:** <span class="fill">______</span>
+   - *What / how / who?* <span class="fill">______</span>
+   - *What specifically fuels me:* <span class="fill">______</span>
 
 ---
 
@@ -47,19 +47,19 @@ then note whether it matches what you'd have guessed.
   spend is a revealed vote.
 
 - **Calendar:**
-  - *what it actually shows:* ______________________
-  - *did it match what I'd have guessed?* ____________
+  - *what it actually shows:* <span class="fill">______________________</span>
+  - *did it match what I'd have guessed?* <span class="fill-sm">____________</span>
 - **History:**
-  - *what it actually shows:* ______________________
-  - *did it match what I'd have guessed?* ____________
+  - *what it actually shows:* <span class="fill">______________________</span>
+  - *did it match what I'd have guessed?* <span class="fill-sm">____________</span>
 - **Spending:**
-  - *what it actually shows:* ______________________
-  - *did it match what I'd have guessed?* ____________
+  - *what it actually shows:* <span class="fill">______________________</span>
+  - *did it match what I'd have guessed?* <span class="fill-sm">____________</span>
 
 *(No Day 0 data? Use the "lose track of time" recall instead: list every activity in the past
 year where you looked up and hours had passed.)*
 
-> *flow activities:* ______________________
+> *flow activities:* <span class="fill">______________________</span>
 
 ---
 
@@ -68,7 +68,7 @@ year where you looked up and hours had passed.)*
 What do you read about, watch, or research when no one is paying you and no one is watching?
 Your history is more honest than your résumé. Tally the recurring subjects.
 
-> *subjects:* ______________________
+> *subjects:* <span class="fill">______________________</span>
 
 ---
 
@@ -77,12 +77,12 @@ Your history is more honest than your résumé. Tally the recurring subjects.
 You have 5 years and enough money. No external expectations. What would you actually do? Write
 the **honest** version, not the heroic one.
 
-> *what I'd do:* ______________________
+> *what I'd do:* <span class="fill">______________________</span>
 
 Now treat this as your *weakest* input. When the hypothetical and the data disagree, **trust
 the data.** Note any disagreement explicitly:
 
-> Hypothetical says ______ ; the data says ______ ; reconciling: ______
+> Hypothetical says <span class="fill-sm">______</span> ; the data says <span class="fill-sm">______</span> ; reconciling: <span class="fill-sm">______</span>
 
 ---
 
@@ -94,23 +94,23 @@ one *data* example (◆), not only a remembered one.**
 > Examples (not yours): building things that work · being in wild places · teaching what I've
 > learned · solving puzzles · making people feel seen.
 
-### Theme 1 — ______
-- *Data example:* ______________________
-- *Other example:* ______________________
+### Theme 1 — <span class="fill">______</span>
+- *Data example:* <span class="fill">______________________</span>
+- *Other example:* <span class="fill">______________________</span>
 
-### Theme 2 — ______
-- *Data example:* ______________________
-- *Other example:* ______________________
+### Theme 2 — <span class="fill">______</span>
+- *Data example:* <span class="fill">______________________</span>
+- *Other example:* <span class="fill">______________________</span>
 
-### Theme 3 — ______
-- *Data example:* ______________________
-- *Other example:* ______________________
+### Theme 3 — <span class="fill">______</span>
+- *Data example:* <span class="fill">______________________</span>
+- *Other example:* <span class="fill">______________________</span>
 
-### Theme 4 (optional) — ______
-- Data example: ______
+### Theme 4 (optional) — <span class="fill">______</span>
+- Data example: <span class="fill">______</span>
 
-### Theme 5 (optional) — ______
-- Data example: ______
+### Theme 5 (optional) — <span class="fill">______</span>
+- Data example: <span class="fill">______</span>
 
 ---
 

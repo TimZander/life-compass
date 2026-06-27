@@ -14,19 +14,19 @@ isn't bragging, it's inventory.
 
 **Skills (technical and otherwise):**
 
-> *skills:* ______________________
+> *skills:* <span class="fill">______________________</span>
 
 **Experiences that gave you unusual perspective:**
 
-> *experiences:* ______________________
+> *experiences:* <span class="fill">______________________</span>
 
 **Networks or access:**
 
-> *networks:* ______________________
+> *networks:* <span class="fill">______________________</span>
 
 **Ways of thinking that feel natural to you but aren't to others:**
 
-> *ways of thinking:* ______________________
+> *ways of thinking:* <span class="fill">______________________</span>
 
 ---
 
@@ -35,15 +35,15 @@ isn't bragging, it's inventory.
 - **Who do you want to be useful to?** Be specific — not "people" but a particular kind
   of person or group.
 
-  > *who:* ______________________
+  > *who:* <span class="fill">______________________</span>
 
 - **What problem of theirs do you want to help with?**
 
-  > *problem:* ______________________
+  > *problem:* <span class="fill">______________________</span>
 
 - **What would change in their world if you did your work well?**
 
-  > *what changes:* ______________________
+  > *what changes:* <span class="fill">______________________</span>
 
 ---
 
@@ -51,10 +51,10 @@ isn't bragging, it's inventory.
 
 Finish these sentences (multiple times if needed):
 
-- "The world has enough ______. It needs more ______."
-- "The world has enough ______. It needs more ______."
-- "When I'm gone, I want it to be harder for people to ______ because of work I did."
-- "The unique combination I bring is ______ + ______ + ______."
+- "The world has enough <span class="fill-sm">______</span>. It needs more <span class="fill-sm">______</span>."
+- "The world has enough <span class="fill-sm">______</span>. It needs more <span class="fill-sm">______</span>."
+- "When I'm gone, I want it to be harder for people to <span class="fill-sm">______</span> because of work I did."
+- "The unique combination I bring is <span class="fill-sm">______</span> + <span class="fill-sm">______</span> + <span class="fill-sm">______</span>."
 
 ---
 
@@ -70,9 +70,9 @@ any one perfect.
 >   things alone."
 > - "To make the backcountry more accessible to people who weren't raised in it."
 
-1. To ______________________________
-2. To ______________________________
-3. To ______________________________
+1. To <span class="fill">______________________________</span>
+2. To <span class="fill">______________________________</span>
+3. To <span class="fill">______________________________</span>
 
 ---
 
@@ -81,11 +81,11 @@ any one perfect.
 Imagine someone who knows you well speaking at your funeral. What would you want them to
 be able to say **honestly** about what you spent your life on?
 
-> *eulogy:* ______________________
+> *eulogy:* <span class="fill">______________________</span>
 
 **Compare against your three drafts. Which one rings truest?**
 
-> Draft # ______ — because ______
+> Draft # <span class="fill-sm">______</span> — because <span class="fill-sm">______</span>
 
 ---
 

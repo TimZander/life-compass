@@ -26,16 +26,16 @@ Each as *value (in my words) — the Day 1 evidence for it*:
 
 <p class="eg">e.g. <em>loyalty</em> — the year I drove home every weekend to help my dad rebuild the porch.</p>
 
-1. ______ — *evidence:* ______
-2. ______ — *evidence:* ______
-3. ______ — *evidence:* ______
-4. ______ — *evidence:* ______
-5. ______ — *evidence:* ______
-6. ______ — *evidence:* ______
-7. ______ — *evidence:* ______
-8. ______ — *evidence:* ______
-9. ______ — *evidence:* ______
-10. ______ — *evidence:* ______
+1. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+2. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+3. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+4. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+5. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+6. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+7. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+8. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+9. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
+10. <span class="fill-sm">______</span> — *evidence:* <span class="fill-sm">______</span>
 
 ---
 
@@ -54,7 +54,7 @@ you'd like to be true. If a word here has no Day 1 evidence behind it, it does n
 > · Service · Simplicity · Solitude · Spirituality · Stability · Stewardship · Strength ·
 > Tradition · Truth · Vitality · Wisdom · Wonder
 
-**Added from the list (with their Day 1 evidence):** ______
+**Added from the list (with their Day 1 evidence):** <span class="fill">______</span>
 
 ---
 
@@ -65,9 +65,9 @@ but don't actually live:
 
 - **Where have I claimed a value but repeatedly acted against it when it was costly?** A value
   you betray every time it's expensive is a preference, not a value. Cross it out or demote it.
-  → ______
+  → <span class="fill">______</span>
 - **For my strongest candidates: what evidence would prove this *isn't* core to me?** If you
-  can't name any, you haven't tested it. → ______
+  can't name any, you haven't tested it. → <span class="fill">______</span>
 
 ---
 
@@ -77,8 +77,16 @@ From everything above, pick the 10 that feel most non-negotiable.
 
 > The test: if this value were taken from your life, would it feel like a loss of self?
 
-1. ______  2. ______  3. ______  4. ______  5. ______
-6. ______  7. ______  8. ______  9. ______  10. ______
+1. <span class="fill">______</span>
+2. <span class="fill">______</span>
+3. <span class="fill">______</span>
+4. <span class="fill">______</span>
+5. <span class="fill">______</span>
+6. <span class="fill">______</span>
+7. <span class="fill">______</span>
+8. <span class="fill">______</span>
+9. <span class="fill">______</span>
+10. <span class="fill">______</span>
 
 ---
 
@@ -87,7 +95,11 @@ From everything above, pick the 10 that feel most non-negotiable.
 The hardest step. Force-rank to 5. When two compete, ask: **which one, if I had to give it up,
 would hurt more?** This ranking is what does the work in a real decision — get it right.
 
-1. ______   2. ______   3. ______   4. ______   5. ______
+1. <span class="fill">______</span>
+2. <span class="fill">______</span>
+3. <span class="fill">______</span>
+4. <span class="fill">______</span>
+5. <span class="fill">______</span>
 
 ---
 
@@ -97,37 +109,37 @@ For each of your 5: a one-sentence definition **in your own words**, what living
 what betraying it looks like — and the Day 1 evidence it rests on (◆; no evidence → it's an
 *aspiration*, move it to the list at the bottom).
 
-### Value 1 — ______
-- *My definition:* ______________________
-- *Living it looks like:* ______________________
-- *Betraying it looks like:* ______________________
-- *Day 1 evidence:* ______________________
+### Value 1 — <span class="fill">______</span>
+- *My definition:* <span class="fill">______________________</span>
+- *Living it looks like:* <span class="fill">______________________</span>
+- *Betraying it looks like:* <span class="fill">______________________</span>
+- *Day 1 evidence:* <span class="fill">______________________</span>
 
-### Value 2 — ______
-- *My definition:* ______________________
-- *Living it looks like:* ______________________
-- *Betraying it looks like:* ______________________
-- *Day 1 evidence:* ______________________
+### Value 2 — <span class="fill">______</span>
+- *My definition:* <span class="fill">______________________</span>
+- *Living it looks like:* <span class="fill">______________________</span>
+- *Betraying it looks like:* <span class="fill">______________________</span>
+- *Day 1 evidence:* <span class="fill">______________________</span>
 
-### Value 3 — ______
-- *My definition:* ______________________
-- *Living it looks like:* ______________________
-- *Betraying it looks like:* ______________________
-- *Day 1 evidence:* ______________________
+### Value 3 — <span class="fill">______</span>
+- *My definition:* <span class="fill">______________________</span>
+- *Living it looks like:* <span class="fill">______________________</span>
+- *Betraying it looks like:* <span class="fill">______________________</span>
+- *Day 1 evidence:* <span class="fill">______________________</span>
 
-### Value 4 — ______
-- *My definition:* ______________________
-- *Living it looks like:* ______________________
-- *Betraying it looks like:* ______________________
-- *Day 1 evidence:* ______________________
+### Value 4 — <span class="fill">______</span>
+- *My definition:* <span class="fill">______________________</span>
+- *Living it looks like:* <span class="fill">______________________</span>
+- *Betraying it looks like:* <span class="fill">______________________</span>
+- *Day 1 evidence:* <span class="fill">______________________</span>
 
-### Value 5 — ______
-- *My definition:* ______________________
-- *Living it looks like:* ______________________
-- *Betraying it looks like:* ______________________
-- *Day 1 evidence:* ______________________
+### Value 5 — <span class="fill">______</span>
+- *My definition:* <span class="fill">______________________</span>
+- *Living it looks like:* <span class="fill">______________________</span>
+- *Betraying it looks like:* <span class="fill">______________________</span>
+- *Day 1 evidence:* <span class="fill">______________________</span>
 
-> **Aspirations** (wanted, but not yet evidenced — honestly labeled): ______
+> **Aspirations** (wanted, but not yet evidenced — honestly labeled): <span class="fill">______</span>
 
 ---
 
@@ -137,14 +149,19 @@ The strongest check in the whole process. Test your ranking against **3 recent h
 decisions**. Does your stated ranking match how you *actually* chose? If not, your stated
 ranking is wrong — adjust it.
 
-1. **Decision:** ______________________
-   - *The value I actually chose by:* ______________________
-2. **Decision:** ______________________
-   - *The value I actually chose by:* ______________________
-3. **Decision:** ______________________
-   - *The value I actually chose by:* ______________________
+1. **Decision:** <span class="fill">______________________</span>
+   - *The value I actually chose by:* <span class="fill">______________________</span>
+2. **Decision:** <span class="fill">______________________</span>
+   - *The value I actually chose by:* <span class="fill">______________________</span>
+3. **Decision:** <span class="fill">______________________</span>
+   - *The value I actually chose by:* <span class="fill">______________________</span>
 
-**Adjusted ranking (if it changed):** 1. ______ 2. ______ 3. ______ 4. ______ 5. ______
+**Adjusted ranking (if it changed):**
+1. <span class="fill">______</span>
+2. <span class="fill">______</span>
+3. <span class="fill">______</span>
+4. <span class="fill">______</span>
+5. <span class="fill">______</span>
 
 ---
 
