@@ -147,10 +147,23 @@ quality it carried.
 5. **What it was:** ______________________
    - *quality it carried:* ____________
 
-**◆ Past year — 5 energizing / 5 draining moments that stand out across the whole year:**
+**◆ Past year — five energizing, five draining moments that stand out across the whole year:**
 
-- Energizing: ______ · ______ · ______ · ______ · ______
-- Draining: ______ · ______ · ______ · ______ · ______
+*Energizing:*
+
+1. *moment:* ______________________
+2. *moment:* ______________________
+3. *moment:* ______________________
+4. *moment:* ______________________
+5. *moment:* ______________________
+
+*Draining:*
+
+1. *moment:* ______________________
+2. *moment:* ______________________
+3. *moment:* ______________________
+4. *moment:* ______________________
+5. *moment:* ______________________
 
 **Patterns** — what kind of work, people, and environments recur?
 
