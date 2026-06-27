@@ -46,6 +46,13 @@ sessions is where insight settles.
 **Reference:** the [values starter list](reference/values-list.md) is pulled out so
 you can mark it up on Day 2.
 
+**Want a harder pass?** [`life-compass-rigorous.md`](life-compass-rigorous.md) is an
+optional, more demanding edition built to resist the ways self-reflection misleads you —
+anchoring, confirmation bias, single-observer blindness, and bad future-prediction. It
+adds evidence-grounding, outside input, and measurement on top of these five days. The
+original stays exactly as it is; use the rigorous edition when you want the tougher run
+(or on an annual redo).
+
 ---
 
 ## How to use this going forward
