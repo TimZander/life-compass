@@ -176,4 +176,11 @@ The whole enterprise sits in a long lineage of structured self-examination:
 
 ## License
 
-[MIT](LICENSE) © 2026 Tim Zander. The workbook content was generated through conversations with Claude models; use, adapt, and share it freely.
+[MIT](LICENSE) © 2026 Tim Zander. The workbook content — every prompt, the structure, the
+layout, and the CSS — is original wording generated through conversations with Claude models;
+use, adapt, and share it freely.
+
+The license covers *this repository's own text and code*. The exercises descend from
+established ideas and methods credited in [Where the exercises come from](#where-the-exercises-come-from)
+— concepts and procedures aren't copyrightable, and naming a framework to attribute it isn't a
+claim on it. Any trademarks or third-party works mentioned remain the property of their owners.
