@@ -47,7 +47,11 @@ lowest-friction 360 there is. Swap the two questions before you start:
 - **The sharing contract.** Some prompts are intimate — the low points (Day 1), the eulogy
   test (Day 4). Decide up front what's shareable vs. private. *"I did the work"* is a
   complete check-in; you don't owe each other the raw contents.
-- **The cadence.** Same days on the same schedule. A quick "did you do it?" after each day.
+- **The cadence.** Pick a standing weekly slot — *"I'll do Day 1 this week, so will you"* —
+  and a recurring end-of-week check-in. A "day" a week is a great pace (the five days run
+  ~5 weeks); over that span the enemy is drift, not difficulty, so a fixed day/time beats
+  "sometime this week." Keep each day a single sitting, and re-read last week's notes before
+  the next. A quick *"did you do it?"* is a complete check-in.
 - **The fallback.** What happens if one of you slips, so a single missed day doesn't sink
   both of you.
 - **Day 0 lead time.** Both do the [data pull](life-compass-rigorous.md#b-pull-objective-data-15-min-closes-gap-3)

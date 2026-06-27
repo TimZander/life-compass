@@ -17,8 +17,12 @@ whenever you feel off, face a big decision, or forget who you are.
 
 ## Before you start
 
-**Time:** 5 days, roughly 60–90 minutes each. Don't compress it. The space between
-sessions is where insight settles.
+**Time:** roughly 60–90 minutes per "day," done in one sitting. *Don't compress it* — and
+stretching it out is fine, even better. A common rhythm is **one "day" per week** (so the
+five days run ~5 weeks); the longer gap is where insight settles. Two rules if you stretch
+it: keep each session a **single sitting** (the week is breathing room, not more work), and
+start each session by **re-reading last week's notes** to reload context. Keep a phone note
+for stray thoughts between sessions and feed them in.
 
 **Setup:**
 
