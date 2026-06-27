@@ -40,35 +40,27 @@ A single if-then you can apply on a Tuesday without re-reading anything.
 
 > "When I'm stuck between options, I default to the one that ______."
 
-### 4. One experiment this month (5 min) — *the part that actually moves you*
+### 4. One review date (2 min)
 
-Direction is found by doing, not deciding. Pick **one** small, cheap, reversible thing in
-the next 30 days that tests a direction you're curious about — a weekend build, one
-conversation with someone already living it, a small gig, a class.
-
-> Keep it small enough that it *will* happen. A tiny experiment you run beats a big one you
-> don't.
-
-- The experiment: ______
-- By when: ______
-- I'll know it's done when: ______
-
-### 5. One review date (2 min)
-
-> Re-read this on **______** (≈90 days out) and ask three questions:
-> 1. Did I run the experiment? What did it teach me?
-> 2. Do my three values still rank in that order?
-> 3. What's the next one small experiment?
+> Re-read this on **______** (≈90 days out) and ask two questions:
+> 1. Do my three values still rank in that order?
+> 2. Does my theme still fit, or does the next season need a new one?
 
 ---
 
-### The only two things that have to be true
+### Optional: one small next action
 
-Everything above is optional except these:
+The four steps above are the whole anchor — reflection, done at your desk. If you ever want
+to add the one thing reflection can't do (generate *new* information about a direction by
+actually trying it), there's a deliberately tiny, optional step for that in
+[Optional add-ons](optional-add-ons.md). Ignore it unless you want it.
 
-1. **The experiment is small enough that it actually happens.** If you doubt it will, cut
-   it in half.
-2. **You actually look at this again on the review date.** Put it in your calendar now.
+---
+
+### The only thing that has to be true
+
+**You actually look at this again on the review date.** Put it in your calendar now. A
+clear-headed page you re-read beats a perfect one you forget.
 
 That's the anchor. If it earns its keep over a few cycles, go deeper. If it doesn't, you
 lost 25 minutes — not five days.

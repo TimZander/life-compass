@@ -38,18 +38,13 @@ Rigor trades off against finishing. To protect both, items are tagged:
 The two highest-leverage additions — real data and outside input — both need lead time.
 Set them in motion before you start so they're ready when you need them.
 
-### A. Request outside input (5 min to send, closes gap #4)
+### A. Outside input — optional (closes gap #4)
 
-Text or email **3–5 people who know you well**, across different parts of your life (not
-all coworkers, not all family). Ask exactly two questions:
-
-1. "When have you seen me most alive or most *myself*?"
-2. "What do you think I'm genuinely good at — or see clearly — that I might not notice
-   in myself?"
-
-> Keep their answers in a gitignored file (`answers/360.md`). You'll fold them in on
-> Day 1 and Day 4. The point isn't flattery — it's triangulation against your own blind
-> spots.
+> **Optional add-on.** Asking other people is the one part of this that depends on someone
+> besides you, so it's been pulled out to [Optional add-ons](optional-add-ons.md) — which
+> also includes a zero-outreach, from-memory version. Nothing in this edition depends on
+> it; skip it freely. If you *do* want the version that asks people, it needs lead time, so
+> kick it off now.
 
 ### B. Pull objective data (15 min, closes gap #3)
 
@@ -77,14 +72,12 @@ one-word **quality tag** (challenge, creation, connection, mastery, service, fre
 beauty, autonomy, …). You're building a coded dataset, not a diary. On Day 2 these tags
 become the evidence behind your values.
 
-### 🔵 Fold in the 360 responses (closes gap #4)
+### Optional: fold in outside input
 
-Read what your people sent back. For each, ask:
-
-- Does this match my own peaks/energy list, or contradict it?
-- **What did they see that I didn't write down myself?** Add those to your raw material —
-  flagged as "external," because outside observations of when you're alive are often more
-  reliable than your own narration.
+If you did the optional outside-input add-on (even the 2-minute from-memory version), weave
+it in here — see [Optional add-ons](optional-add-ons.md). Flag anything others saw that you
+didn't write down yourself as "external." If you skipped it, skip this; nothing downstream
+needs it.
 
 ### 🔵 Longer sampling window (reduces recency bias)
 
@@ -198,11 +191,12 @@ to drafting. Don't jump. Fill the three columns, then write only what lands in t
 
 > ______
 
-### 🔵 Cross-check against the 360 "good at" answers
+### Optional: cross-check against outside input
 
-Compare your unfair-advantages list against what your people said you're good at (Day 0,
-question 2). Where they named a strength you *didn't*, take it seriously — it's a strength
-so native to you that you've stopped seeing it. Those are often where purpose actually lives.
+If you gathered outside input, compare it against your unfair-advantages list here — see
+[Optional add-ons](optional-add-ons.md). Where others named a strength you *didn't*, take it
+seriously: a strength so native you've stopped seeing it is often where purpose lives. Skip
+otherwise.
 
 ### 🟢 Disconfirmation on the draft
 
