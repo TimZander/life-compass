@@ -18,11 +18,11 @@ description: >-
 # packaged `theme:` is set — this site is themed by hand for a calm,
 # journal-style reading experience.
 
-# Project site lives under /<repo>, so the base path must be set or every
-# asset and link 404s. For a user/org site (served at the domain root) set
-# baseurl to "" instead.
-url: https://timzander.github.io
-baseurl: /life-compass
+# Served at a custom subdomain (see the CNAME file), so the site lives at
+# the domain root and baseurl must be empty. If you ever revert to the
+# github.io project URL, set baseurl back to "/life-compass".
+url: https://lifecompass.timzander.com
+baseurl: ""
 
 # These are auto-enabled on GitHub Pages, but listing them makes local
 # builds match and keeps behavior explicit.
