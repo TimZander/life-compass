@@ -174,6 +174,15 @@ The whole enterprise sits in a long lineage of structured self-examination:
 
 ---
 
+## How this is built
+
+The workbook is being rebuilt as an offline, on-device application — installable, usable
+without a network, and with answers that never leave the browser they were typed into.
+The reasoning behind each decision, including the ones that were rejected, lives in
+[`docs/decisions/`](docs/decisions/).
+
+---
+
 ## License
 
 [MIT](LICENSE) © 2026 Tim Zander. The workbook content — every prompt, the structure, the

@@ -32,6 +32,22 @@ plugins:
   - jekyll-relative-links
   - jekyll-titles-from-headings
 
+# Engineering notes, not workbook content. Without this, jekyll-optional-front-matter
+# renders every architecture decision record as its own orphan page on the published
+# site — reachable by URL, linked from nothing.
+exclude:
+  # Jekyll's built-in exclude list is REPLACED, not extended, by anything set here,
+  # so the usual Ruby-tooling entries have to be restated even though none exist yet.
+  - docs/
+  - Gemfile
+  - Gemfile.lock
+  - gemfiles
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
+
 # Apply the theme's layout to every page (README + all .md files).
 # Without this, pages render as unstyled HTML fragments with no <head>.
 defaults:
