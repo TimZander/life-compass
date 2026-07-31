@@ -1,0 +1,68 @@
+name: Checks
+
+# Typecheck, test, and build on every pull request and every push to main.
+#
+# The point is a clean machine. Locally the build works partly because of whatever is
+# already installed; here `npm ci` has nothing but package-lock.json to go on, which is
+# what catches a dependency that was never actually declared.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref, so a rapid series of pushes doesn't leave a
+# queue of runs reporting on commits nobody is looking at any more.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      # Actions are pinned by commit SHA rather than by tag. A tag is mutable — it can
+      # be repointed at different code without any diff here — so a tag reference means
+      # trusting that nobody moves it. The comment records which release each SHA was.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          # Single source of truth with local development; the build needs Node 22.18+
+          # for type stripping, which package.json's `engines` enforces at install.
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly the lockfile and fails
+      # if package.json and the lockfile disagree, instead of quietly resolving a
+      # different tree than the one that was reviewed.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The test script guards its own glob with `ls` — `node --test` exits 0 when its
+      # glob matches nothing, so a renamed suite would otherwise report success having
+      # run nothing at all.
+      - name: Test
+        run: npm test
+
+      # Last, and not redundant with the tests: the tests exercise `buildPages` and
+      # `build` against fixtures, while this runs the real content end to end and fails
+      # on a broken link or a missing heading anchor.
+      - name: Build
+        run: npm run build
+
+      # A build that wrote nothing at all would satisfy every step above, so check that
+      # the output exists on disk. The exact page set is asserted by the test suite —
+      # pinning the count here too would just be a second place to update.
+      - name: Verify build output
+        run: |
+          test -f dist/index.html
+          test -f dist/rigorous/index.html
+          test -f dist/assets/css/style.css
+          echo "Built $(find dist -name '*.html' | wc -l | tr -d ' ') pages"

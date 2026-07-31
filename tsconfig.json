@@ -19,6 +19,13 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
 
+    // Dead code is the bulk of what a linter would catch here, and these cost no
+    // dependency. ESLint is deliberately not added: docs/decisions/0003 weighs
+    // dependency count against a project meant to sit untouched for years, and a lint
+    // toolchain is several packages plus a config that ages.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
     // Refuse syntax Node cannot strip (enums, namespaces, parameter properties).
     // Without this, `tsc` would happily accept code that fails at runtime — the
     // typecheck would pass and `npm run build` would not.
