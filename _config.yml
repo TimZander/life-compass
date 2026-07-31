@@ -1,5 +1,14 @@
 # GitHub Pages configuration for the Life Compass site.
 #
+# SUPERSEDED BUT STILL LOAD-BEARING. The site is now built by build/build.ts (see
+# docs/decisions/0003), and this file plus _layouts/default.html are no longer what
+# produces the output that ships. They are retained deliberately: the live domain is
+# still served from main by GitHub Pages, and will be until the DNS cutover (#28).
+# Deleting them now would leave every page on the live site unstyled in the meantime.
+#
+# Keep the nav here in step with build/layout.ts until #28 removes both this file and
+# _layouts/, at which point the duplication ends.
+#
 # This repo needs no build tooling: GitHub Pages runs Jekyll for you and
 # auto-enables the plugins that make the existing Markdown "just work" —
 #   - jekyll-readme-index          : README.md becomes the site home page
@@ -37,8 +46,12 @@ plugins:
 # site — reachable by URL, linked from nothing.
 exclude:
   # Jekyll's built-in exclude list is REPLACED, not extended, by anything set here,
-  # so the usual Ruby-tooling entries have to be restated even though none exist yet.
-  - docs/
+  # so the usual Ruby-tooling entries have to be restated. node_modules is no longer
+  # hypothetical — the typed build introduced it.
+  #
+  # docs/ was excluded when the decision records landed, on the assumption they were
+  # repo-internal. They are published deliberately now, so the entry is gone and the
+  # README's link to docs/decisions/ resolves here as well as in the new build.
   - Gemfile
   - Gemfile.lock
   - gemfiles

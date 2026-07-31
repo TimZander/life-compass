@@ -32,6 +32,13 @@ because print has to allocate ruled lines and cannot infer it. That hint does do
 [0001](0001-voice-first-input-is-a-primary-constraint.md) wants generous fields for
 dictation, and this is where that gets expressed once rather than guessed at per page.
 
+This turns out to be an observation rather than an invention. The existing markup
+already encodes exactly two sizes — `fill` at 15rem and `fill-sm` at 6rem, 369 and 74
+uses respectively — so the hint is formalising a distinction the worksheets have been
+making by hand all along, not adding a new axis. Whether two buckets remain enough, or
+the schema wants a line count, is worth deciding when the pilot page is built
+([0004](0004-prose-in-markdown-questions-in-typescript.md)).
+
 **C2.** `break-inside: avoid` on question groups, so a five-part chapter block does not
 split across a page boundary. Print is a real layout, not a filter over the screen one.
 

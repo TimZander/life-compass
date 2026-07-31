@@ -75,6 +75,17 @@ reflexive reason to fear dependencies and it does not apply here. The real hazar
 
 **C1.** Two dependencies: TypeScript and a Markdown renderer. Both build-time only.
 
+**C1a.** In practice there is no compile step either. Node 22.18+ strips TypeScript
+types at load, so `node build/build.ts` runs the sources directly and `tsc` is only a
+checker — `noEmit`, with `erasableSyntaxOnly` set so the typecheck rejects syntax Node
+cannot strip rather than letting it fail at runtime instead. This is further in the
+direction of this decision than it originally assumed, and it costs nothing, because
+type stripping is a platform feature rather than another dependency.
+
+The exception is coming: browsers cannot strip types, so the workbook's client-side
+code will need real emitting. That does not change anything decided here, but it is
+worth knowing before someone reads "no compile step" as a property of the whole project.
+
 **C2.** No hot reload while developing. A static file server and a browser refresh.
 
 **C3.** No minification or bundling — roughly 60 KB of ES modules where a bundler would

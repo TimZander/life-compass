@@ -1,0 +1,22 @@
+{
+  "name": "life-compass",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static build for the Life Compass site. No bundler: Node runs the TypeScript build directly (type stripping), and the published site is plain HTML and CSS. See docs/decisions/0003.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "node build/build.ts",
+    "serve": "node build/build.ts && node build/serve.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"build/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.15.3",
+    "markdown-it": "^14.1.0",
+    "typescript": "^5.9.2"
+  }
+}
