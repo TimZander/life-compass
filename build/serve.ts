@@ -35,7 +35,16 @@ const CONTENT_TYPES = new Map<string, string>([
   [".json", "application/json"],
 ]);
 
-export async function resolveFile(urlPath: string): Promise<string | null> {
+/**
+ * Map a request path to a file, or null.
+ *
+ * `root` is a parameter so tests can point at a fixture instead of the real `dist/`.
+ * They used to read `dist/` directly and passed locally only because a build had
+ * already been run — on a clean checkout `dist/` is gitignored and absent, so they
+ * failed the moment they ran anywhere but my machine. A test that depends on a
+ * previous command is a broken test, not a step-ordering problem.
+ */
+export async function resolveFile(urlPath: string, root: string = OUT): Promise<string | null> {
   // A malformed escape like `/%zz` makes decodeURIComponent throw URIError. Unhandled,
   // that rejects out of the request handler and takes the whole server down.
   let decoded: string;
@@ -45,13 +54,13 @@ export async function resolveFile(urlPath: string): Promise<string | null> {
     return null;
   }
 
-  const candidate = path.join(OUT, path.normalize(decoded));
+  const candidate = path.join(root, path.normalize(decoded));
 
   // Never serve outside dist/, whatever the request says. The trailing separator
   // matters: without it a sibling directory sharing the prefix (`dist-notes/`) would
   // satisfy the check. Not reachable today — request paths are absolute, so normalize
   // drops leading `..` — but the guard should mean what it appears to mean.
-  if (candidate !== OUT && !candidate.startsWith(OUT + path.sep)) {
+  if (candidate !== root && !candidate.startsWith(root + path.sep)) {
     return null;
   }
 

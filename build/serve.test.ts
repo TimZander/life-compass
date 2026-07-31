@@ -1,24 +1,40 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { OUT } from "./build.ts";
+import { after, before, describe, it } from "node:test";
 import { resolveFile } from "./serve.ts";
 
 /**
- * These run against whatever `dist/` currently holds, so they assert resolution
- * behaviour rather than specific content — the preview server's only real job is
- * mapping a URL to a file the way Cloudflare Pages will.
+ * These run against a fixture tree rather than the real `dist/`, which is gitignored
+ * and therefore absent on a clean checkout. Reading `dist/` directly made these tests
+ * pass only where a build had already been run.
  */
+let root: string;
+
+before(async () => {
+  root = await mkdtemp(path.join(tmpdir(), "life-compass-serve-"));
+  await mkdir(path.join(root, "rigorous"), { recursive: true });
+  await mkdir(path.join(root, "assets", "css"), { recursive: true });
+  await writeFile(path.join(root, "index.html"), "<p>home</p>", "utf8");
+  await writeFile(path.join(root, "rigorous", "index.html"), "<p>rigorous</p>", "utf8");
+  await writeFile(path.join(root, "assets", "css", "style.css"), "body{}", "utf8");
+});
+
+after(async () => {
+  await rm(root, { recursive: true, force: true });
+});
+
 describe("resolveFile", () => {
   it("resolveFile_DirectoryUrl_ResolvesToItsIndexHtml", async () => {
-    // Arrange
+    // Arrange — the one behaviour a naive static file server gets wrong.
     const url = "/rigorous/";
 
     // Act
-    const result = await resolveFile(url);
+    const result = await resolveFile(url, root);
 
     // Assert
-    assert.equal(result, path.join(OUT, "rigorous", "index.html"));
+    assert.equal(result, path.join(root, "rigorous", "index.html"));
   });
 
   it("resolveFile_RootUrl_ResolvesToTheTopLevelIndex", async () => {
@@ -26,10 +42,21 @@ describe("resolveFile", () => {
     const url = "/";
 
     // Act
-    const result = await resolveFile(url);
+    const result = await resolveFile(url, root);
 
     // Assert
-    assert.equal(result, path.join(OUT, "index.html"));
+    assert.equal(result, path.join(root, "index.html"));
+  });
+
+  it("resolveFile_NestedAsset_ResolvesToTheFile", async () => {
+    // Arrange
+    const url = "/assets/css/style.css";
+
+    // Act
+    const result = await resolveFile(url, root);
+
+    // Assert
+    assert.equal(result, path.join(root, "assets", "css", "style.css"));
   });
 
   it("resolveFile_QueryString_IsIgnoredWhenLocatingTheFile", async () => {
@@ -37,10 +64,10 @@ describe("resolveFile", () => {
     const url = "/index.html?cachebust=1";
 
     // Act
-    const result = await resolveFile(url);
+    const result = await resolveFile(url, root);
 
     // Assert
-    assert.equal(result, path.join(OUT, "index.html"));
+    assert.equal(result, path.join(root, "index.html"));
   });
 
   it("resolveFile_MalformedPercentEscape_ReturnsNullInsteadOfThrowing", async () => {
@@ -49,7 +76,7 @@ describe("resolveFile", () => {
     const url = "/%zz";
 
     // Act
-    const result = await resolveFile(url);
+    const result = await resolveFile(url, root);
 
     // Assert
     assert.equal(result, null);
@@ -60,10 +87,21 @@ describe("resolveFile", () => {
     const url = "/../../etc/passwd";
 
     // Act
-    const result = await resolveFile(url);
+    const result = await resolveFile(url, root);
 
     // Assert
-    assert.ok(result === null || result.startsWith(OUT + path.sep));
+    assert.ok(result === null || result.startsWith(root + path.sep));
+  });
+
+  it("resolveFile_DirectoryWithoutAnIndex_ReturnsNull", async () => {
+    // Arrange — negative case: a directory exists but has nothing to serve.
+    const url = "/assets/";
+
+    // Act
+    const result = await resolveFile(url, root);
+
+    // Assert
+    assert.equal(result, null);
   });
 
   it("resolveFile_MissingFile_ReturnsNull", async () => {
@@ -71,7 +109,7 @@ describe("resolveFile", () => {
     const url = "/definitely-not-a-page.html";
 
     // Act
-    const result = await resolveFile(url);
+    const result = await resolveFile(url, root);
 
     // Assert
     assert.equal(result, null);
