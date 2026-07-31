@@ -21,11 +21,16 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 
-/** Directories that never contribute pages or assets. */
+/**
+ * Directories that never contribute pages or assets.
+ *
+ * Dot-prefixed directories (`.git`, `.github`, `.claude`) are already skipped by the
+ * check in `walk`, so listing them here would only imply a protection this set is not
+ * the one providing. Matching is by basename at any depth — a nested `build/` or
+ * `dist/` anywhere in the tree would also be skipped, which is worth knowing before
+ * naming a content directory either of those.
+ */
 const SKIP_DIRS = new Set([
-  ".git",
-  ".github",
-  ".claude",
   "node_modules",
   "dist",
   "_layouts",
@@ -34,12 +39,11 @@ const SKIP_DIRS = new Set([
   "build",
 ]);
 
-/** Files that are neither pages nor deployable assets. */
+/** Files that are neither pages nor deployable assets. Dot-files are skipped in `walk`. */
 const SKIP_FILES = new Set([
   "package.json",
   "package-lock.json",
   "tsconfig.json",
-  ".gitignore",
   "_config.yml",
 ]);
 
@@ -99,22 +103,50 @@ async function walk(root: string, relative: string, out: string[]): Promise<void
   }
 }
 
-/** Discover every page and asset under `root`. */
-export async function discover(root: string): Promise<Content> {
+/**
+ * Discover every page and asset under `root`.
+ *
+ * `exclude` is an absolute directory kept out of the results — the build's own output
+ * directory. Without it, building into a directory inside the source tree discovers
+ * the previous build's files as assets, deletes them while clearing the output, and
+ * then fails trying to copy them. `dist` in SKIP_DIRS covers the default path by name;
+ * this covers it by identity, for any output location.
+ */
+export async function discover(root: string, exclude?: string): Promise<Content> {
   const found: string[] = [];
   await walk(root, "", found);
-  found.sort();
+
+  const excluded = exclude === undefined ? null : path.resolve(exclude);
+  const kept = (excluded === null
+    ? [...found]
+    : found.filter((relative) => {
+        const absolute = path.resolve(root, relative);
+        return absolute !== excluded && !absolute.startsWith(excluded + path.sep);
+      })
+  ).sort();
 
   const pages: Page[] = [];
   const assets: string[] = [];
 
-  for (const source of found) {
-    if (source.endsWith(".md")) {
-      const output = outputPathFor(source);
-      pages.push({ source, output, url: urlFor(output) });
-    } else {
+  const claimed = new Map<string, string>();
+  for (const source of kept) {
+    if (!source.endsWith(".md")) {
       assets.push(source);
+      continue;
     }
+
+    const output = outputPathFor(source);
+
+    // Two sources can map to one output — `index.md` alongside `README.md` is the
+    // realistic case. Without this the second write silently wins and one page
+    // disappears from a site nobody is watching closely.
+    const existing = claimed.get(output);
+    if (existing !== undefined) {
+      throw new Error(`${source} and ${existing} would both be written to ${output}`);
+    }
+    claimed.set(output, source);
+
+    pages.push({ source, output, url: urlFor(output) });
   }
 
   return { pages, assets };

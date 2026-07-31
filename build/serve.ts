@@ -13,7 +13,18 @@ import http from "node:http";
 import path from "node:path";
 import { OUT } from "./build.ts";
 
-const PORT = Number(process.env["PORT"] ?? 4000);
+/** `Number("abc")` is NaN, and `listen(NaN)` binds a random port while logging 4000. */
+function port(): number {
+  const raw = process.env["PORT"];
+  if (raw === undefined) {
+    return 4000;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    throw new Error(`PORT must be an integer between 0 and 65535, got "${raw}"`);
+  }
+  return parsed;
+}
 
 const CONTENT_TYPES = new Map<string, string>([
   [".html", "text/html; charset=utf-8"],
@@ -24,12 +35,23 @@ const CONTENT_TYPES = new Map<string, string>([
   [".json", "application/json"],
 ]);
 
-async function resolveFile(urlPath: string): Promise<string | null> {
-  const decoded = decodeURIComponent(urlPath.split("?")[0] ?? "/");
+export async function resolveFile(urlPath: string): Promise<string | null> {
+  // A malformed escape like `/%zz` makes decodeURIComponent throw URIError. Unhandled,
+  // that rejects out of the request handler and takes the whole server down.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0] ?? "/");
+  } catch {
+    return null;
+  }
+
   const candidate = path.join(OUT, path.normalize(decoded));
 
-  // Never serve outside dist/, whatever the request says.
-  if (!candidate.startsWith(OUT)) {
+  // Never serve outside dist/, whatever the request says. The trailing separator
+  // matters: without it a sibling directory sharing the prefix (`dist-notes/`) would
+  // satisfy the check. Not reachable today — request paths are absolute, so normalize
+  // drops leading `..` — but the guard should mean what it appears to mean.
+  if (candidate !== OUT && !candidate.startsWith(OUT + path.sep)) {
     return null;
   }
 
@@ -46,20 +68,34 @@ async function resolveFile(urlPath: string): Promise<string | null> {
   }
 }
 
-const server = http.createServer((request, response) => {
+export const server = http.createServer((request, response) => {
   void (async () => {
-    const file = await resolveFile(request.url ?? "/");
-    if (file === null) {
-      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-      response.end("404\n");
-      return;
+    try {
+      const file = await resolveFile(request.url ?? "/");
+      if (file === null) {
+        response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        response.end("404\n");
+        return;
+      }
+      const type = CONTENT_TYPES.get(path.extname(file)) ?? "application/octet-stream";
+      response.writeHead(200, { "content-type": type });
+      createReadStream(file).pipe(response);
+    } catch (error) {
+      // A preview server that dies on one bad request is worse than one that 500s.
+      console.error(error);
+      if (!response.headersSent) {
+        response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      }
+      response.end("500\n");
     }
-    const type = CONTENT_TYPES.get(path.extname(file)) ?? "application/octet-stream";
-    response.writeHead(200, { "content-type": type });
-    createReadStream(file).pipe(response);
   })();
 });
 
-server.listen(PORT, () => {
-  console.log(`Serving dist/ at http://localhost:${PORT}`);
-});
+// Listen only when run directly, so importing `resolveFile` in a test does not leave a
+// server bound to a port for the lifetime of the suite.
+if (process.argv[1] !== undefined && import.meta.filename === path.resolve(process.argv[1])) {
+  const chosen = port();
+  server.listen(chosen, () => {
+    console.log(`Serving dist/ at http://localhost:${chosen}`);
+  });
+}

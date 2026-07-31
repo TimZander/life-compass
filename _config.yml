@@ -60,6 +60,13 @@ exclude:
   - vendor/cache/
   - vendor/gems/
   - vendor/ruby/
+  # The typed build's own files. Jekyll copies anything it does not recognise straight
+  # into the output, so without these the live site would serve /build/build.ts,
+  # /package.json and /tsconfig.json. build/pages.ts skips the same set.
+  - build/
+  - package.json
+  - package-lock.json
+  - tsconfig.json
 
 # Apply the theme's layout to every page (README + all .md files).
 # Without this, pages render as unstyled HTML fragments with no <head>.

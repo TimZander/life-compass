@@ -1,6 +1,6 @@
 # 0003 — Multi-page static rendering, no framework, no bundler
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-07-29
 - **Revised:** 2026-07-30, before acceptance. O3 was originally the chosen option; the
   reasoning that rejected O2 was found to apply to it as well. See *Revision note* below.
@@ -74,6 +74,12 @@ reflexive reason to fear dependencies and it does not apply here. The real hazar
 ## Consequences
 
 **C1.** Two dependencies: TypeScript and a Markdown renderer. Both build-time only.
+
+`package.json` lists four `devDependencies`, because each ships its type definitions
+separately (`@types/markdown-it`, `@types/node`). Those carry no code and disappear the
+moment either package bundles its own types, so the count that matters for this decision
+is two — but the manifest says four, and a reader deserves to know which number is the
+claim rather than being left to guess.
 
 **C1a.** In practice there is no compile step either. Node 22.18+ strips TypeScript
 types at load, so `node build/build.ts` runs the sources directly and `tsc` is only a

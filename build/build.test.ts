@@ -1,5 +1,6 @@
 /**
- * Whole-build checks against the real content.
+ * Whole-build checks against the real content, plus fixture-driven checks of the
+ * failure paths.
  *
  * The structural expectations below are deliberately a list of page paths rather than
  * a byte-level snapshot of the rendered HTML. A byte snapshot would fail on every
@@ -9,8 +10,11 @@
  */
 
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { buildPages } from "./build.ts";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { after, describe, it } from "node:test";
+import { build, buildPages, type BuildResult } from "./build.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -64,21 +68,45 @@ const NAV_HREFS: readonly string[] = [
  */
 const EXPECTED_FILL_MARKERS = 443;
 
+/** Built once and shared: rendering 29 pages per test is pure waste. */
+let cached: Promise<BuildResult> | undefined;
+function site(): Promise<BuildResult> {
+  cached ??= buildPages();
+  return cached;
+}
+
+/** Temp roots created by the fixture tests, removed together at the end. */
+const temporary: string[] = [];
+async function fixture(files: Readonly<Record<string, string>>): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), "life-compass-"));
+  temporary.push(root);
+  for (const [name, content] of Object.entries(files)) {
+    const destination = path.join(root, name);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, content, "utf8");
+  }
+  return root;
+}
+
+after(async () => {
+  await Promise.all(temporary.map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
 describe("buildPages", () => {
-  it("buildPages_RealContent_ProducesNoBrokenLinks", async () => {
+  it("buildPages_RealContent_ReportsNoProblems", async () => {
     // Arrange & Act
-    const result = await buildPages();
+    const result = await site();
 
     // Assert
     assert.deepEqual(
-      result.broken.map((link) => `${link.source} -> ${link.raw}`),
+      result.problems.map((problem) => `[${problem.kind}] ${problem.source}: ${problem.detail}`),
       [],
     );
   });
 
   it("buildPages_RealContent_PublishesExactlyTheExpectedPages", async () => {
     // Arrange & Act
-    const result = await buildPages();
+    const result = await site();
 
     // Assert
     assert.deepEqual([...result.pages.map((page) => page.output)].sort(), [...EXPECTED_PAGES]);
@@ -93,7 +121,7 @@ describe("buildPages", () => {
     ]);
 
     // Act
-    const result = await buildPages();
+    const result = await site();
 
     // Assert
     for (const [source, url] of expected) {
@@ -105,7 +133,7 @@ describe("buildPages", () => {
 
   it("buildPages_EveryPage_CarriesTheFullNavAndStylesheet", async () => {
     // Arrange & Act
-    const result = await buildPages();
+    const result = await site();
 
     // Assert
     for (const page of result.pages) {
@@ -127,7 +155,7 @@ describe("buildPages", () => {
     const homeSource = "README.md";
 
     // Act
-    const result = await buildPages();
+    const result = await site();
     const home = result.pages.find((page) => page.source === homeSource);
 
     // Assert
@@ -140,7 +168,7 @@ describe("buildPages", () => {
     const source = "days/day-1-excavation.md";
 
     // Act
-    const result = await buildPages();
+    const result = await site();
     const page = result.pages.find((candidate) => candidate.source === source);
 
     // Assert
@@ -153,7 +181,7 @@ describe("buildPages", () => {
     const marker = /class="fill(?:-sm)?"/g;
 
     // Act
-    const result = await buildPages();
+    const result = await site();
     const total = result.pages
       .filter((page) => !page.source.startsWith("docs/"))
       .reduce((sum, page) => sum + (page.html.match(marker)?.length ?? 0), 0);
@@ -169,7 +197,7 @@ describe("buildPages", () => {
     const source = "docs/decisions/0004-prose-in-markdown-questions-in-typescript.md";
 
     // Act
-    const result = await buildPages();
+    const result = await site();
     const page = result.pages.find((candidate) => candidate.source === source);
 
     // Assert
@@ -183,7 +211,7 @@ describe("buildPages", () => {
     const expectedHref = "/optional-add-ons.html#add-on-a--outside-input";
 
     // Act
-    const result = await buildPages();
+    const result = await site();
     const page = result.pages.find((candidate) => candidate.source === source);
 
     // Assert
@@ -195,12 +223,143 @@ describe("buildPages", () => {
     // Arrange — negative case: everything unrecognised is copied verbatim, so the
     // build's own TypeScript would otherwise be published alongside the site.
     // Act
-    const result = await buildPages();
+    const result = await site();
 
     // Assert
     assert.deepEqual(
       result.assets.filter((asset) => asset.endsWith(".ts")),
       [],
     );
+  });
+
+  it("buildPages_LinkToMissingPage_IsReportedAsBroken", async () => {
+    // Arrange — negative case.
+    const root = await fixture({ "README.md": "# Home\n\n[gone](nowhere.md)\n" });
+
+    // Act
+    const result = await buildPages(root);
+
+    // Assert
+    assert.equal(result.problems.length, 1);
+    assert.equal(result.problems[0]?.kind, "broken-link");
+  });
+
+  it("buildPages_AnchorNamingAMissingHeading_IsReportedAsMissingAnchor", async () => {
+    // Arrange — negative case. The path resolves, so only fragment checking catches it.
+    const root = await fixture({
+      "README.md": "# Home\n\n[jump](other.md#no-such-heading)\n",
+      "other.md": "# Other\n\n## Real heading\n",
+    });
+
+    // Act
+    const result = await buildPages(root);
+
+    // Assert
+    assert.equal(result.problems.length, 1);
+    assert.equal(result.problems[0]?.kind, "missing-anchor");
+  });
+
+  it("buildPages_AnchorNamingAnExistingHeading_IsAccepted", async () => {
+    // Arrange
+    const root = await fixture({
+      "README.md": "# Home\n\n[jump](other.md#real-heading)\n",
+      "other.md": "# Other\n\n## Real heading\n",
+    });
+
+    // Act
+    const result = await buildPages(root);
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+  });
+
+  it("buildPages_SamePageAnchorToMissingHeading_IsReported", async () => {
+    // Arrange — negative case: anchor-only links target the page they appear on.
+    const root = await fixture({ "README.md": "# Home\n\n[up](#not-here)\n" });
+
+    // Act
+    const result = await buildPages(root);
+
+    // Assert
+    assert.equal(result.problems[0]?.kind, "missing-anchor");
+  });
+
+  it("buildPages_MarkdownLinkInRawHtml_IsReportedAsUnrewritten", async () => {
+    // Arrange — negative case: raw HTML is not tokenised, so the anchor bypasses
+    // rewriting entirely and would ship a dead `.md` target.
+    const root = await fixture({
+      "README.md": '# Home\n\n<a href="other.md">raw</a>\n',
+      "other.md": "# Other\n",
+    });
+
+    // Act
+    const result = await buildPages(root);
+
+    // Assert
+    assert.equal(result.problems[0]?.kind, "unrewritten-link");
+  });
+
+  it("buildPages_TwoSourcesClaimingOneOutput_Throws", async () => {
+    // Arrange — negative case: README.md and index.md both want index.html.
+    const root = await fixture({ "README.md": "# One\n", "index.md": "# Two\n" });
+
+    // Act & Assert
+    await assert.rejects(() => buildPages(root), /would both be written to/);
+  });
+});
+
+describe("build", () => {
+  it("build_ValidContent_WritesPagesAndAssetsToTheOutputDirectory", async () => {
+    // Arrange
+    const root = await fixture({
+      "README.md": "# Home\n\n[day](days/one.md)\n",
+      "days/one.md": "# Day\n",
+      "assets/thing.txt": "kept\n",
+    });
+    const out = path.join(root, "__dist");
+
+    // Act
+    await build(root, out);
+
+    // Assert
+    const written = await readdir(out, { recursive: true, withFileTypes: true });
+    const files = written.filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
+    assert.deepEqual(files, ["index.html", "one.html", "thing.txt"]);
+    assert.equal(await readFile(path.join(out, "assets", "thing.txt"), "utf8"), "kept\n");
+  });
+
+  it("build_StaleOutput_IsClearedBeforeWriting", async () => {
+    // Arrange
+    const root = await fixture({ "README.md": "# Home\n" });
+    const out = path.join(root, "__dist");
+    await mkdir(out, { recursive: true });
+    await writeFile(path.join(out, "leftover.html"), "old", "utf8");
+
+    // Act
+    await build(root, out);
+
+    // Assert
+    const written = await readdir(out);
+    assert.ok(!written.includes("leftover.html"));
+  });
+
+  it("build_ProblemsPresent_ThrowsAndWritesNothing", async () => {
+    // Arrange — negative case: the refusal must happen before the output is touched.
+    const root = await fixture({ "README.md": "# Home\n\n[gone](nowhere.md)\n" });
+    const out = path.join(root, "__dist");
+    await mkdir(out, { recursive: true });
+    await writeFile(path.join(out, "sentinel.html"), "untouched", "utf8");
+
+    // Act & Assert
+    await assert.rejects(() => build(root, out), /refusing to build/);
+    assert.equal(await readFile(path.join(out, "sentinel.html"), "utf8"), "untouched");
+  });
+
+  it("build_RelativeOutputPath_IsRefusedBeforeDeletingAnything", async () => {
+    // Arrange — negative case: `out` is about to be removed recursively.
+    const root = await fixture({ "README.md": "# Home\n" });
+
+    // Act & Assert
+    await assert.rejects(() => build(root, "dist"), /expected an absolute, non-root path/);
   });
 });
