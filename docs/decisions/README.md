@@ -16,7 +16,7 @@ of record 0004.
 |---|---|---|
 | [0001](0001-voice-first-input-is-a-primary-constraint.md) | Voice-first input is a primary design constraint | Proposed |
 | [0002](0002-typescript-not-jsdoc-typed-javascript.md) | TypeScript, not JSDoc-typed JavaScript | Proposed |
-| [0003](0003-multi-page-static-rendering-no-framework.md) | Multi-page static rendering, no client-side framework | Proposed |
+| [0003](0003-multi-page-static-rendering-no-framework.md) | Multi-page static rendering, no framework, no bundler | Proposed |
 | [0004](0004-prose-in-markdown-questions-in-typescript.md) | Prose stays Markdown; question definitions become TypeScript | Proposed |
 | [0005](0005-cloudflare-pages-for-header-control.md) | Cloudflare Pages, for control over response headers | Proposed |
 | [0006](0006-no-in-app-speech-recognition.md) | No in-app speech recognition; scope the privacy claim honestly | Proposed |
