@@ -13,6 +13,16 @@ import { showBanner } from "./banner.js";
 /** How long to wait for the reload before admitting it is not coming. */
 const ACTIVATION_TIMEOUT_MS = 10_000;
 
+/**
+ * Marks that an update was accepted, so the page can confirm it AFTER reloading.
+ *
+ * Confirming before the reload cannot work reliably. Activation often completes in tens
+ * of milliseconds, so a progress message may never paint — and the page it was painted
+ * on is destroyed by the reload regardless. The only moment an update can be confirmed
+ * honestly is once it has actually happened, which is on the other side.
+ */
+const ACCEPTED_KEY = "life-compass:update-accepted";
+
 /** @param {ServiceWorkerRegistration} registration */
 export function watchForUpdates(registration) {
   // A worker can ALREADY be waiting when this page loads — installed during an earlier
@@ -62,6 +72,12 @@ function offer(worker) {
  */
 function accept(worker) {
   showBanner({ id: "update", text: "Updating\u2026", actions: [] });
+  try {
+    window.sessionStorage.setItem(ACCEPTED_KEY, "1");
+  } catch {
+    // Session storage can be unavailable in some privacy modes. The update still
+    // applies; only the confirmation afterwards is lost, so this is not worth failing.
+  }
 
   // If the reload never arrives, say that rather than leaving "Updating..." forever.
   // A stuck progress message is the same lie as no feedback, told more slowly.
@@ -89,4 +105,31 @@ function activate(worker) {
     { once: true },
   );
   worker.postMessage({ type: "SKIP_WAITING" });
+}
+
+/**
+ * If an update was just applied, say so.
+ *
+ * Called on every page load, and silent unless this particular load is the one that
+ * followed an accepted update. This is what makes the update observable at all: the page
+ * looks identical before and after, so without it a reader has no way to distinguish a
+ * successful update from a button that did nothing — which is exactly what happened on
+ * the first device test.
+ */
+export function confirmRecentUpdate() {
+  let accepted = null;
+  try {
+    accepted = window.sessionStorage.getItem(ACCEPTED_KEY);
+    window.sessionStorage.removeItem(ACCEPTED_KEY);
+  } catch {
+    return;
+  }
+  if (accepted === null) {
+    return;
+  }
+  showBanner({
+    id: "update",
+    text: "Updated. You are on the latest version.",
+    actions: [{ label: "Dismiss", onSelect: () => {} }],
+  });
 }

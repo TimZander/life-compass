@@ -212,3 +212,35 @@ describe("update feedback", () => {
     assert.ok(source.includes("controllerchange"));
   });
 });
+
+describe("update confirmation", () => {
+  it("swUpdate_Confirmation_HappensAfterTheReloadNotDuringIt", async () => {
+    // Arrange — activation often completes in tens of milliseconds, so a progress
+    // message may never paint, and the page carrying it is destroyed by the reload
+    // regardless. The only honest moment to confirm is on the other side.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.includes("sessionStorage.setItem"));
+    assert.ok(source.includes("sessionStorage.getItem"));
+    assert.ok(source.includes("export function confirmRecentUpdate"));
+  });
+
+  it("swUpdate_Confirmation_ClearsItsMarkerSoItShowsOnce", async () => {
+    // Arrange — negative case: a marker left behind would announce an update on every
+    // subsequent load, which is noise rather than information.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.includes("sessionStorage.removeItem"));
+  });
+
+  it("clientEntry_ConfirmsBeforeRegistering", async () => {
+    // Arrange — the confirmation reports on the load that already happened, so it must
+    // not wait on registration, which is deferred to the load event.
+    const source = await readFile(path.join(ROOT, "assets", "js", "app.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.indexOf("confirmRecentUpdate()") < source.indexOf("serviceWorker.register"));
+  });
+});

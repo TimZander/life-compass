@@ -7,7 +7,11 @@
  * while forbidding anything inline.
  */
 
-import { watchForUpdates } from "./sw-update.js";
+import { confirmRecentUpdate, watchForUpdates } from "./sw-update.js";
+
+// Runs before registration, because it reports on the load that already happened rather
+// than on anything the worker is about to do.
+confirmRecentUpdate();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
