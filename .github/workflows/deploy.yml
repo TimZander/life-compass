@@ -96,4 +96,36 @@ jobs:
           check "/assets/css/style.css" 200
           check "/definitely-not-a-page" 404
 
+          # The zone can override what Pages sends. Its default Browser Cache TTL is
+          # four hours, which silently rewrote max-age=0 to max-age=14400 on static
+          # assets until a Cache Rule set Browser Cache TTL to "Respect Origin". A
+          # service worker served that way strands installed clients on stale code for
+          # up to four hours after a deploy — the exact failure docs/decisions/0005
+          # chose Cloudflare to be able to prevent.
+          #
+          # That rule lives in a dashboard, not in this repository, so nothing here can
+          # stop it being changed or lost. This asserts the OBSERVABLE consequence
+          # instead: every path must serve the same Cache-Control through the zone as
+          # the origin sends without one. Comparing the two rather than hard-coding a
+          # value means this keeps working unchanged when _headers starts declaring
+          # different policies per path (#23).
+          ORIGIN="https://life-compass-4ga.pages.dev"
+          for path in / /assets/css/style.css /days/day-1-excavation; do
+            through=$(curl -sSI "$BASE_URL$path" | tr -d '\r' | awk 'tolower($1)=="cache-control:"{$1="";print substr($0,2)}')
+            direct=$(curl -sSI "$ORIGIN$path"  | tr -d '\r' | awk 'tolower($1)=="cache-control:"{$1="";print substr($0,2)}')
+            # Guard against comparing nothing to nothing. If curl fails or the header is
+            # absent, both sides are empty, compare equal, and the check passes having
+            # verified precisely nothing — the same fail-open shape as a test glob that
+            # matches no files.
+            if [ -z "$through" ] || [ -z "$direct" ]; then
+              echo "::error::$path returned no cache-control header (zone='$through' origin='$direct') — cannot verify"
+              fail=1
+            elif [ "$through" != "$direct" ]; then
+              echo "::error::$path cache-control differs through the zone: '$through' vs origin '$direct'. Check the Cache Rule setting Browser Cache TTL to Respect Origin."
+              fail=1
+            else
+              echo "ok  $path cache-control respected -> $through"
+            fi
+          done
+
           exit $fail
