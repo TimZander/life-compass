@@ -40,12 +40,23 @@ const SKIP_DIRS = new Set([
   "src",
 ]);
 
-/** Files that are neither pages nor deployable assets. Dot-files are skipped in `walk`. */
-const SKIP_FILES = new Set([
-  "package.json",
-  "package-lock.json",
-  "tsconfig.json",
-]);
+/**
+ * Files that are neither pages nor deployable assets. Dot-files are skipped in `walk`.
+ *
+ * Patterns rather than exact names, because exact names are whack-a-mole: `tsconfig.json`
+ * was listed and `tsconfig.client.json` was not, so the client typecheck config shipped
+ * to the live site and into every visitor's precache. Discovery treats anything that is
+ * not Markdown as an asset, which is permissive by default — so the safety net is the
+ * explicit asset list asserted in build.test.ts, not this.
+ */
+const SKIP_FILES: readonly RegExp[] = [
+  /^package(-lock)?\.json$/,
+  /^tsconfig(\..+)?\.json$/,
+];
+
+function isSkipped(name: string): boolean {
+  return SKIP_FILES.some((pattern) => pattern.test(name));
+}
 
 export type Page = {
   /** Repo-relative POSIX path of the Markdown source, e.g. `days/day-1-excavation.md`. */
@@ -107,7 +118,7 @@ async function walk(root: string, relative: string, out: string[]): Promise<void
       await walk(root, rel, out);
       continue;
     }
-    if (SKIP_FILES.has(entry.name)) {
+    if (isSkipped(entry.name)) {
       continue;
     }
     out.push(rel);

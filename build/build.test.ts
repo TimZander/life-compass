@@ -598,3 +598,30 @@ describe("service worker precache", () => {
     assert.deepEqual(precached.filter((url) => /(^|\/)_/.test(url)), []);
   });
 });
+
+describe("what ships", () => {
+  it("buildPages_Assets_AreExactlyTheFilesMeantToBePublished", async () => {
+    // Arrange — discovery treats anything that is not Markdown as an asset, which is
+    // permissive by default. tsconfig.client.json reached the live site and every
+    // visitor's precache that way, because SKIP_FILES matched exact names and the new
+    // file was a variant of a listed one.
+    //
+    // This list is the safety net: a new root-level file fails here until someone
+    // decides, deliberately, whether it belongs on a public site.
+    const expected = [
+      "LICENSE",
+      "_headers",
+      "assets/css/style.css",
+      "assets/js/app.js",
+      "assets/js/banner.js",
+      "assets/js/sw-update.js",
+      "manifest.webmanifest",
+    ];
+
+    // Act
+    const result = await site();
+
+    // Assert
+    assert.deepEqual([...result.assets].sort(), expected);
+  });
+});

@@ -176,11 +176,21 @@ jobs:
           # worker; the manifest and icons must exist or the install prompt never
           # appears, and installation is what makes storage durable (0008).
           check "/sw.js" 200
-          check "/manifest.webmanifest" 200
-          check "/icons/icon-192.png" 200
-          check "/icons/icon-512.png" 200
-          check "/icons/icon-maskable-512.png" 200
-          check "/assets/js/sw-register.js" 200
+
+          # Every URL the worker claims to precache, read from the worker itself rather
+          # than listed here. A hand-written list drifts: this one asserted
+          # /assets/js/sw-register.js for exactly one deploy after that file was renamed,
+          # turning a correct deployment into a red build. Deriving it also makes this a
+          # production check of the property cache.addAll depends on — the install is
+          # atomic, so a single 404 in that list leaves clients with no worker at all.
+          precached=$(sed -n '/^const PRECACHE = \[/,/^\];/p' dist/sw.js | grep -oE '"/[^"]*"' | tr -d '"')
+          if [ -z "$precached" ]; then
+            echo "::error::could not read PRECACHE from dist/sw.js; nothing was verified"
+            fail=1
+          fi
+          for path in $precached; do
+            check "$path" 200
+          done
 
           sw_cache=$(curl -sSI "$BASE_URL/sw.js" | tr -d '\r' | awk 'tolower($1)=="cache-control:"{$1="";print substr($0,2)}')
           case "$sw_cache" in
