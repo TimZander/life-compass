@@ -33,7 +33,6 @@ import path from "node:path";
 const SKIP_DIRS = new Set([
   "node_modules",
   "dist",
-  "_layouts",
   // The build's own sources. Anything not recognised as a page is copied verbatim, so
   // without this the TypeScript that produced the site ships alongside it.
   "build",
@@ -44,7 +43,6 @@ const SKIP_FILES = new Set([
   "package.json",
   "package-lock.json",
   "tsconfig.json",
-  "_config.yml",
 ]);
 
 export type Page = {
@@ -58,7 +56,7 @@ export type Page = {
 
 export type Content = {
   readonly pages: readonly Page[];
-  /** Repo-relative POSIX paths copied verbatim into the output (CSS, LICENSE, CNAME). */
+  /** Repo-relative POSIX paths copied verbatim into the output (CSS, LICENSE). */
   readonly assets: readonly string[];
 };
 

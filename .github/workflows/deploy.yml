@@ -2,10 +2,10 @@ name: Deploy
 
 # Production deploy to Cloudflare Pages on every push to main.
 #
-# This does NOT serve lifecompass.timzander.com yet. That domain is still served from
-# main by GitHub Pages, and stays that way until the DNS cutover (#28) — see
-# docs/decisions/0005. Until then this publishes to life-compass-4ga.pages.dev, where a
-# mistake costs nothing.
+# This serves lifecompass.timzander.com. It stopped being consequence-free at the DNS
+# cutover (#28), which is why the smoke test below runs against the custom domain
+# rather than the pages.dev origin behind it: a zone sits in front of one and not the
+# other, so they are not interchangeable for anything header-shaped.
 
 on:
   push:
@@ -56,7 +56,7 @@ jobs:
       # being served, then assert against it.
       - name: Wait for propagation, then smoke-test
         env:
-          BASE_URL: https://life-compass-4ga.pages.dev
+          BASE_URL: https://lifecompass.timzander.com
         run: |
           # ~3 minutes. Exits the moment the site answers, so this costs seconds on a
           # normal deploy and only spends the budget on a genuinely slow tail.

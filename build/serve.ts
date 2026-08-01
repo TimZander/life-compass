@@ -1,5 +1,5 @@
 /**
- * A local preview server for `dist/`, replacing what `jekyll serve` used to provide.
+ * A local preview server for `dist/`.
  *
  * Deliberately minimal and dependency-free. It only needs to resolve directory URLs to
  * their `index.html` the way Cloudflare Pages does, so that `/rigorous/` behaves
