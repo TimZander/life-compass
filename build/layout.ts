@@ -10,6 +10,14 @@
 
 const SITE_TITLE = "Life Compass";
 
+/**
+ * Shown when a page is shared or listed by a search engine. Without it, whatever text
+ * happens to sit near the top of the document is used instead — which for a worksheet is
+ * the time estimate.
+ */
+const SITE_DESCRIPTION =
+  "A five-day investigation into what matters most in your life. Your answers stay in this browser.";
+
 /** Escape text destined for an HTML text node or a double-quoted attribute. */
 function escapeHtml(value: string): string {
   return value
@@ -50,6 +58,7 @@ export function layout(content: string, pageTitle: string | null): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(documentTitle(pageTitle))}</title>
+  <meta name="description" content="${escapeHtml(SITE_DESCRIPTION)}">
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#9a6b3f">
