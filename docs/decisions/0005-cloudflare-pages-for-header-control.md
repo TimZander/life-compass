@@ -62,3 +62,23 @@ The redirect is not finished business. A service worker caching `/page.html` cac
 redirect rather than a page, so the canonical form has to be settled before one exists
 (#23), and this is where the "keep the extensions, that is what the live site serves"
 reasoning in `pages.ts` stops being true — the live site is now this build.
+
+**C7.** The zone can override the headers Pages sends, so `_headers` is not by itself the
+whole contract. Cloudflare's default Browser Cache TTL is four hours, and it silently
+rewrote `max-age=0, must-revalidate` to `max-age=14400` on static assets — HTML was
+untouched, which is why nothing looked wrong until there were assets to notice it on. A
+service worker served that way would strand installed clients on stale code for up to
+four hours after every deploy: precisely the failure this record chose Cloudflare to be
+able to prevent, arriving through the door the choice opened.
+
+Fixed by a Cache Rule setting Browser Cache TTL to *Respect Origin* for the hostname,
+rather than by exceptions for `/sw.js` and `*.js` — path exceptions leave two places to
+reason about, and the next asset type that needs one gets forgotten.
+
+That rule lives in a dashboard and cannot be version-controlled, so the production smoke
+test asserts its observable consequence instead: every checked path must serve the same
+`Cache-Control` through the zone as the origin sends without one. Comparing the two
+rather than pinning a literal value means the check survives `_headers` declaring
+different policies per path (#23), and it fails loudly if either side returns nothing —
+otherwise two empty strings compare equal and the assertion passes having verified
+nothing.
