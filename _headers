@@ -1,0 +1,30 @@
+# Response headers for Cloudflare Pages.
+# https://developers.cloudflare.com/pages/configuration/headers/
+#
+# This file is half of the header contract. The other half is a zone Cache Rule setting
+# Browser Cache TTL to "Respect Origin" — without it Cloudflare rewrites what is declared
+# here to a four-hour browser cache, which is how max-age=0 became max-age=14400 on
+# static assets (docs/decisions/0005 · C7). Nothing in this repository can enforce that
+# rule, so the production smoke test compares the served header against the origin's.
+
+/*
+  # The privacy claim, made enforceable.
+  #
+  # docs/decisions/0006 scopes what this application promises: it transmits nothing.
+  # `connect-src 'none'` is what makes that the browser's rule rather than our assertion
+  # — it blocks fetch, XHR, WebSocket and beacon outright, including from a dependency
+  # added later, a mistake, or a compromised build. `form-action 'none'` closes the other
+  # obvious exfiltration route, since a form needs no script at all.
+  #
+  # The site currently ships zero JavaScript, which makes this the cheapest moment there
+  # will ever be to impose it: nothing can break, and everything added later has to
+  # arrive knowing the rule already exists.
+  #
+  # NOTE for the service worker (#23, second part): a worker's own fetches are governed
+  # by the CSP delivered with ITS script, not the page's. `/sw.js` will therefore need
+  # its own rule permitting `connect-src 'self'`, or precaching cannot fetch anything.
+  Content-Security-Policy: default-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'
+  # Stop a mistyped content type being reinterpreted as something executable.
+  X-Content-Type-Options: nosniff
+  # A worksheet URL names which day someone is working through. Send nothing outward.
+  Referrer-Policy: no-referrer

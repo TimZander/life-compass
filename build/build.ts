@@ -14,6 +14,7 @@ import { render } from "./markdown.ts";
 import { layout } from "./layout.ts";
 import type { ResolvedLink } from "./links.ts";
 import { checkRegistry, loadSchema, type Schema } from "./questions.ts";
+import { checkHeaders, parseHeaders } from "./headers.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
 export const ROOT: string = path.join(import.meta.dirname, "..");
@@ -33,7 +34,8 @@ export type ProblemKind =
   | "unrewritten-link"
   | "unresolved-question-anchor"
   | "unanchored-question"
-  | "registry";
+  | "registry"
+  | "headers";
 
 export type BuildProblem = {
   readonly kind: ProblemKind;
@@ -214,6 +216,29 @@ export async function buildPages(
 
   problems.push(...checkAnchors(built));
   problems.push(...checkQuestionAnchors(built, schema));
+  // _headers is deployed verbatim, so this cannot change what Cloudflare serves — it
+  // refuses to build when the directives the privacy claim rests on have gone missing.
+  // Only meaningful for the real root; a fixture has no _headers and needs none.
+  if (root === ROOT) {
+    const headersFile = path.join(root, "_headers");
+    try {
+      const declared = await readFile(headersFile, "utf8");
+      problems.push(
+        ...checkHeaders(parseHeaders(declared)).map((detail) => ({
+          kind: "headers" as const,
+          source: "_headers",
+          detail,
+        })),
+      );
+    } catch {
+      problems.push({
+        kind: "headers",
+        source: "_headers",
+        detail: "_headers is missing — the site would deploy with no security headers at all",
+      });
+    }
+  }
+
   // The registry describes the real schema, so it is only meaningful against it.
   const registryProblems = worksheets === WORKSHEETS ? checkRegistry(schema) : [];
   problems.push(

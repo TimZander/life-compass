@@ -71,13 +71,24 @@ function outputPathFor(source: string): string {
 }
 
 /**
- * The URL a page is served at. `index.html` is dropped so directories are addressed
- * as `/rigorous/` — which is what the site nav links to, and what a link written as
- * `rigorous/README.md` has to resolve to.
+ * The URL a page is served at.
+ *
+ * `index.html` becomes a directory URL (`/rigorous/`), and every other page drops its
+ * extension (`/days/day-1-excavation`). The FILES keep their `.html` names — Cloudflare
+ * Pages canonicalises `/page.html` to `/page` with a 308, so emitting the extension
+ * would put a redirect on all 206 internal links, and a service worker caching by
+ * request URL would cache redirects rather than pages (docs/decisions/0005 · C6).
+ *
+ * Keeping the files means links written before this change still resolve, via that same
+ * redirect. This inverts the reasoning that originally kept extensions — "that is what
+ * the live site serves" — which stopped being true when the live site became this build.
  */
 function urlFor(output: string): string {
   const withoutIndex = output.replace(/(^|\/)index\.html$/, "$1");
-  return `/${withoutIndex}`;
+  if (withoutIndex !== output) {
+    return `/${withoutIndex}`;
+  }
+  return `/${output.replace(/\.html$/, "")}`;
 }
 
 async function walk(root: string, relative: string, out: string[]): Promise<void> {

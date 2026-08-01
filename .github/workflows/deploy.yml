@@ -128,4 +128,31 @@ jobs:
             fi
           done
 
+          # The _headers file is checked at build time, but that only proves what we
+          # declared. This proves Cloudflare applies it — on the real hostname, with the
+          # zone in front, which is the only place the claim in docs/decisions/0006 is
+          # actually true or false.
+          csp=$(curl -sSI "$BASE_URL/" | tr -d '\r' | awk 'tolower($1)=="content-security-policy:"{$1="";print substr($0,2)}')
+          if [ -z "$csp" ]; then
+            echo "::error::no Content-Security-Policy served — the privacy claim is unenforced"
+            fail=1
+          else
+            for directive in "default-src 'self'" "connect-src 'none'" "form-action 'none'"; do
+              case "$csp" in
+                *"$directive"*) echo "ok  CSP contains $directive" ;;
+                *) echo "::error::CSP served without $directive: $csp"; fail=1 ;;
+              esac
+            done
+          fi
+
+          for header in x-content-type-options referrer-policy; do
+            value=$(curl -sSI "$BASE_URL/" | tr -d '\r' | awk -v h="$header:" 'tolower($1)==h{$1="";print substr($0,2)}')
+            if [ -z "$value" ]; then
+              echo "::error::$header is not served"
+              fail=1
+            else
+              echo "ok  $header -> $value"
+            fi
+          done
+
           exit $fail
