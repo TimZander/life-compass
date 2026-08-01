@@ -63,6 +63,10 @@ export function layout(content: string, pageTitle: string | null): string {
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#9a6b3f">
   <link rel="icon" href="/icons/icon-192.png" type="image/png">
+  <!-- The installed app opens standalone, so the OS chrome takes its colour from here
+       and the page is the only thing on screen. Matching the paper the pages are drawn
+       on keeps the seam between them invisible. -->
+  <meta name="color-scheme" content="light">
   <!-- A module, resolved natively by the browser rather than bundled (0003), and
        external because the CSP has no 'unsafe-inline' and headers.ts will not let it
        gain one. type="module" defers by default. -->
