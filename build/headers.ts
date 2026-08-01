@@ -17,6 +17,8 @@ export type HeaderRule = {
   readonly path: string;
   /** Header name (lowercased) -> value. */
   readonly headers: ReadonlyMap<string, string>;
+  /** Header names (lowercased) this rule removes with `! Name`. */
+  readonly unset: ReadonlySet<string>;
 };
 
 /**
@@ -24,7 +26,7 @@ export type HeaderRule = {
  * indented `Name: value` lines. Comments and blank lines are ignored.
  */
 export function parseHeaders(source: string): readonly HeaderRule[] {
-  const rules: { path: string; headers: Map<string, string> }[] = [];
+  const rules: { path: string; headers: Map<string, string>; unset: Set<string> }[] = [];
 
   for (const raw of source.split("\n")) {
     const line = raw.trimEnd();
@@ -36,8 +38,18 @@ export function parseHeaders(source: string): readonly HeaderRule[] {
     // Indented lines belong to the rule above them; unindented lines start a new one.
     if (/^\s/.test(line)) {
       const current = rules[rules.length - 1];
+      if (current === undefined) {
+        continue;
+      }
+
+      // `! Name` removes a header inherited from a broader rule.
+      if (trimmed.startsWith("!")) {
+        current.unset.add(trimmed.slice(1).trim().toLowerCase());
+        continue;
+      }
+
       const separator = trimmed.indexOf(":");
-      if (current === undefined || separator === -1) {
+      if (separator === -1) {
         continue;
       }
       current.headers.set(
@@ -47,10 +59,10 @@ export function parseHeaders(source: string): readonly HeaderRule[] {
       continue;
     }
 
-    rules.push({ path: trimmed, headers: new Map() });
+    rules.push({ path: trimmed, headers: new Map(), unset: new Set() });
   }
 
-  return rules.map((rule) => ({ path: rule.path, headers: rule.headers }));
+  return rules.map((rule) => ({ path: rule.path, headers: rule.headers, unset: rule.unset }));
 }
 
 /**
@@ -109,6 +121,35 @@ const KEYWORD_SOURCE = /^'[a-z0-9-]+'$/;
 /** Keywords that are syntactically fine and defeat the point. */
 const FORBIDDEN_KEYWORDS: ReadonlySet<string> = new Set(["'unsafe-inline'", "'unsafe-eval'"]);
 
+/**
+ * No directive may name a host, scheme or wildcard.
+ *
+ * This site is entirely self-hosted by construction: no CDN (docs/decisions/0003),
+ * nothing external (0006). Pinning three directives exactly stops those three being
+ * loosened; this stops the drift arriving through a fourth. An `img-src https://cdn…`
+ * added in two years by someone who has not read 0006 fails the build rather than
+ * quietly ending the privacy claim. If a `data:` icon is ever genuinely wanted, this
+ * failing is the point — the exemption gets added deliberately.
+ */
+function checkSourceShapes(
+  where: string,
+  csp: ReadonlyMap<string, readonly string[]>,
+): readonly string[] {
+  const problems: string[] = [];
+  for (const [directive, sources] of csp) {
+    for (const source of sources) {
+      if (!KEYWORD_SOURCE.test(source)) {
+        problems.push(
+          `CSP for ${where}: ${directive} names ${source}; only keyword sources are allowed, because nothing on this site is loaded from anywhere else`,
+        );
+      } else if (FORBIDDEN_KEYWORDS.has(source)) {
+        problems.push(`CSP for ${where}: ${directive} allows ${source}, which defeats the policy`);
+      }
+    }
+  }
+  return problems;
+}
+
 /** Report anything that would quietly weaken the contract. */
 export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
   const problems: string[] = [];
@@ -140,21 +181,51 @@ export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
     }
   }
 
-  // The broader rule, and the one that catches the realistic drift. This site is
-  // entirely self-hosted by construction: no CDN (docs/decisions/0003), nothing external
-  // (0006). So no directive may name a host, scheme or wildcard — not just the three
-  // above. An `img-src https://cdn…` added in two years by someone who has not read 0006
-  // fails the build rather than quietly ending the privacy claim. If a `data:` icon is
-  // ever genuinely wanted, this failing is the point: the exemption gets added on purpose.
-  for (const [directive, sources] of csp) {
-    for (const source of sources) {
-      if (!KEYWORD_SOURCE.test(source)) {
+  problems.push(...checkSourceShapes("/*", csp));
+
+  // The service worker gets its own policy out of necessity, which makes it the one
+  // place the site-wide rule can be escaped. Check it rather than trust it.
+  //
+  // Its absence is a defect rather than a choice: the build emits dist/sw.js on every
+  // run, so a worker always exists and always needs this. Deleting the block used to
+  // build clean while silently restoring the inherited `connect-src 'none'` — which is
+  // the exact bug this rule was added to fix, reachable again by deletion.
+  const worker = rules.find((rule) => rule.path === "/sw.js");
+  if (worker === undefined) {
+    problems.push(
+      '_headers has no "/sw.js" rule, but the build always emits a service worker — without it the worker inherits connect-src \'none\' and cannot fetch anything',
+    );
+  } else {
+    if (worker.headers.get("cache-control") !== "no-cache") {
+      problems.push(
+        '_headers "/sw.js" must be no-cache, or an installed client keeps an old worker and never sees a deploy',
+      );
+    }
+    // Pages appends rather than overrides, and a browser enforces the intersection of
+    // every policy delivered. Without unsetting the inherited one, the site-wide
+    // `connect-src 'none'` still binds the worker and precaching fails — with both
+    // headers looking correct in isolation.
+    if (!worker.unset.has("content-security-policy")) {
+      problems.push(
+        '_headers "/sw.js" must unset the inherited Content-Security-Policy with "! Content-Security-Policy", or the site-wide connect-src \'none\' still applies and the worker cannot fetch',
+      );
+    }
+
+    const workerCsp = worker.headers.get("content-security-policy");
+    if (workerCsp === undefined) {
+      problems.push('_headers "/sw.js" declares no Content-Security-Policy of its own');
+    } else {
+      const parsed = parseCsp(workerCsp);
+      const connect = parsed.get("connect-src");
+      // 'self' is the narrowest value that lets precaching work. Anything wider would
+      // let the worker reach off-origin, which is the claim in 0006 undone via the one
+      // rule that has to be permissive.
+      if (connect === undefined || connect.length !== 1 || connect[0] !== "'self'") {
         problems.push(
-          `CSP ${directive} names ${source}; only keyword sources are allowed, because nothing on this site is loaded from anywhere else`,
+          `CSP for /sw.js has connect-src "${(connect ?? []).join(" ")}", expected exactly "'self'" — the worker may reach this origin and nowhere else`,
         );
-      } else if (FORBIDDEN_KEYWORDS.has(source)) {
-        problems.push(`CSP ${directive} allows ${source}, which defeats the policy`);
       }
+      problems.push(...checkSourceShapes("/sw.js", parsed));
     }
   }
 

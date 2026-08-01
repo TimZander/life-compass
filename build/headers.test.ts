@@ -189,3 +189,92 @@ describe("checkHeaders", () => {
     );
   });
 });
+
+describe("checkHeaders — service worker rule", () => {
+  const SW = `
+/*
+  Content-Security-Policy: default-src 'self'; connect-src 'none'; form-action 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: microphone=()
+
+/sw.js
+  Cache-Control: no-cache
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; connect-src 'self'
+`;
+
+  it("checkHeaders_WorkerRuleAsShipped_IsClean", () => {
+    // Act & Assert
+    assert.deepEqual(checkHeaders(parseHeaders(SW)), []);
+  });
+
+  it("checkHeaders_WorkerWithoutNoCache_IsReported", () => {
+    // Arrange — negative case: an installed client would keep an old worker and never
+    // see a deploy, which is the failure 0005 chose Cloudflare to be able to prevent.
+    const weakened = SW.replace("Cache-Control: no-cache", "Cache-Control: max-age=3600");
+
+    // Act & Assert
+    assert.ok(checkHeaders(parseHeaders(weakened)).some((p) => p.includes("must be no-cache")));
+  });
+
+  it("checkHeaders_WorkerConnectSrcWidened_IsReported", () => {
+    // Arrange — negative case, and the important one. The worker's rule has to be
+    // permissive to precache at all, which makes it the single place the site-wide
+    // policy can be escaped.
+    const weakened = SW.replace("connect-src 'self'\n", "connect-src 'self' https://elsewhere\n");
+
+    // Act
+    const problems = checkHeaders(parseHeaders(weakened));
+
+    // Assert
+    assert.ok(problems.some((p) => p.includes("this origin and nowhere else")));
+  });
+
+  it("checkHeaders_WorkerWithNoPolicy_IsReported", () => {
+    // Arrange — negative case: falling back to the site-wide connect-src 'none' would
+    // stop the worker fetching anything, so precaching would fail outright.
+    const weakened = SW.replace(/\n  Content-Security-Policy: default-src 'self'; connect-src 'self'/, "");
+
+    // Act & Assert
+    assert.ok(
+      checkHeaders(parseHeaders(weakened)).some((p) => p.includes("no Content-Security-Policy of its own")),
+    );
+  });
+
+  it("checkHeaders_WorkerNotUnsettingTheInheritedPolicy_IsReported", () => {
+    // Arrange — negative case, and the one only a real deployment revealed. Pages
+    // APPENDS matching rules, so the worker receives two policies and the browser
+    // enforces their intersection: the site-wide connect-src 'none' still binds it and
+    // precaching fails, while both headers look correct read individually.
+    const weakened = SW.replace("  ! Content-Security-Policy\n", "");
+
+    // Act
+    const problems = checkHeaders(parseHeaders(weakened));
+
+    // Assert
+    assert.ok(problems.some((p) => p.includes("must unset the inherited")));
+  });
+});
+
+describe("parseHeaders — removals", () => {
+  it("parseHeaders_BangPrefixedLine_IsRecordedAsAnUnset", () => {
+    // Arrange — Cloudflare's syntax for removing a header inherited from a broader rule.
+    const source = "/sw.js\n  ! Content-Security-Policy\n  Cache-Control: no-cache\n";
+
+    // Act
+    const rules = parseHeaders(source);
+
+    // Assert
+    assert.ok(rules[0]?.unset.has("content-security-policy"));
+    assert.equal(rules[0]?.headers.get("cache-control"), "no-cache");
+  });
+
+  it("parseHeaders_NoRemovals_LeavesTheSetEmpty", () => {
+    // Arrange — negative case.
+    const rules = parseHeaders("/*\n  A: 1\n");
+
+    // Act & Assert
+    assert.equal(rules[0]?.unset.size, 0);
+  });
+});

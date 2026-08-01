@@ -33,3 +33,19 @@
   # than merely unimplemented: the page cannot ask for a microphone even if some future
   # dependency tries. Dictation still works — it happens in the keyboard, not the page.
   Permissions-Policy: microphone=(), camera=(), geolocation=()
+
+/sw.js
+  # Must revalidate, or an installed client keeps an old worker and never sees a deploy.
+  # This is the concrete reason docs/decisions/0005 wanted header control at all.
+  Cache-Control: no-cache
+  # Pages APPENDS matching rules rather than overriding them, so without this the worker
+  # receives two Content-Security-Policy headers — and a browser enforces the
+  # INTERSECTION of every policy it is given. The site-wide `connect-src 'none'` would
+  # therefore still apply, the worker could fetch nothing, and precaching would fail
+  # while both headers looked individually correct. Only a real deployment shows this.
+  ! Content-Security-Policy
+  # A worker's own fetches are governed by the policy delivered with ITS script, not the
+  # page's. Under the site-wide `connect-src 'none'` the worker could not fetch anything
+  # and precaching would fail outright. 'self' is the narrowest value that works: the
+  # worker may talk to this origin and nowhere else, so the claim in 0006 is unchanged.
+  Content-Security-Policy: default-src 'self'; connect-src 'self'

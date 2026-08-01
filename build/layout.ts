@@ -51,6 +51,12 @@ export function layout(content: string, pageTitle: string | null): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(documentTitle(pageTitle))}</title>
   <link rel="stylesheet" href="/assets/css/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#9a6b3f">
+  <link rel="icon" href="/icons/icon-192.png" type="image/png">
+  <!-- External rather than inline: the site's CSP has no 'unsafe-inline', and
+       build/headers.ts refuses to let it gain one. -->
+  <script src="/assets/js/sw-register.js" defer></script>
 </head>
 <body>
   <a class="wordmark" href="/"><svg class="wm-star" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
