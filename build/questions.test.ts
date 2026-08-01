@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { checkRegistry, loadSchema, renderQuestion, ANCHOR } from "./questions.ts";
+import { ANCHOR, checkRegistry, checkSentences, loadSchema, renderQuestion } from "./questions.ts";
 import { identifiersOf, type Question } from "../src/questions/types.ts";
 import type { Worksheet } from "../src/questions/index.ts";
 
@@ -177,5 +177,99 @@ describe("renderQuestion", () => {
     // Assert
     assert.ok(!html.includes("Note"));
     assert.ok(html.includes('data-question="t.note"'));
+  });
+});
+
+describe("sentence questions", () => {
+  const SENTENCE: Question = {
+    kind: "sentence",
+    id: "t.sentence",
+    template: "The world has enough {excess}. It needs more {lack}.",
+    fields: [
+      { id: "excess", label: "Enough of", size: "short" },
+      { id: "lack", label: "More of", size: "short" },
+    ],
+  };
+
+  it("renderQuestion_Sentence_InterleavesProseAndBlanks", () => {
+    // Arrange — the sentence is the exercise; splitting it into labelled fields would
+    // capture the same words while asking a different thing.
+    // Act
+    const html = renderQuestion(SENTENCE);
+
+    // Assert
+    assert.ok(html.includes("The world has enough "));
+    assert.ok(html.includes(". It needs more "));
+    assert.equal(html.match(/class="fill-sm"/g)?.length, 2);
+  });
+
+  it("checkSentences_GapWithNoField_IsReported", () => {
+    // Arrange — negative case, and invisible in the output: a gap with no field renders
+    // as nothing at all.
+    const broken: Question = { ...SENTENCE, template: "Enough {excess}, more {missing}." };
+
+    // Act
+    const problems = checkSentences(loadSchema([{ source: "t.md", questions: [broken] }]));
+
+    // Assert
+    assert.ok(problems.some((p) => p.includes("{missing} gap with no matching field")));
+  });
+
+  it("checkSentences_FieldWithNoGap_IsReported", () => {
+    // Arrange — negative case: a field the reader is never shown, but which the
+    // registry, storage and the assistant contract all believe exists.
+    const broken: Question = { ...SENTENCE, template: "The world has enough {excess}." };
+
+    // Act
+    const problems = checkSentences(loadSchema([{ source: "t.md", questions: [broken] }]));
+
+    // Assert
+    assert.ok(problems.some((p) => p.includes('defines "lack"')));
+  });
+
+  it("checkSentences_RealSchema_IsClean", () => {
+    // Act & Assert — the shipped sentences and their fields must agree.
+    assert.deepEqual(checkSentences(loadSchema()), []);
+  });
+});
+
+describe("checklist and group questions", () => {
+  it("renderQuestion_Checklist_RendersOneListWithAFieldPerItem", () => {
+    // Arrange — one question with several items, not one question per tick: four
+    // questions would need four anchors and render as four separate lists.
+    const checklist: Question = {
+      kind: "checklist",
+      id: "t.ready",
+      items: [
+        { id: "a", label: "First" },
+        { id: "b", label: "Second" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(checklist);
+
+    // Assert
+    assert.equal(html.match(/<ul/g)?.length, 1);
+    assert.ok(html.includes('data-field="t.ready.a"'));
+    assert.ok(html.includes('data-field="t.ready.b"'));
+    assert.ok(html.includes("disabled"));
+  });
+
+  it("renderQuestion_Group_IsUnnumbered", () => {
+    // Arrange — these prompts differ from one another rather than repeating, so
+    // numbering them would imply an order that is not there.
+    const group: Question = {
+      kind: "group",
+      id: "t.group",
+      fields: [{ id: "a", label: "A", size: "long" }],
+    };
+
+    // Act
+    const html = renderQuestion(group);
+
+    // Assert
+    assert.ok(html.includes("<ul"));
+    assert.ok(!html.includes("<ol"));
   });
 });

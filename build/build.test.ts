@@ -63,12 +63,16 @@ const NAV_HREFS: readonly string[] = [
 ];
 
 /**
- * Answer blanks across the worksheets: 369 wide plus 74 narrow. The count is asserted
- * so that a rendering regression which silently drops the inline HTML — the markers are
- * raw `<span>` in Markdown, so they depend on HTML passthrough staying enabled — fails
- * here rather than on a printed worksheet. Update deliberately when blanks are added.
+ * Answer blanks across the worksheets. Asserted so that a rendering regression which
+ * silently drops them fails here rather than on a printed worksheet — for the pages
+ * still using raw `<span>` markup that means HTML passthrough, and for the migrated ones
+ * it means the schema still produces what it produced.
+ *
+ * 445, up from 443: Day 3's themes 4 and 5 carried two example slots where the first
+ * three carried three. The repeat gives all five the same three, which adds two blanks
+ * and removes an inconsistency that read as arbitrary rather than deliberate.
  */
-const EXPECTED_FILL_MARKERS = 443;
+const EXPECTED_FILL_MARKERS = 445;
 
 /** Built once and shared: rendering 29 pages per test is pure waste. */
 let cached: Promise<BuildResult> | undefined;
@@ -381,12 +385,13 @@ describe("build", () => {
 
 describe("task lists", () => {
   it("buildPages_CheckboxSyntax_RendersADisabledCheckboxLikeKramdown", async () => {
-    // Arrange — markdown-it does not do this natively; without the rule these render
-    // as the literal text "[ ] Values filled in" on eight items across two worksheets.
-    const source = "days/day-5-synthesis.md";
+    // Arrange — the remaining hand-written task lists. Day 5's moved to a checklist
+    // question in #22, so this now covers rigorous/day-0-prep, which is still Markdown.
+    // Without the rule these render as the literal text "[ ] ...".
+    const source = "rigorous/day-0-prep.md";
     const expected =
       '<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" ' +
-      'disabled="disabled" />Values filled in</li>';
+      'disabled="disabled" />';
 
     // Act
     const result = await site();
@@ -414,7 +419,9 @@ describe("heading ids", () => {
   it("buildPages_HeadingContainingRawHtml_KeepsTheMarkupOutOfTheId", async () => {
     // Arrange — several worksheets have headings shaped `### Value 1 — <span ...>`.
     // Including the raw HTML produced id="value-1--span-classfill______span".
-    const source = "days/day-2-values.md";
+    // Day 2's reader-named headings became repeat instances in #22, so this now covers
+    // the rigorous track, which still writes them by hand.
+    const source = "rigorous/day-2-values.md";
 
     // Act
     const result = await site();
@@ -423,7 +430,6 @@ describe("heading ids", () => {
     // Assert
     assert.ok(page !== undefined);
     assert.ok(!/id="[^"]*span-class/.test(page.html), "an id still contains tag text");
-    assert.ok(page.html.includes('<h3 id="value-1--______">'));
   });
 });
 

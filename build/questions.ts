@@ -10,7 +10,7 @@
 
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 import { REGISTRY } from "../src/questions/registry.ts";
-import { identifiersOf, type Question } from "../src/questions/types.ts";
+import { gapsOf, identifiersOf, type Question } from "../src/questions/types.ts";
 
 /** `<!-- questions: day1.chapters -->` on a line of its own. */
 export const ANCHOR = /^<!--\s*questions:\s*([A-Za-z0-9._-]+)\s*-->$/;
@@ -82,6 +82,35 @@ export function checkRegistry(schema: Schema): readonly string[] {
   return problems;
 }
 
+/**
+ * Sentence templates and their fields must account for each other exactly.
+ *
+ * Both failures are invisible in the output: a gap with no field renders as nothing at
+ * all, and a field with no gap is a question the reader is never shown but which the
+ * registry, the storage layer and the assistant contract all believe exists.
+ */
+export function checkSentences(schema: Schema): readonly string[] {
+  const problems: string[] = [];
+  for (const question of schema.byId.values()) {
+    if (question.kind !== "sentence") {
+      continue;
+    }
+    const gaps = new Set(gapsOf(question.template));
+    const fields = new Set(question.fields.map((field) => field.id));
+    for (const gap of gaps) {
+      if (!fields.has(gap)) {
+        problems.push(`${question.id} has a {${gap}} gap with no matching field`);
+      }
+    }
+    for (const field of fields) {
+      if (!gaps.has(field)) {
+        problems.push(`${question.id} defines "${field}" but the sentence has no {${field}} gap`);
+      }
+    }
+  }
+  return problems;
+}
+
 function escape(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -113,6 +142,55 @@ export function renderQuestion(question: Question): string {
       `<p class="q-single" data-question="${escape(question.id)}">` +
       `${blank(question.id, question.size)}</p>`
     );
+  }
+
+  if (question.kind === "group") {
+    // A plain list of labelled answers. No numbering, because these prompts differ from
+    // one another rather than repeating — numbering them would imply an order that is
+    // not there.
+    const items = question.fields
+      .map(
+        (field) =>
+          `<li>${escape(field.label)}: ${blank(`${question.id}.${field.id}`, field.size)}</li>`,
+      )
+      .join("\n");
+    return `<ul class="q-group" data-question="${escape(question.id)}">\n${items}\n</ul>`;
+  }
+
+  if (question.kind === "checklist") {
+    // Same markup kramdown produced for `- [ ]`, so the printed and on-screen forms stay
+    // the ones readers already know. Disabled until #24 can store what was ticked —
+    // a box that forgets is worse than one that cannot be ticked at all.
+    const items = question.items
+      .map(
+        (item) =>
+          `<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox"` +
+          ` disabled="disabled" data-field="${escape(`${question.id}.${item.id}`)}" />` +
+          `${escape(item.label)}</li>`,
+      )
+      .join("\n");
+    return (
+      `<ul class="task-list q-checklist" data-question="${escape(question.id)}">\n${items}\n</ul>`
+    );
+  }
+
+  if (question.kind === "sentence") {
+    // Text and blanks interleaved, so the sentence survives. Splitting on the gaps keeps
+    // the literal parts and the fields in step without a second pass over the string.
+    const parts = question.template.split(/\{([A-Za-z0-9_]+)\}/);
+    const byId = new Map(question.fields.map((field) => [field.id, field]));
+    let html = "";
+    for (const [index, part] of parts.entries()) {
+      if (index % 2 === 0) {
+        html += escape(part);
+        continue;
+      }
+      const field = byId.get(part);
+      // A gap with no field is caught by checkSchema before this runs; rendering the
+      // literal brace here would only hide it.
+      html += field === undefined ? "" : blank(`${question.id}.${part}`, field.size);
+    }
+    return `<p class="q-sentence" data-question="${escape(question.id)}">${html}</p>`;
   }
 
   // An ordered list, so instance numbering comes from the list rather than from labels
