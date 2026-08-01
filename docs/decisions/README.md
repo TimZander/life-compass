@@ -26,11 +26,10 @@ every citation already written down.
 | [0008](0008-installation-makes-storage-durable.md) | Installation is what makes storage durable, and the app must say so | Proposed |
 | [0009](0009-encryption-is-an-opt-in-add-on.md) | Encryption is an opt-in add-on; the export envelope is designed for it now | Proposed |
 | [0010](0010-printing-is-a-supported-output.md) | Printing stays a supported output, not an accident | Proposed |
+| [0011](0011-question-identifiers-are-frozen-and-registered.md) | Question identifiers are frozen, registered, and never derived | Proposed |
 
 ## Still open
 
-**How question identifiers are versioned and migrated.** Raised as `0004 · C4`.
-Stored answers key off question identifiers, so renaming one is a data migration
-rather than a rename, and `0009`'s export envelope has to carry whatever scheme is
-chosen. This needs settling before the first real answer is written, because
-afterwards there is nothing to fix it with. Tracked as a record still to be written.
+Nothing outstanding. `0004 · C4` raised question-identifier versioning as the one
+decision deliberately left unmade; [0011](0011-question-identifiers-are-frozen-and-registered.md)
+settles it.

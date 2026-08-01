@@ -34,6 +34,7 @@ const EXPECTED_PAGES: readonly string[] = [
   "docs/decisions/0008-installation-makes-storage-durable.html",
   "docs/decisions/0009-encryption-is-an-opt-in-add-on.html",
   "docs/decisions/0010-printing-is-a-supported-output.html",
+  "docs/decisions/0011-question-identifiers-are-frozen-and-registered.html",
   "docs/decisions/index.html",
   "index.html",
   "one-page-anchor.html",
