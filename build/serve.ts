@@ -33,6 +33,7 @@ const CONTENT_TYPES = new Map<string, string>([
   [".svg", "image/svg+xml"],
   [".png", "image/png"],
   [".json", "application/json"],
+  [".webmanifest", "application/manifest+json"],
 ]);
 
 /**

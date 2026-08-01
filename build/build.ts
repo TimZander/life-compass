@@ -15,6 +15,8 @@ import { layout } from "./layout.ts";
 import type { ResolvedLink } from "./links.ts";
 import { checkRegistry, loadSchema, type Schema } from "./questions.ts";
 import { checkHeaders, parseHeaders } from "./headers.ts";
+import { icons } from "./icons.ts";
+import { renderServiceWorker, type PrecacheEntry } from "./serviceworker.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
 export const ROOT: string = path.join(import.meta.dirname, "..");
@@ -305,6 +307,26 @@ export async function build(
     await mkdir(path.dirname(destination), { recursive: true });
     await cp(path.join(root, asset), destination);
   }
+
+  // Icons are generated rather than committed; a PWA cannot be installed without them,
+  // and installation is what makes storage durable (docs/decisions/0008).
+  const precache: PrecacheEntry[] = [];
+  for (const icon of icons()) {
+    const destination = path.join(out, icon.output);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, icon.png);
+    precache.push({ url: `/${icon.output}`, content: icon.png });
+  }
+
+  for (const page of result.pages) {
+    precache.push({ url: page.url, content: page.html });
+  }
+  for (const asset of result.assets) {
+    precache.push({ url: `/${asset}`, content: await readFile(path.join(root, asset)) });
+  }
+
+  // Written last, so its cache version covers everything above it.
+  await writeFile(path.join(out, "sw.js"), renderServiceWorker(precache), "utf8");
 
   return result;
 }

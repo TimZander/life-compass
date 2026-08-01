@@ -109,6 +109,35 @@ const KEYWORD_SOURCE = /^'[a-z0-9-]+'$/;
 /** Keywords that are syntactically fine and defeat the point. */
 const FORBIDDEN_KEYWORDS: ReadonlySet<string> = new Set(["'unsafe-inline'", "'unsafe-eval'"]);
 
+/**
+ * No directive may name a host, scheme or wildcard.
+ *
+ * This site is entirely self-hosted by construction: no CDN (docs/decisions/0003),
+ * nothing external (0006). Pinning three directives exactly stops those three being
+ * loosened; this stops the drift arriving through a fourth. An `img-src https://cdn…`
+ * added in two years by someone who has not read 0006 fails the build rather than
+ * quietly ending the privacy claim. If a `data:` icon is ever genuinely wanted, this
+ * failing is the point — the exemption gets added deliberately.
+ */
+function checkSourceShapes(
+  where: string,
+  csp: ReadonlyMap<string, readonly string[]>,
+): readonly string[] {
+  const problems: string[] = [];
+  for (const [directive, sources] of csp) {
+    for (const source of sources) {
+      if (!KEYWORD_SOURCE.test(source)) {
+        problems.push(
+          `CSP for ${where}: ${directive} names ${source}; only keyword sources are allowed, because nothing on this site is loaded from anywhere else`,
+        );
+      } else if (FORBIDDEN_KEYWORDS.has(source)) {
+        problems.push(`CSP for ${where}: ${directive} allows ${source}, which defeats the policy`);
+      }
+    }
+  }
+  return problems;
+}
+
 /** Report anything that would quietly weaken the contract. */
 export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
   const problems: string[] = [];
@@ -140,21 +169,32 @@ export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
     }
   }
 
-  // The broader rule, and the one that catches the realistic drift. This site is
-  // entirely self-hosted by construction: no CDN (docs/decisions/0003), nothing external
-  // (0006). So no directive may name a host, scheme or wildcard — not just the three
-  // above. An `img-src https://cdn…` added in two years by someone who has not read 0006
-  // fails the build rather than quietly ending the privacy claim. If a `data:` icon is
-  // ever genuinely wanted, this failing is the point: the exemption gets added on purpose.
-  for (const [directive, sources] of csp) {
-    for (const source of sources) {
-      if (!KEYWORD_SOURCE.test(source)) {
+  problems.push(...checkSourceShapes("/*", csp));
+
+  // The service worker gets its own policy out of necessity, which makes it the one
+  // place the site-wide rule can be escaped. Check it rather than trust it.
+  const worker = rules.find((rule) => rule.path === "/sw.js");
+  if (worker !== undefined) {
+    if (worker.headers.get("cache-control") !== "no-cache") {
+      problems.push(
+        '_headers "/sw.js" must be no-cache, or an installed client keeps an old worker and never sees a deploy',
+      );
+    }
+    const workerCsp = worker.headers.get("content-security-policy");
+    if (workerCsp === undefined) {
+      problems.push('_headers "/sw.js" declares no Content-Security-Policy of its own');
+    } else {
+      const parsed = parseCsp(workerCsp);
+      const connect = parsed.get("connect-src");
+      // 'self' is the narrowest value that lets precaching work. Anything wider would
+      // let the worker reach off-origin, which is the claim in 0006 undone via the one
+      // rule that has to be permissive.
+      if (connect === undefined || connect.length !== 1 || connect[0] !== "'self'") {
         problems.push(
-          `CSP ${directive} names ${source}; only keyword sources are allowed, because nothing on this site is loaded from anywhere else`,
+          `CSP for /sw.js has connect-src "${(connect ?? []).join(" ")}", expected exactly "'self'" — the worker may reach this origin and nowhere else`,
         );
-      } else if (FORBIDDEN_KEYWORDS.has(source)) {
-        problems.push(`CSP ${directive} allows ${source}, which defeats the policy`);
       }
+      problems.push(...checkSourceShapes("/sw.js", parsed));
     }
   }
 

@@ -172,4 +172,26 @@ jobs:
             fi
           done
 
+          # The PWA shell. /sw.js must revalidate or installed clients keep an old
+          # worker; the manifest and icons must exist or the install prompt never
+          # appears, and installation is what makes storage durable (0008).
+          check "/sw.js" 200
+          check "/manifest.webmanifest" 200
+          check "/icons/icon-192.png" 200
+          check "/icons/icon-512.png" 200
+          check "/icons/icon-maskable-512.png" 200
+          check "/assets/js/sw-register.js" 200
+
+          sw_cache=$(curl -sSI "$BASE_URL/sw.js" | tr -d '\r' | awk 'tolower($1)=="cache-control:"{$1="";print substr($0,2)}')
+          case "$sw_cache" in
+            *no-cache*) echo "ok  /sw.js cache-control -> $sw_cache" ;;
+            *) echo "::error::/sw.js served '$sw_cache'; without no-cache an installed client never sees a deploy"; fail=1 ;;
+          esac
+
+          sw_csp=$(curl -sSI "$BASE_URL/sw.js" | tr -d '\r' | awk 'tolower($1)=="content-security-policy:"{$1="";print substr($0,2)}')
+          case "$sw_csp" in
+            *"connect-src 'self'"*) echo "ok  /sw.js may fetch same-origin" ;;
+            *) echo "::error::/sw.js CSP is '$sw_csp'; without connect-src 'self' precaching cannot fetch anything"; fail=1 ;;
+          esac
+
           exit $fail

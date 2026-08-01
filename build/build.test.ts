@@ -328,7 +328,18 @@ describe("build", () => {
     const files = written.filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
     // questions.json is emitted alongside the pages so the assistant contract and the
     // importer key off the same definitions the pages were rendered from (#15).
-    assert.deepEqual(files, ["index.html", "one.html", "questions.json", "thing.txt"]);
+    // Icons and the service worker are generated, not copied — see build/icons.ts and
+    // build/serviceworker.ts. They appear here because they are genuinely written.
+    assert.deepEqual(files, [
+      "icon-192.png",
+      "icon-512.png",
+      "icon-maskable-512.png",
+      "index.html",
+      "one.html",
+      "questions.json",
+      "sw.js",
+      "thing.txt",
+    ]);
     assert.equal(await readFile(path.join(out, "assets", "thing.txt"), "utf8"), "kept\n");
   });
 
