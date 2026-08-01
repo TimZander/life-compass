@@ -17,6 +17,8 @@ export type HeaderRule = {
   readonly path: string;
   /** Header name (lowercased) -> value. */
   readonly headers: ReadonlyMap<string, string>;
+  /** Header names (lowercased) this rule removes with `! Name`. */
+  readonly unset: ReadonlySet<string>;
 };
 
 /**
@@ -24,7 +26,7 @@ export type HeaderRule = {
  * indented `Name: value` lines. Comments and blank lines are ignored.
  */
 export function parseHeaders(source: string): readonly HeaderRule[] {
-  const rules: { path: string; headers: Map<string, string> }[] = [];
+  const rules: { path: string; headers: Map<string, string>; unset: Set<string> }[] = [];
 
   for (const raw of source.split("\n")) {
     const line = raw.trimEnd();
@@ -36,8 +38,18 @@ export function parseHeaders(source: string): readonly HeaderRule[] {
     // Indented lines belong to the rule above them; unindented lines start a new one.
     if (/^\s/.test(line)) {
       const current = rules[rules.length - 1];
+      if (current === undefined) {
+        continue;
+      }
+
+      // `! Name` removes a header inherited from a broader rule.
+      if (trimmed.startsWith("!")) {
+        current.unset.add(trimmed.slice(1).trim().toLowerCase());
+        continue;
+      }
+
       const separator = trimmed.indexOf(":");
-      if (current === undefined || separator === -1) {
+      if (separator === -1) {
         continue;
       }
       current.headers.set(
@@ -47,10 +59,10 @@ export function parseHeaders(source: string): readonly HeaderRule[] {
       continue;
     }
 
-    rules.push({ path: trimmed, headers: new Map() });
+    rules.push({ path: trimmed, headers: new Map(), unset: new Set() });
   }
 
-  return rules.map((rule) => ({ path: rule.path, headers: rule.headers }));
+  return rules.map((rule) => ({ path: rule.path, headers: rule.headers, unset: rule.unset }));
 }
 
 /**
@@ -180,6 +192,16 @@ export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
         '_headers "/sw.js" must be no-cache, or an installed client keeps an old worker and never sees a deploy',
       );
     }
+    // Pages appends rather than overrides, and a browser enforces the intersection of
+    // every policy delivered. Without unsetting the inherited one, the site-wide
+    // `connect-src 'none'` still binds the worker and precaching fails — with both
+    // headers looking correct in isolation.
+    if (!worker.unset.has("content-security-policy")) {
+      problems.push(
+        '_headers "/sw.js" must unset the inherited Content-Security-Policy with "! Content-Security-Policy", or the site-wide connect-src \'none\' still applies and the worker cannot fetch',
+      );
+    }
+
     const workerCsp = worker.headers.get("content-security-policy");
     if (workerCsp === undefined) {
       problems.push('_headers "/sw.js" declares no Content-Security-Policy of its own');

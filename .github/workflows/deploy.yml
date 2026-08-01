@@ -188,10 +188,24 @@ jobs:
             *) echo "::error::/sw.js served '$sw_cache'; without no-cache an installed client never sees a deploy"; fail=1 ;;
           esac
 
+          # Assert what the browser will ENFORCE, not what appears somewhere in the
+          # response. Pages appends matching rules, and a browser enforces the
+          # intersection of every policy delivered — so a response carrying both
+          # `connect-src 'none'` and `connect-src 'self'` leaves the worker unable to
+          # fetch. Checking that 'self' is present passed over exactly that.
           sw_csp=$(curl -sSI "$BASE_URL/sw.js" | tr -d '\r' | awk 'tolower($1)=="content-security-policy:"{$1="";print substr($0,2)}')
-          case "$sw_csp" in
-            *"connect-src 'self'"*) echo "ok  /sw.js may fetch same-origin" ;;
-            *) echo "::error::/sw.js CSP is '$sw_csp'; without connect-src 'self' precaching cannot fetch anything"; fail=1 ;;
-          esac
+          sw_csp_count=$(printf '%s\n' "$sw_csp" | grep -c . || true)
+          if [ "$sw_csp_count" -ne 1 ]; then
+            echo "::error::/sw.js carries $sw_csp_count Content-Security-Policy headers; the browser enforces their intersection, so the worker cannot fetch: $sw_csp"
+            fail=1
+          elif printf '%s' "$sw_csp" | grep -q "connect-src 'none'"; then
+            echo "::error::/sw.js is bound by connect-src 'none'; precaching cannot fetch anything"
+            fail=1
+          elif printf '%s' "$sw_csp" | grep -q "connect-src 'self'"; then
+            echo "ok  /sw.js may fetch same-origin, and nothing else"
+          else
+            echo "::error::/sw.js CSP is '$sw_csp'; expected connect-src 'self'"
+            fail=1
+          fi
 
           exit $fail

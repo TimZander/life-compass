@@ -200,6 +200,7 @@ describe("checkHeaders — service worker rule", () => {
 
 /sw.js
   Cache-Control: no-cache
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; connect-src 'self'
 `;
 
@@ -239,5 +240,41 @@ describe("checkHeaders — service worker rule", () => {
     assert.ok(
       checkHeaders(parseHeaders(weakened)).some((p) => p.includes("no Content-Security-Policy of its own")),
     );
+  });
+
+  it("checkHeaders_WorkerNotUnsettingTheInheritedPolicy_IsReported", () => {
+    // Arrange — negative case, and the one only a real deployment revealed. Pages
+    // APPENDS matching rules, so the worker receives two policies and the browser
+    // enforces their intersection: the site-wide connect-src 'none' still binds it and
+    // precaching fails, while both headers look correct read individually.
+    const weakened = SW.replace("  ! Content-Security-Policy\n", "");
+
+    // Act
+    const problems = checkHeaders(parseHeaders(weakened));
+
+    // Assert
+    assert.ok(problems.some((p) => p.includes("must unset the inherited")));
+  });
+});
+
+describe("parseHeaders — removals", () => {
+  it("parseHeaders_BangPrefixedLine_IsRecordedAsAnUnset", () => {
+    // Arrange — Cloudflare's syntax for removing a header inherited from a broader rule.
+    const source = "/sw.js\n  ! Content-Security-Policy\n  Cache-Control: no-cache\n";
+
+    // Act
+    const rules = parseHeaders(source);
+
+    // Assert
+    assert.ok(rules[0]?.unset.has("content-security-policy"));
+    assert.equal(rules[0]?.headers.get("cache-control"), "no-cache");
+  });
+
+  it("parseHeaders_NoRemovals_LeavesTheSetEmpty", () => {
+    // Arrange — negative case.
+    const rules = parseHeaders("/*\n  A: 1\n");
+
+    // Act & Assert
+    assert.equal(rules[0]?.unset.size, 0);
   });
 });
