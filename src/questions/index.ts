@@ -1,0 +1,20 @@
+/**
+ * Which worksheet each set of questions belongs to.
+ *
+ * The path is stated rather than inferred from the module name. Inferring it would make
+ * moving or renaming a file silently re-home its questions, which is the same class of
+ * accident docs/decisions/0011 froze identifiers to avoid.
+ */
+
+import type { Question } from "./types.ts";
+import { DAY1 } from "./day1.ts";
+
+export type Worksheet = {
+  /** Repo-relative POSIX path of the Markdown this belongs to. */
+  readonly source: string;
+  readonly questions: readonly Question[];
+};
+
+export const WORKSHEETS: readonly Worksheet[] = [
+  { source: "days/day-1-excavation.md", questions: DAY1 },
+];

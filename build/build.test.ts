@@ -239,7 +239,7 @@ describe("buildPages", () => {
     const root = await fixture({ "README.md": "# Home\n\n[gone](nowhere.md)\n" });
 
     // Act
-    const result = await buildPages(root);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
     assert.equal(result.problems.length, 1);
@@ -254,7 +254,7 @@ describe("buildPages", () => {
     });
 
     // Act
-    const result = await buildPages(root);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
     assert.equal(result.problems.length, 1);
@@ -269,7 +269,7 @@ describe("buildPages", () => {
     });
 
     // Act
-    const result = await buildPages(root);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
     assert.deepEqual(result.problems, []);
@@ -280,7 +280,7 @@ describe("buildPages", () => {
     const root = await fixture({ "README.md": "# Home\n\n[up](#not-here)\n" });
 
     // Act
-    const result = await buildPages(root);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
     assert.equal(result.problems[0]?.kind, "missing-anchor");
@@ -295,7 +295,7 @@ describe("buildPages", () => {
     });
 
     // Act
-    const result = await buildPages(root);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
     assert.equal(result.problems[0]?.kind, "unrewritten-link");
@@ -306,7 +306,7 @@ describe("buildPages", () => {
     const root = await fixture({ "README.md": "# One\n", "index.md": "# Two\n" });
 
     // Act & Assert
-    await assert.rejects(() => buildPages(root), /would both be written to/);
+    await assert.rejects(() => buildPages(root, undefined, []), /would both be written to/);
   });
 });
 
@@ -321,12 +321,14 @@ describe("build", () => {
     const out = path.join(root, "__dist");
 
     // Act
-    await build(root, out);
+    await build(root, out, []);
 
     // Assert
     const written = await readdir(out, { recursive: true, withFileTypes: true });
     const files = written.filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
-    assert.deepEqual(files, ["index.html", "one.html", "thing.txt"]);
+    // questions.json is emitted alongside the pages so the assistant contract and the
+    // importer key off the same definitions the pages were rendered from (#15).
+    assert.deepEqual(files, ["index.html", "one.html", "questions.json", "thing.txt"]);
     assert.equal(await readFile(path.join(out, "assets", "thing.txt"), "utf8"), "kept\n");
   });
 
@@ -338,7 +340,7 @@ describe("build", () => {
     await writeFile(path.join(out, "leftover.html"), "old", "utf8");
 
     // Act
-    await build(root, out);
+    await build(root, out, []);
 
     // Assert
     const written = await readdir(out);
@@ -353,7 +355,7 @@ describe("build", () => {
     await writeFile(path.join(out, "sentinel.html"), "untouched", "utf8");
 
     // Act & Assert
-    await assert.rejects(() => build(root, out), /refusing to build/);
+    await assert.rejects(() => build(root, out, []), /refusing to build/);
     assert.equal(await readFile(path.join(out, "sentinel.html"), "utf8"), "untouched");
   });
 
@@ -362,7 +364,7 @@ describe("build", () => {
     const root = await fixture({ "README.md": "# Home\n" });
 
     // Act & Assert
-    await assert.rejects(() => build(root, "dist"), /expected an absolute, non-root path/);
+    await assert.rejects(() => build(root, "dist", []), /expected an absolute, non-root path/);
   });
 });
 
@@ -390,7 +392,7 @@ describe("task lists", () => {
     const root = await fixture({ "README.md": "# Home\n\n- [a link](README.md) here\n" });
 
     // Act
-    const result = await buildPages(root);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
     assert.ok(!result.pages[0]?.html.includes("task-list"));
@@ -411,5 +413,66 @@ describe("heading ids", () => {
     assert.ok(page !== undefined);
     assert.ok(!/id="[^"]*span-class/.test(page.html), "an id still contains tag text");
     assert.ok(page.html.includes('<h3 id="value-1--______">'));
+  });
+});
+
+describe("question anchors", () => {
+  it("buildPages_Day1_RendersItsQuestionsFromTheSchema", async () => {
+    // Arrange — the pilot worksheet's blanks are now generated, not hand-written.
+    const source = "days/day-1-excavation.md";
+
+    // Act
+    const result = await site();
+    const page = result.pages.find((candidate) => candidate.source === source);
+
+    // Assert
+    assert.ok(page !== undefined);
+    assert.ok(page.html.includes('data-question="day1.chapters"'));
+    assert.ok(page.html.includes('data-field="day1.chapters.defined_by"'));
+    // Every blank on the page now carries a field identifier; none are anonymous.
+    const blanks = page.html.match(/class="fill(?:-sm)?"/g)?.length ?? 0;
+    const identified = page.html.match(/class="fill(?:-sm)?" data-field=/g)?.length ?? 0;
+    assert.equal(identified, blanks);
+  });
+
+  it("buildPages_Day1_AnchorsEveryQuestionExactlyOnce", async () => {
+    // Arrange & Act
+    const result = await site();
+    const page = result.pages.find((c) => c.source === "days/day-1-excavation.md");
+
+    // Assert
+    assert.ok(page !== undefined);
+    assert.deepEqual([...page.anchors].sort(), [
+      "day1.chapters",
+      "day1.drainers",
+      "day1.energizers",
+      "day1.low_points",
+      "day1.patterns",
+      "day1.peaks",
+      "day1.threads",
+    ]);
+  });
+
+  it("buildPages_AnchorNamingNoQuestion_IsReported", async () => {
+    // Arrange — negative case.
+    const root = await fixture({ "README.md": "# Home\n\n<!-- questions: nope.here -->\n" });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.ok(result.problems.some((p) => p.kind === "unresolved-question-anchor"));
+  });
+
+  it("buildPages_OrdinaryHtmlComment_IsLeftAlone", async () => {
+    // Arrange — negative case: only the questions form is a directive.
+    const root = await fixture({ "README.md": "# Home\n\n<!-- just a note -->\n" });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+    assert.ok(result.pages[0]?.html.includes("<!-- just a note -->"));
   });
 });

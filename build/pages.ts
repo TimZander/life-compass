@@ -36,6 +36,8 @@ const SKIP_DIRS = new Set([
   // The build's own sources. Anything not recognised as a page is copied verbatim, so
   // without this the TypeScript that produced the site ships alongside it.
   "build",
+  // Question definitions. Consumed by the build; not published as-is.
+  "src",
 ]);
 
 /** Files that are neither pages nor deployable assets. Dot-files are skipped in `walk`. */

@@ -15,6 +15,8 @@ import MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import { createSlugger } from "./slug.ts";
 import { resolveLink, type LinkContext, type ResolvedLink } from "./links.ts";
+import { ANCHOR, renderQuestion } from "./questions.ts";
+import type { Question } from "../src/questions/types.ts";
 import { taskLists } from "./tasklists.ts";
 
 export type RenderResult = {
@@ -25,6 +27,8 @@ export type RenderResult = {
   readonly links: readonly ResolvedLink[];
   /** Every `id` this page generated, so cross-page `#fragment` links can be verified. */
   readonly headingIds: readonly string[];
+  /** Question ids this page anchored, in order, for the bidirectional check. */
+  readonly anchors: readonly string[];
 };
 
 const md: MarkdownIt = new MarkdownIt({
@@ -69,16 +73,38 @@ function inlineText(token: Token | undefined): string {
 }
 
 /** Render one Markdown source into HTML, rewriting links relative to `source`. */
-export function render(markdown: string, source: string, context: LinkContext): RenderResult {
+export type RenderContext = LinkContext & {
+  /** Question id -> definition. Anchors resolve against this.  */
+  readonly questions: ReadonlyMap<string, Question>;
+};
+
+export function render(markdown: string, source: string, context: RenderContext): RenderResult {
   const tokens = md.parse(markdown, {});
   const slug = createSlugger();
   const links: ResolvedLink[] = [];
   const headingIds: string[] = [];
+  const anchors: string[] = [];
   let title: string | null = null;
 
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
     if (token === undefined) {
+      continue;
+    }
+
+    // A question anchor is a standalone HTML comment, which markdown-it hands over as
+    // an html_block emitted verbatim — so replacing its content is enough to inject
+    // the generated markup without a second pass over the rendered string.
+    if (token.type === "html_block") {
+      const match = ANCHOR.exec(token.content.trim());
+      if (match !== null) {
+        const id = match[1] ?? "";
+        anchors.push(id);
+        const question = context.questions.get(id);
+        // An unresolvable anchor is reported by the build rather than thrown here;
+        // leaving the comment in place keeps the failure legible in the output too.
+        token.content = question === undefined ? token.content : `${renderQuestion(question)}\n`;
+      }
       continue;
     }
 
@@ -115,5 +141,5 @@ export function render(markdown: string, source: string, context: LinkContext): 
     }
   }
 
-  return { html: md.renderer.render(tokens, md.options, {}), title, links, headingIds };
+  return { html: md.renderer.render(tokens, md.options, {}), title, links, headingIds, anchors };
 }
