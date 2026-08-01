@@ -15,6 +15,7 @@ import MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import { createSlugger } from "./slug.ts";
 import { resolveLink, type LinkContext, type ResolvedLink } from "./links.ts";
+import { taskLists } from "./tasklists.ts";
 
 export type RenderResult = {
   readonly html: string;
@@ -38,6 +39,9 @@ const md: MarkdownIt = new MarkdownIt({
   typographer: true,
 });
 
+// `- [ ] item` -> a disabled checkbox, matching what kramdown emits on the live site.
+md.use(taskLists);
+
 /**
  * The visible text of an inline token, with markup removed.
  *
@@ -54,7 +58,14 @@ function inlineText(token: Token | undefined): string {
   if (token.children === null) {
     return token.content;
   }
-  return token.children.map((child) => child.content).join("");
+  // Raw HTML children carry their markup as content, so including them puts tag text
+  // into ids and titles: `### Value 1 — <span class="fill">___</span>` produced
+  // `id="value-1--span-classfill______span"`. Several worksheets have headings shaped
+  // exactly like that.
+  return token.children
+    .filter((child) => child.type !== "html_inline")
+    .map((child) => child.content)
+    .join("");
 }
 
 /** Render one Markdown source into HTML, rewriting links relative to `source`. */

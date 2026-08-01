@@ -363,3 +363,51 @@ describe("build", () => {
     await assert.rejects(() => build(root, "dist"), /expected an absolute, non-root path/);
   });
 });
+
+describe("task lists", () => {
+  it("buildPages_CheckboxSyntax_RendersADisabledCheckboxLikeKramdown", async () => {
+    // Arrange — markdown-it does not do this natively; without the rule these render
+    // as the literal text "[ ] Values filled in" on eight items across two worksheets.
+    const source = "days/day-5-synthesis.md";
+    const expected =
+      '<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" ' +
+      'disabled="disabled" />Values filled in</li>';
+
+    // Act
+    const result = await site();
+    const page = result.pages.find((candidate) => candidate.source === source);
+
+    // Assert
+    assert.ok(page !== undefined);
+    assert.ok(page.html.includes('<ul class="task-list">'));
+    assert.ok(page.html.includes(expected));
+  });
+
+  it("buildPages_OrdinaryBulletStartingWithABracket_IsNotTreatedAsATask", async () => {
+    // Arrange — negative case: only `[ ]` and `[x]` are markers.
+    const root = await fixture({ "README.md": "# Home\n\n- [a link](README.md) here\n" });
+
+    // Act
+    const result = await buildPages(root);
+
+    // Assert
+    assert.ok(!result.pages[0]?.html.includes("task-list"));
+  });
+});
+
+describe("heading ids", () => {
+  it("buildPages_HeadingContainingRawHtml_KeepsTheMarkupOutOfTheId", async () => {
+    // Arrange — several worksheets have headings shaped `### Value 1 — <span ...>`.
+    // Including the raw HTML produced id="value-1--span-classfill______span".
+    const source = "days/day-2-values.md";
+
+    // Act
+    const result = await site();
+    const page = result.pages.find((candidate) => candidate.source === source);
+
+    // Assert
+    assert.ok(page !== undefined);
+    assert.ok(!/id="[^"]*span-class/.test(page.html), "an id still contains tag text");
+    assert.ok(page.html.includes('<h3 id="value-1--______">'));
+  });
+});
