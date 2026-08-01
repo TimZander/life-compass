@@ -60,4 +60,4 @@ renderer their successor.
 **C4.** Renaming a question identifier is a migration, not a rename — stored answers key
 off it. This needs a versioning and mapping plan *before* the first real answers exist,
 because there is no fixing it afterwards. Flagged here rather than discovered later, and
-still to be decided in its own record.
+settled in [0011](0011-question-identifiers-are-frozen-and-registered.md).
