@@ -131,24 +131,60 @@ describe("renderServiceWorker", () => {
 });
 
 describe("shipped client scripts", () => {
-  it("swRegister_ShippedFile_IsSyntacticallyValidJavaScript", async () => {
-    // Arrange — assets/js/sw-register.js is outside every guard the build has: it is
-    // not in tsconfig's `include` (build/**/*.ts), there is no linter, and it ships on
-    // every page. A syntax error would reach production silently. This is the same
-    // parse check the generated worker gets, for the same reason.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-register.js"), "utf8");
-
-    // Act & Assert
-    assert.doesNotThrow(() => new Function(source));
-  });
-
-  it("swRegister_ShippedFile_RegistersTheWorkerAndReportsFailure", async () => {
+  it("clientEntry_ShippedFile_RegistersTheWorkerAndReportsFailure", async () => {
     // Arrange — a registration that fails silently removes offline support and storage
     // durability (0008) with no signal at all.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-register.js"), "utf8");
+    //
+    // There is no parse check here any more, and its absence is deliberate. The earlier
+    // one used `new Function`, which cannot parse an ES module — `import` is a syntax
+    // error in a classic function body — and it is no longer needed: these files are in
+    // tsconfig.client.json, so `npm run typecheck` parses AND type-checks them, which is
+    // strictly stronger than parsing alone.
+    const source = await readFile(path.join(ROOT, "assets", "js", "app.js"), "utf8");
 
     // Act & Assert
-    assert.ok(source.includes('navigator.serviceWorker.register("/sw.js")'));
+    assert.ok(source.includes('.register("/sw.js")'));
     assert.ok(source.includes("console.error"));
+  });
+});
+
+describe("update prompting", () => {
+  it("renderServiceWorker_Install_DoesNotActivateItself", () => {
+    // Arrange — skipWaiting() during install swapped the cache and claimed the open page
+    // mid-session, which docs/decisions/0001 forbids once answers are being typed.
+    const source = renderServiceWorker(ENTRIES);
+    const install = source.slice(
+      source.indexOf('addEventListener("install"'),
+      source.indexOf('addEventListener("message"'),
+    );
+    // Comments are stripped first. Without that this asserts against the prose as well
+    // as the code, and the comment explaining why skipWaiting() is absent contains the
+    // very string being looked for — the test failed on its own explanation.
+    const code = install
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+
+    // Act & Assert
+    assert.ok(!code.includes("skipWaiting()"));
+  });
+
+  it("renderServiceWorker_MessageHandler_ActivatesOnRequest", () => {
+    // Arrange — activation moves to the reader, so the worker needs a way to be asked.
+    const source = renderServiceWorker(ENTRIES);
+
+    // Act & Assert
+    assert.ok(source.includes('addEventListener("message"'));
+    assert.ok(source.includes('=== "SKIP_WAITING"'));
+    assert.ok(source.includes("self.skipWaiting()"));
+  });
+
+  it("renderServiceWorker_ActivateStill_ClaimsClients", () => {
+    // Arrange — a first install has no worker to wait behind, so it activates and must
+    // still take control of the page that installed it.
+    const source = renderServiceWorker(ENTRIES);
+
+    // Act & Assert
+    assert.ok(source.includes("self.clients.claim()"));
   });
 });

@@ -49,3 +49,12 @@ edit-and-refresh loop that a plain Jekyll site gave away for free is gone.
 
 **C3.** Nothing about this reaches the reader. The published site remains static HTML
 and CSS.
+
+**C4.** Client-side code inverts this trade, and does so consistently with it. Browsers
+load `assets/js/*.js` exactly as written, so there is no compile step there — which is
+the single condition under which O1 was the better option. Those modules are therefore
+JSDoc-annotated and checked in place by `tsconfig.client.json`: full type safety, no
+toolchain. When there is enough client code to justify emitting — expected at the storage
+work, per [0003 · C1a](0003-multi-page-static-rendering-no-framework.md) — that is the
+decision which replaces this arrangement, and it should be recorded rather than drifted
+into.
