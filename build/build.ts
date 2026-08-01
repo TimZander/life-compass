@@ -12,7 +12,9 @@ import path from "node:path";
 import { discover, pageUrls, type Page } from "./pages.ts";
 import { render } from "./markdown.ts";
 import { layout } from "./layout.ts";
-import type { LinkContext, ResolvedLink } from "./links.ts";
+import type { ResolvedLink } from "./links.ts";
+import { checkRegistry, loadSchema, type Schema } from "./questions.ts";
+import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
 export const ROOT: string = path.join(import.meta.dirname, "..");
 export const OUT: string = path.join(ROOT, "dist");
@@ -22,9 +24,16 @@ export type BuiltPage = Page & {
   readonly title: string | null;
   readonly links: readonly ResolvedLink[];
   readonly headingIds: readonly string[];
+  readonly anchors: readonly string[];
 };
 
-export type ProblemKind = "broken-link" | "missing-anchor" | "unrewritten-link";
+export type ProblemKind =
+  | "broken-link"
+  | "missing-anchor"
+  | "unrewritten-link"
+  | "unresolved-question-anchor"
+  | "unanchored-question"
+  | "registry";
 
 export type BuildProblem = {
   readonly kind: ProblemKind;
@@ -37,6 +46,7 @@ export type BuildResult = {
   readonly pages: readonly BuiltPage[];
   readonly assets: readonly string[];
   readonly problems: readonly BuildProblem[];
+  readonly schema: Schema;
 };
 
 /** Any `.md` left in an emitted href means a link escaped rewriting — e.g. a raw `<a>`. */
@@ -85,23 +95,94 @@ function checkAnchors(pages: readonly BuiltPage[]): BuildProblem[] {
 }
 
 /**
+ * Anchors and questions must account for each other exactly.
+ *
+ * Both directions matter, and the second is the one that fails quietly. An anchor with
+ * no question renders a stray HTML comment — visible, if anyone looks. A question with
+ * no anchor renders nothing at all: the page is complete, well-formed, and simply
+ * missing a section, with nothing anywhere to say so. That asymmetry is the whole reason
+ * this is a bidirectional check rather than a lookup at render time.
+ */
+function checkQuestionAnchors(
+  pages: readonly BuiltPage[],
+  schema: Schema,
+): readonly BuildProblem[] {
+  const problems: BuildProblem[] = [];
+  const seen = new Map<string, string>();
+
+  for (const page of pages) {
+    for (const id of page.anchors) {
+      if (!schema.byId.has(id)) {
+        problems.push({
+          kind: "unresolved-question-anchor",
+          source: page.source,
+          detail: `<!-- questions: ${id} --> names no question`,
+        });
+        continue;
+      }
+      const already = seen.get(id);
+      if (already !== undefined) {
+        problems.push({
+          kind: "unresolved-question-anchor",
+          source: page.source,
+          detail: `${id} is already anchored in ${already}; a question renders in one place`,
+        });
+        continue;
+      }
+      seen.set(id, page.source);
+    }
+  }
+
+  for (const [source, questions] of schema.bySource) {
+    for (const question of questions) {
+      const where = seen.get(question.id);
+      if (where === undefined) {
+        problems.push({
+          kind: "unanchored-question",
+          source,
+          detail: `${question.id} is defined but never anchored — it would render nowhere`,
+        });
+      } else if (where !== source) {
+        problems.push({
+          kind: "unanchored-question",
+          source,
+          detail: `${question.id} is declared for ${source} but anchored in ${where}`,
+        });
+      }
+    }
+  }
+
+  return problems;
+}
+
+/**
  * Render every page and verify it. Nothing is written to disk.
  *
  * `out` is only used to keep the output directory out of the discovered content; see
  * `discover`. Pass it whenever the output lives inside `root`.
+ *
+ * `worksheets` is injectable for the same reason: the schema is global, so a fixture
+ * root would otherwise be checked against the real Day 1 questions and report every one
+ * of them as unanchored. Tests building a temp tree pass their own, or none.
  */
-export async function buildPages(root: string = ROOT, out?: string): Promise<BuildResult> {
+export async function buildPages(
+  root: string = ROOT,
+  out?: string,
+  worksheets: readonly Worksheet[] = WORKSHEETS,
+): Promise<BuildResult> {
   const { pages, assets } = await discover(root, out);
-  const context: LinkContext = {
+  const schema = loadSchema(worksheets);
+  const context = {
     urls: pageUrls(pages),
     assets: new Set(assets),
+    questions: schema.byId,
   };
 
   const built: BuiltPage[] = [];
   for (const page of pages) {
     const markdown = await readFile(path.join(root, page.source), "utf8");
-    const { html, title, links, headingIds } = render(markdown, page.source, context);
-    built.push({ ...page, html: layout(html, title), title, links, headingIds });
+    const { html, title, links, headingIds, anchors } = render(markdown, page.source, context);
+    built.push({ ...page, html: layout(html, title), title, links, headingIds, anchors });
   }
 
   const problems: BuildProblem[] = [];
@@ -132,13 +213,27 @@ export async function buildPages(root: string = ROOT, out?: string): Promise<Bui
   }
 
   problems.push(...checkAnchors(built));
+  problems.push(...checkQuestionAnchors(built, schema));
+  // The registry describes the real schema, so it is only meaningful against it.
+  const registryProblems = worksheets === WORKSHEETS ? checkRegistry(schema) : [];
+  problems.push(
+    ...registryProblems.map((detail) => ({
+      kind: "registry" as const,
+      source: "src/questions/registry.ts",
+      detail,
+    })),
+  );
 
-  return { pages: built, assets, problems };
+  return { pages: built, assets, problems, schema };
 }
 
 /** Render, verify, and write. `out` is a parameter so tests can build to a temp dir. */
-export async function build(root: string = ROOT, out: string = OUT): Promise<BuildResult> {
-  const result = await buildPages(root, out);
+export async function build(
+  root: string = ROOT,
+  out: string = OUT,
+  worksheets: readonly Worksheet[] = WORKSHEETS,
+): Promise<BuildResult> {
+  const result = await buildPages(root, out, worksheets);
 
   if (result.problems.length > 0) {
     const detail = result.problems
@@ -160,6 +255,14 @@ export async function build(root: string = ROOT, out: string = OUT): Promise<Bui
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, page.html, "utf8");
   }
+
+  // The schema as data, so the assistant contract and the importer can key off the
+  // same definitions the pages were rendered from rather than a second copy (#15).
+  await writeFile(
+    path.join(out, "questions.json"),
+    `${JSON.stringify({ worksheets: result.schema.worksheets }, null, 2)}\n`,
+    "utf8",
+  );
 
   for (const asset of result.assets) {
     const destination = path.join(out, asset);
