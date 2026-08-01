@@ -70,7 +70,13 @@ self.addEventListener("install", (event) => {
       // addAll is atomic on purpose: a partially populated cache would serve some pages
       // offline and fail others, which is harder to diagnose than no cache at all.
       await cache.addAll(PRECACHE);
-      await self.skipWaiting();
+      // Deliberately NOT skipWaiting(). A new worker waits until the reader accepts it
+      // (assets/js/sw-update.js). Activating here swapped the cache and claimed the open
+      // page mid-session, which is the interruption docs/decisions/0001 forbids once
+      // answers are being typed.
+      //
+      // A FIRST install is unaffected: with no active worker there is nothing to wait
+      // behind, so it activates and claims immediately.
     })(),
   );
 });
@@ -87,6 +93,13 @@ self.addEventListener("activate", (event) => {
       await self.clients.claim();
     })(),
   );
+});
+
+// The page asks for activation once the reader has accepted the update.
+self.addEventListener("message", (event) => {
+  if (event.data !== null && typeof event.data === "object" && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

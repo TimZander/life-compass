@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { ROOT } from "./build.ts";
+import { layout } from "./layout.ts";
 import { cacheVersion, precachable, renderServiceWorker } from "./serviceworker.ts";
 
 const ENTRIES = [
@@ -131,24 +132,165 @@ describe("renderServiceWorker", () => {
 });
 
 describe("shipped client scripts", () => {
-  it("swRegister_ShippedFile_IsSyntacticallyValidJavaScript", async () => {
-    // Arrange — assets/js/sw-register.js is outside every guard the build has: it is
-    // not in tsconfig's `include` (build/**/*.ts), there is no linter, and it ships on
-    // every page. A syntax error would reach production silently. This is the same
-    // parse check the generated worker gets, for the same reason.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-register.js"), "utf8");
-
-    // Act & Assert
-    assert.doesNotThrow(() => new Function(source));
-  });
-
-  it("swRegister_ShippedFile_RegistersTheWorkerAndReportsFailure", async () => {
+  it("clientEntry_ShippedFile_RegistersTheWorkerAndReportsFailure", async () => {
     // Arrange — a registration that fails silently removes offline support and storage
     // durability (0008) with no signal at all.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-register.js"), "utf8");
+    //
+    // There is no parse check here any more, and its absence is deliberate. The earlier
+    // one used `new Function`, which cannot parse an ES module — `import` is a syntax
+    // error in a classic function body — and it is no longer needed: these files are in
+    // tsconfig.client.json, so `npm run typecheck` parses AND type-checks them, which is
+    // strictly stronger than parsing alone.
+    const source = await readFile(path.join(ROOT, "assets", "js", "app.js"), "utf8");
 
     // Act & Assert
-    assert.ok(source.includes('navigator.serviceWorker.register("/sw.js")'));
+    assert.ok(source.includes('.register("/sw.js")'));
     assert.ok(source.includes("console.error"));
+  });
+});
+
+describe("update prompting", () => {
+  it("renderServiceWorker_Install_DoesNotActivateItself", () => {
+    // Arrange — skipWaiting() during install swapped the cache and claimed the open page
+    // mid-session, which docs/decisions/0001 forbids once answers are being typed.
+    const source = renderServiceWorker(ENTRIES);
+    const install = source.slice(
+      source.indexOf('addEventListener("install"'),
+      source.indexOf('addEventListener("message"'),
+    );
+    // Comments are stripped first. Without that this asserts against the prose as well
+    // as the code, and the comment explaining why skipWaiting() is absent contains the
+    // very string being looked for — the test failed on its own explanation.
+    const code = install
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+
+    // Act & Assert
+    assert.ok(!code.includes("skipWaiting()"));
+  });
+
+  it("renderServiceWorker_MessageHandler_ActivatesOnRequest", () => {
+    // Arrange — activation moves to the reader, so the worker needs a way to be asked.
+    const source = renderServiceWorker(ENTRIES);
+
+    // Act & Assert
+    assert.ok(source.includes('addEventListener("message"'));
+    assert.ok(source.includes('=== "SKIP_WAITING"'));
+    assert.ok(source.includes("self.skipWaiting()"));
+  });
+
+  it("renderServiceWorker_ActivateStill_ClaimsClients", () => {
+    // Arrange — a first install has no worker to wait behind, so it activates and must
+    // still take control of the page that installed it.
+    const source = renderServiceWorker(ENTRIES);
+
+    // Act & Assert
+    assert.ok(source.includes("self.clients.claim()"));
+  });
+});
+
+describe("update feedback", () => {
+  it("swUpdate_AcceptingAnUpdate_ReplacesTheBannerRatherThanDismissingIt", async () => {
+    // Arrange — dismissing made a successful update and a silent failure look identical:
+    // the strip vanished either way, and the page reloads into the same content, so
+    // there was nothing to see. Confirmed on a device before this was changed.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.includes("Updating"));
+    assert.ok(source.includes("did not finish"));
+  });
+
+  it("swUpdate_ReloadListener_IsAttachedOnlyAfterTheReaderAccepts", async () => {
+    // Arrange — controllerchange also fires on a first install, so a listener attached
+    // at startup would reload a page nobody asked to reload.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+    const beforeAccept = source.slice(0, source.indexOf("function accept"));
+
+    // Act & Assert
+    assert.ok(!beforeAccept.includes("controllerchange"));
+    assert.ok(source.includes("controllerchange"));
+  });
+});
+
+describe("update confirmation", () => {
+  it("swUpdate_Confirmation_HappensAfterTheReloadNotDuringIt", async () => {
+    // Arrange — activation often completes in tens of milliseconds, so a progress
+    // message may never paint, and the page carrying it is destroyed by the reload
+    // regardless. The only honest moment to confirm is on the other side.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.includes("sessionStorage.getItem"));
+    assert.ok(source.includes("export function confirmRecentUpdate"));
+
+    // The marker is written inside the controllerchange handler, not on the tap.
+    // Written on the tap, a failed activation left it behind and the next load
+    // announced "Updated" while still offering the same update — the app saying the
+    // opposite of the truth on the one path where it matters.
+    const handler = source.slice(source.indexOf('"controllerchange"'), source.indexOf("worker.postMessage"));
+    assert.ok(handler.includes("sessionStorage.setItem"), "the marker is not set on success");
+    const beforeHandler = source.slice(0, source.indexOf('"controllerchange"'));
+    assert.ok(!beforeHandler.includes("sessionStorage.setItem"), "the marker is set before success");
+  });
+
+  it("swUpdate_Confirmation_ClearsItsMarkerSoItShowsOnce", async () => {
+    // Arrange — negative case: a marker left behind would announce an update on every
+    // subsequent load, which is noise rather than information.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.includes("sessionStorage.removeItem"));
+  });
+
+  it("clientEntry_ConfirmsBeforeRegistering", async () => {
+    // Arrange — the confirmation reports on the load that already happened, so it must
+    // not wait on registration, which is deferred to the load event.
+    const source = await readFile(path.join(ROOT, "assets", "js", "app.js"), "utf8");
+
+    // Act & Assert
+    // `.register(` rather than `serviceWorker.register`: the call is chained across
+    // lines, so the longer string never matches and indexOf returns -1 — which compares
+    // as "earlier than everything" and fails for the wrong reason.
+    const confirmAt = source.indexOf("confirmRecentUpdate()");
+    const registerAt = source.indexOf(".register(");
+    assert.ok(confirmAt >= 0, "confirmRecentUpdate() is not called");
+    assert.ok(registerAt >= 0, "the worker is never registered");
+    assert.ok(confirmAt < registerAt);
+  });
+});
+
+describe("banner surface", () => {
+  it("layout_EveryPage_RendersTheLiveRegionAsStaticMarkup", () => {
+    // Arrange — a screen reader only announces changes to a region that existed before
+    // the change, so creating it on demand and filling it in the same task is routinely
+    // missed. 0001 makes that a defect rather than a nicety.
+    // Act
+    const html = layout("<p>x</p>", "Page");
+
+    // Assert
+    assert.ok(html.includes('<div id="banner-region" aria-live="polite"></div>'));
+  });
+
+  it("banner_ShippedFile_DoesNotCreateTheRegionItself", async () => {
+    // Arrange — negative case: recreating it on demand would silently restore the
+    // announcement bug the static markup exists to prevent.
+    const source = await readFile(path.join(ROOT, "assets", "js", "banner.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(!source.includes("document.body.appendChild"));
+    assert.ok(source.includes("console.error"));
+  });
+
+  it("banner_ShippedFile_UsesOnePendingSlotAndOneListener", async () => {
+    // Arrange — a listener per deferred message leaked one for every message a reader
+    // typed through, and let two scheduled timeouts both render.
+    const source = await readFile(path.join(ROOT, "assets", "js", "banner.js"), "utf8");
+
+    // Act & Assert
+    assert.equal(source.match(/addEventListener\("focusout"/g)?.length, 1);
+    assert.ok(source.includes("let pending"));
+    assert.ok(source.includes("watchingForPause"));
   });
 });

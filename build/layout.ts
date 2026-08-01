@@ -10,6 +10,14 @@
 
 const SITE_TITLE = "Life Compass";
 
+/**
+ * Shown when a page is shared or listed by a search engine. Without it, whatever text
+ * happens to sit near the top of the document is used instead — which for a worksheet is
+ * the time estimate.
+ */
+const SITE_DESCRIPTION =
+  "A five-day investigation into what matters most in your life. Your answers stay in this browser.";
+
 /** Escape text destined for an HTML text node or a double-quoted attribute. */
 function escapeHtml(value: string): string {
   return value
@@ -50,17 +58,27 @@ export function layout(content: string, pageTitle: string | null): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(documentTitle(pageTitle))}</title>
+  <meta name="description" content="${escapeHtml(SITE_DESCRIPTION)}">
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#9a6b3f">
   <link rel="icon" href="/icons/icon-192.png" type="image/png">
-  <!-- External rather than inline: the site's CSP has no 'unsafe-inline', and
-       build/headers.ts refuses to let it gain one. -->
-  <script src="/assets/js/sw-register.js" defer></script>
+  <!-- The installed app opens standalone, so the OS chrome takes its colour from here
+       and the page is the only thing on screen. Matching the paper the pages are drawn
+       on keeps the seam between them invisible. -->
+  <meta name="color-scheme" content="light">
+  <!-- A module, resolved natively by the browser rather than bundled (0003), and
+       external because the CSP has no 'unsafe-inline' and headers.ts will not let it
+       gain one. type="module" defers by default. -->
+  <script type="module" src="/assets/js/app.js"></script>
 </head>
 <body>
   <a class="wordmark" href="/"><svg class="wm-star" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
   <main><article>${content}</article></main>
+  <!-- The banner's live region. Static markup on purpose: a screen reader only
+       announces changes to a region that existed beforehand, so creating it on demand
+       and filling it in the same task is routinely missed (0001). -->
+  <div id="banner-region" aria-live="polite"></div>
   <nav class="endnav">
 ${nav}
   </nav>

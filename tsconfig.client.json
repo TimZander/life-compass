@@ -1,0 +1,36 @@
+{
+  // Client code is checked, not compiled.
+  //
+  // docs/decisions/0002 chose real TypeScript for the build because a build already
+  // existed, and said plainly that JSDoc earns its syntax exactly when there is no
+  // compile step. Client code is that case: browsers load these modules as written, so
+  // annotating them buys type safety for no toolchain at all. When there is enough
+  // client code to justify emitting — 0003 · C1a expects that at the storage work — this
+  // is the file that decision replaces.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    // nodenext, not bundler. "bundler" resolution accepts `from "./sw-update"` — a
+    // specifier no browser can resolve, because nothing is bundling this. The typecheck
+    // is the only guard on this tier, so accepting an import that 404s means a missing
+    // ".js" disables every client module in production while every check passes.
+    // Node's ESM resolution matches the browser's for relative specifiers: the extension
+    // is required and the file must exist.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+
+    "skipLibCheck": true
+  },
+  "include": ["assets/js/**/*.js"]
+}

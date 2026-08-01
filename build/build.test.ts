@@ -569,7 +569,9 @@ describe("service worker precache", () => {
     for (const url of [
       "/manifest.webmanifest",
       "/assets/css/style.css",
-      "/assets/js/sw-register.js",
+      "/assets/js/app.js",
+      "/assets/js/banner.js",
+      "/assets/js/sw-update.js",
       "/icons/icon-192.png",
       "/icons/icon-maskable-512.png",
       "/questions.json",
