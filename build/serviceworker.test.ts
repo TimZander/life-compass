@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, it } from "node:test";
+import { ROOT } from "./build.ts";
 import { cacheVersion, precachable, renderServiceWorker } from "./serviceworker.ts";
 
 const ENTRIES = [
@@ -124,5 +127,28 @@ describe("renderServiceWorker", () => {
 
     // Act & Assert
     assert.ok(source.includes('request.method !== "GET"'));
+  });
+});
+
+describe("shipped client scripts", () => {
+  it("swRegister_ShippedFile_IsSyntacticallyValidJavaScript", async () => {
+    // Arrange — assets/js/sw-register.js is outside every guard the build has: it is
+    // not in tsconfig's `include` (build/**/*.ts), there is no linter, and it ships on
+    // every page. A syntax error would reach production silently. This is the same
+    // parse check the generated worker gets, for the same reason.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-register.js"), "utf8");
+
+    // Act & Assert
+    assert.doesNotThrow(() => new Function(source));
+  });
+
+  it("swRegister_ShippedFile_RegistersTheWorkerAndReportsFailure", async () => {
+    // Arrange — a registration that fails silently removes offline support and storage
+    // durability (0008) with no signal at all.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-register.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.includes('navigator.serviceWorker.register("/sw.js")'));
+    assert.ok(source.includes("console.error"));
   });
 });

@@ -7,7 +7,7 @@
  * means effectively never — so the build is the only place it can be caught cheaply.
  */
 
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { discover, pageUrls, type Page } from "./pages.ts";
 import { render } from "./markdown.ts";
@@ -296,21 +296,27 @@ export async function build(
 
   // The schema as data, so the assistant contract and the importer can key off the
   // same definitions the pages were rendered from rather than a second copy (#15).
-  await writeFile(
-    path.join(out, "questions.json"),
-    `${JSON.stringify({ worksheets: result.schema.worksheets }, null, 2)}\n`,
-    "utf8",
-  );
+  const schemaJson = `${JSON.stringify({ worksheets: result.schema.worksheets }, null, 2)}\n`;
+  await writeFile(path.join(out, "questions.json"), schemaJson, "utf8");
+
+  // Everything the site serves, gathered as it is written so the service worker's
+  // precache list and its cache version cover the same bytes that shipped. Anything
+  // Pages consumes rather than serves is dropped by `precachable`, not here, so the
+  // rule lives in one place.
+  const precache: PrecacheEntry[] = [{ url: "/questions.json", content: schemaJson }];
 
   for (const asset of result.assets) {
     const destination = path.join(out, asset);
     await mkdir(path.dirname(destination), { recursive: true });
-    await cp(path.join(root, asset), destination);
+    // Read rather than `cp`, because the bytes are needed for the cache version anyway
+    // and reading them twice to avoid one buffer is a poor trade.
+    const bytes = await readFile(path.join(root, asset));
+    await writeFile(destination, bytes);
+    precache.push({ url: `/${asset}`, content: bytes });
   }
 
   // Icons are generated rather than committed; a PWA cannot be installed without them,
   // and installation is what makes storage durable (docs/decisions/0008).
-  const precache: PrecacheEntry[] = [];
   for (const icon of icons()) {
     const destination = path.join(out, icon.output);
     await mkdir(path.dirname(destination), { recursive: true });
@@ -321,11 +327,7 @@ export async function build(
   for (const page of result.pages) {
     precache.push({ url: page.url, content: page.html });
   }
-  for (const asset of result.assets) {
-    precache.push({ url: `/${asset}`, content: await readFile(path.join(root, asset)) });
-  }
 
-  // Written last, so its cache version covers everything above it.
   await writeFile(path.join(out, "sw.js"), renderServiceWorker(precache), "utf8");
 
   return result;

@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
-import { build, buildPages, type BuildResult } from "./build.ts";
+import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -529,5 +529,70 @@ describe("canonical urls", () => {
     // Assert
     assert.equal(result.pages.find((c) => c.source === "rigorous/README.md")?.url, "/rigorous/");
     assert.equal(result.pages.find((c) => c.source === "README.md")?.url, "/");
+  });
+});
+
+describe("service worker precache", () => {
+  it("build_RealSite_PrecachesEveryPublishedPage", async () => {
+    // Arrange — a page missing from the precache list still builds, still deploys, and
+    // quietly stops working offline. Nothing else notices, so this is the only guard.
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-sw-"));
+    temporary.push(out);
+
+    // Act
+    const result = await build(ROOT, out);
+    const worker = await readFile(path.join(out, "sw.js"), "utf8");
+    const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
+    assert.ok(match?.[1] !== undefined, "PRECACHE not found in the generated worker");
+    const precached = new Set(JSON.parse(match[1]) as string[]);
+
+    // Assert
+    const missing = result.pages.map((page) => page.url).filter((url) => !precached.has(url));
+    assert.deepEqual(missing, []);
+  });
+
+  it("build_RealSite_PrecachesTheShellAndTheSchema", async () => {
+    // Arrange — the manifest, the icons, the registration script and questions.json are
+    // all served, so all of them belong in the cache. questions.json was the one that
+    // was not, which would have surfaced at #15 as "the agent bridge fails offline".
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-sw-"));
+    temporary.push(out);
+
+    // Act
+    await build(ROOT, out);
+    const worker = await readFile(path.join(out, "sw.js"), "utf8");
+    const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
+    assert.ok(match?.[1] !== undefined);
+    const precached = new Set(JSON.parse(match[1]) as string[]);
+
+    // Assert
+    for (const url of [
+      "/manifest.webmanifest",
+      "/assets/css/style.css",
+      "/assets/js/sw-register.js",
+      "/icons/icon-192.png",
+      "/icons/icon-maskable-512.png",
+      "/questions.json",
+      "/404",
+    ]) {
+      assert.ok(precached.has(url), `${url} is served but not precached`);
+    }
+  });
+
+  it("build_RealSite_NeverPrecachesAFileCloudflareConsumes", async () => {
+    // Arrange — negative case. addAll is atomic, so one such entry 404s, the install
+    // rejects, and the site ends up with no service worker at all.
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-sw-"));
+    temporary.push(out);
+
+    // Act
+    await build(ROOT, out);
+    const worker = await readFile(path.join(out, "sw.js"), "utf8");
+    const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
+    assert.ok(match?.[1] !== undefined);
+    const precached = JSON.parse(match[1]) as string[];
+
+    // Assert
+    assert.deepEqual(precached.filter((url) => /(^|\/)_/.test(url)), []);
   });
 });

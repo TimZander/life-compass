@@ -185,8 +185,17 @@ export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
 
   // The service worker gets its own policy out of necessity, which makes it the one
   // place the site-wide rule can be escaped. Check it rather than trust it.
+  //
+  // Its absence is a defect rather than a choice: the build emits dist/sw.js on every
+  // run, so a worker always exists and always needs this. Deleting the block used to
+  // build clean while silently restoring the inherited `connect-src 'none'` — which is
+  // the exact bug this rule was added to fix, reachable again by deletion.
   const worker = rules.find((rule) => rule.path === "/sw.js");
-  if (worker !== undefined) {
+  if (worker === undefined) {
+    problems.push(
+      '_headers has no "/sw.js" rule, but the build always emits a service worker — without it the worker inherits connect-src \'none\' and cannot fetch anything',
+    );
+  } else {
     if (worker.headers.get("cache-control") !== "no-cache") {
       problems.push(
         '_headers "/sw.js" must be no-cache, or an installed client keeps an old worker and never sees a deploy',
