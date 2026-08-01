@@ -71,6 +71,10 @@ export function layout(content: string, pageTitle: string | null): string {
 <body>
   <a class="wordmark" href="/"><svg class="wm-star" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
   <main><article>${content}</article></main>
+  <!-- The banner's live region. Static markup on purpose: a screen reader only
+       announces changes to a region that existed beforehand, so creating it on demand
+       and filling it in the same task is routinely missed (0001). -->
+  <div id="banner-region" aria-live="polite"></div>
   <nav class="endnav">
 ${nav}
   </nav>

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { ROOT } from "./build.ts";
+import { layout } from "./layout.ts";
 import { cacheVersion, precachable, renderServiceWorker } from "./serviceworker.ts";
 
 const ENTRIES = [
@@ -221,9 +222,17 @@ describe("update confirmation", () => {
     const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
 
     // Act & Assert
-    assert.ok(source.includes("sessionStorage.setItem"));
     assert.ok(source.includes("sessionStorage.getItem"));
     assert.ok(source.includes("export function confirmRecentUpdate"));
+
+    // The marker is written inside the controllerchange handler, not on the tap.
+    // Written on the tap, a failed activation left it behind and the next load
+    // announced "Updated" while still offering the same update — the app saying the
+    // opposite of the truth on the one path where it matters.
+    const handler = source.slice(source.indexOf('"controllerchange"'), source.indexOf("worker.postMessage"));
+    assert.ok(handler.includes("sessionStorage.setItem"), "the marker is not set on success");
+    const beforeHandler = source.slice(0, source.indexOf('"controllerchange"'));
+    assert.ok(!beforeHandler.includes("sessionStorage.setItem"), "the marker is set before success");
   });
 
   it("swUpdate_Confirmation_ClearsItsMarkerSoItShowsOnce", async () => {
@@ -249,5 +258,39 @@ describe("update confirmation", () => {
     assert.ok(confirmAt >= 0, "confirmRecentUpdate() is not called");
     assert.ok(registerAt >= 0, "the worker is never registered");
     assert.ok(confirmAt < registerAt);
+  });
+});
+
+describe("banner surface", () => {
+  it("layout_EveryPage_RendersTheLiveRegionAsStaticMarkup", () => {
+    // Arrange — a screen reader only announces changes to a region that existed before
+    // the change, so creating it on demand and filling it in the same task is routinely
+    // missed. 0001 makes that a defect rather than a nicety.
+    // Act
+    const html = layout("<p>x</p>", "Page");
+
+    // Assert
+    assert.ok(html.includes('<div id="banner-region" aria-live="polite"></div>'));
+  });
+
+  it("banner_ShippedFile_DoesNotCreateTheRegionItself", async () => {
+    // Arrange — negative case: recreating it on demand would silently restore the
+    // announcement bug the static markup exists to prevent.
+    const source = await readFile(path.join(ROOT, "assets", "js", "banner.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(!source.includes("document.body.appendChild"));
+    assert.ok(source.includes("console.error"));
+  });
+
+  it("banner_ShippedFile_UsesOnePendingSlotAndOneListener", async () => {
+    // Arrange — a listener per deferred message leaked one for every message a reader
+    // typed through, and let two scheduled timeouts both render.
+    const source = await readFile(path.join(ROOT, "assets", "js", "banner.js"), "utf8");
+
+    // Act & Assert
+    assert.equal(source.match(/addEventListener\("focusout"/g)?.length, 1);
+    assert.ok(source.includes("let pending"));
+    assert.ok(source.includes("watchingForPause"));
   });
 });

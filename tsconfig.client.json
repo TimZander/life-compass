@@ -10,8 +10,14 @@
   "compilerOptions": {
     "target": "es2023",
     "lib": ["es2023", "dom", "dom.iterable"],
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    // nodenext, not bundler. "bundler" resolution accepts `from "./sw-update"` — a
+    // specifier no browser can resolve, because nothing is bundling this. The typecheck
+    // is the only guard on this tier, so accepting an import that 404s means a missing
+    // ".js" disables every client module in production while every check passes.
+    // Node's ESM resolution matches the browser's for relative specifiers: the extension
+    // is required and the file must exist.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
 
     "allowJs": true,
     "checkJs": true,

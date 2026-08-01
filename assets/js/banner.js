@@ -24,18 +24,25 @@
 
 const REGION_ID = "banner-region";
 
-/** @returns {HTMLElement} */
+/**
+ * The live region, which the layout renders as static markup.
+ *
+ * It is NOT created here on demand. A screen reader only announces changes to a live
+ * region that existed before the change — creating the region and filling it in the same
+ * task is routinely missed entirely. Since docs/decisions/0001 makes accessibility the
+ * point rather than a courtesy, an announcement that silently does not happen is worse
+ * here than almost anywhere.
+ *
+ * @returns {HTMLElement | null}
+ */
 function region() {
-  const existing = document.getElementById(REGION_ID);
-  if (existing !== null) {
-    return existing;
+  const found = document.getElementById(REGION_ID);
+  if (found === null) {
+    // Loud rather than silent: the layout is supposed to provide this, and quietly
+    // recreating it would restore the announcement bug it exists to prevent.
+    console.error(`No #${REGION_ID} in the document; the layout should render it.`);
   }
-  const created = document.createElement("div");
-  created.id = REGION_ID;
-  // polite, so a screen reader finishes the current utterance rather than cutting it off.
-  created.setAttribute("aria-live", "polite");
-  document.body.appendChild(created);
-  return created;
+  return found;
 }
 
 /** Is the reader mid-input right now? */
@@ -48,35 +55,52 @@ function isTyping() {
 }
 
 /**
- * Run once the reader is not typing.
+ * The message waiting for a pause in typing, if any.
  *
- * The timeout matters: blurring one field to focus the next fires `focusout` while the
- * reader is still very much mid-thought, and `document.activeElement` has not yet moved
- * to the new field. Letting focus settle first avoids treating a tab between fields as
- * a pause.
+ * A single slot rather than a queue, and one listener rather than one per call. Adding a
+ * listener per deferred message leaked one for every message a reader typed through, and
+ * let two already-scheduled timeouts both observe "not typing" and render twice. One
+ * slot also makes "the newest wins" true, which was previously only claimed.
  *
- * @param {() => void} run
+ * @type {BannerMessage | null}
  */
-function whenNotTyping(run) {
-  if (!isTyping()) {
-    run();
+let pending = null;
+let watchingForPause = false;
+
+/**
+ * Blurring one field to focus the next fires `focusout` while the reader is still very
+ * much mid-thought, and `document.activeElement` has not moved yet. Letting focus settle
+ * first avoids treating a tab between fields as a pause.
+ */
+function onFocusOut() {
+  window.setTimeout(() => {
+    if (isTyping() || pending === null) {
+      return;
+    }
+    const message = pending;
+    pending = null;
+    watchingForPause = false;
+    document.removeEventListener("focusout", onFocusOut);
+    render(message);
+  }, 0);
+}
+
+/** @param {BannerMessage} message */
+function deferUntilPause(message) {
+  pending = message;
+  if (watchingForPause) {
     return;
   }
-  /** @type {(event: Event) => void} */
-  const check = () => {
-    window.setTimeout(() => {
-      if (!isTyping()) {
-        document.removeEventListener("focusout", check);
-        run();
-      }
-    }, 0);
-  };
-  document.addEventListener("focusout", check);
+  watchingForPause = true;
+  document.addEventListener("focusout", onFocusOut);
 }
 
 /** @param {BannerMessage} message */
 function render(message) {
   const host = region();
+  if (host === null) {
+    return;
+  }
   host.replaceChildren();
 
   const banner = document.createElement("div");
@@ -97,10 +121,10 @@ function render(message) {
     button.type = "button";
     button.textContent = action.label;
     button.className = action.primary === true ? "banner-action banner-primary" : "banner-action";
-    button.addEventListener("click", () => {
-      dismissBanner();
-      action.onSelect();
-    });
+    // The action decides what happens to the banner. Dismissing here first made
+    // "Update" depend on immediately re-showing a banner this had just torn down —
+    // a hidden contract between two files, where every action reads as dismissing.
+    button.addEventListener("click", action.onSelect);
     actions.appendChild(button);
   }
   banner.appendChild(actions);
@@ -110,16 +134,22 @@ function render(message) {
 /**
  * Offer a message, waiting for a pause in typing if necessary.
  *
- * Only one message shows at a time and the newest wins. That is sufficient while there
- * is exactly one kind of message; precedence becomes a real decision when install and
- * storage messages arrive alongside this one.
+ * One message shows at a time and the newest wins — including while a message is still
+ * waiting for a pause. Precedence between *kinds* of message becomes a real decision
+ * when install and storage messages arrive alongside this one; until then, last-wins is
+ * the whole rule.
  *
  * @param {BannerMessage} message
  */
 export function showBanner(message) {
-  whenNotTyping(() => render(message));
+  if (isTyping()) {
+    deferUntilPause(message);
+    return;
+  }
+  render(message);
 }
 
 export function dismissBanner() {
-  region().replaceChildren();
+  pending = null;
+  region()?.replaceChildren();
 }

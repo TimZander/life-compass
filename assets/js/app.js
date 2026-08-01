@@ -17,7 +17,16 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
-      .then(watchForUpdates)
+      .then((registration) => {
+        try {
+          watchForUpdates(registration);
+        } catch (error) {
+          // Separated from the registration failure below: registration succeeding and
+          // update-watching throwing are different problems, and one message for both
+          // sends whoever reads it to the wrong place.
+          console.error("Watching for service worker updates failed:", error);
+        }
+      })
       .catch((error) => {
         // Survivable — every page still works from the network — but it silently removes
         // offline support and storage durability (0008), so say so rather than swallow it.

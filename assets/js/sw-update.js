@@ -8,20 +8,25 @@
  * answers are being typed. Activation now happens when the reader says so.
  */
 
-import { showBanner } from "./banner.js";
+import { dismissBanner, showBanner } from "./banner.js";
 
 /** How long to wait for the reload before admitting it is not coming. */
 const ACTIVATION_TIMEOUT_MS = 10_000;
 
 /**
- * Marks that an update was accepted, so the page can confirm it AFTER reloading.
+ * Marks that an update actually applied, so the page can confirm it after reloading.
  *
  * Confirming before the reload cannot work reliably. Activation often completes in tens
  * of milliseconds, so a progress message may never paint — and the page it was painted
  * on is destroyed by the reload regardless. The only moment an update can be confirmed
- * honestly is once it has actually happened, which is on the other side.
+ * honestly is once it has happened.
+ *
+ * Written when the controller actually changes, NOT when the button is tapped. Marking
+ * on the tap meant a failed activation left the marker behind, and the next load
+ * announced "Updated" while the same update was still being offered — the app stating
+ * the opposite of the truth on the one path where it matters most.
  */
-const ACCEPTED_KEY = "life-compass:update-accepted";
+const APPLIED_KEY = "life-compass:update-applied";
 
 /** @param {ServiceWorkerRegistration} registration */
 export function watchForUpdates(registration) {
@@ -46,6 +51,16 @@ export function watchForUpdates(registration) {
       }
     });
   });
+
+  // Browsers look for a new worker on navigation, so an installed app left open on one
+  // page never notices a deploy — which is why verifying this by hand required fully
+  // closing and reopening it. Checking when the app returns to the foreground makes an
+  // update arrive when someone comes back, rather than when they happen to navigate.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      void registration.update();
+    }
+  });
 }
 
 /** @param {ServiceWorker} worker */
@@ -54,7 +69,7 @@ function offer(worker) {
     id: "update",
     text: "A new version of the workbook is ready.",
     actions: [
-      { label: "Later", onSelect: () => {} },
+      { label: "Later", onSelect: dismissBanner },
       { label: "Update", primary: true, onSelect: () => accept(worker) },
     ],
   });
@@ -71,65 +86,71 @@ function offer(worker) {
  * @param {ServiceWorker} worker
  */
 function accept(worker) {
-  showBanner({ id: "update", text: "Updating\u2026", actions: [] });
-  try {
-    window.sessionStorage.setItem(ACCEPTED_KEY, "1");
-  } catch {
-    // Session storage can be unavailable in some privacy modes. The update still
-    // applies; only the confirmation afterwards is lost, so this is not worth failing.
-  }
+  showBanner({ id: "update", text: "Updating…", actions: [] });
 
-  // If the reload never arrives, say that rather than leaving "Updating..." forever.
+  // If the reload never arrives, say so rather than leaving "Updating..." forever.
   // A stuck progress message is the same lie as no feedback, told more slowly.
-  window.setTimeout(() => {
+  const giveUp = window.setTimeout(() => {
     showBanner({
       id: "update",
       text: "The update did not finish. Close the app and open it again.",
-      actions: [{ label: "Dismiss", onSelect: () => {} }],
+      actions: [{ label: "Dismiss", onSelect: dismissBanner }],
     });
   }, ACTIVATION_TIMEOUT_MS);
 
-  activate(worker);
-}
-
-/** @param {ServiceWorker} worker */
-function activate(worker) {
   // Registered only once the reader has asked, because `controllerchange` also fires on
   // a first install — a listener attached earlier would reload a page nobody asked to
   // have reloaded.
   navigator.serviceWorker.addEventListener(
     "controllerchange",
     () => {
+      window.clearTimeout(giveUp);
+      try {
+        window.sessionStorage.setItem(APPLIED_KEY, "1");
+      } catch {
+        // Session storage can be unavailable in some privacy modes. The update has
+        // already applied by this point; only the confirmation afterwards is lost.
+      }
       window.location.reload();
     },
     { once: true },
   );
+
   worker.postMessage({ type: "SKIP_WAITING" });
 }
 
 /**
  * If an update was just applied, say so.
  *
- * Called on every page load, and silent unless this particular load is the one that
- * followed an accepted update. This is what makes the update observable at all: the page
- * looks identical before and after, so without it a reader has no way to distinguish a
- * successful update from a button that did nothing — which is exactly what happened on
- * the first device test.
+ * Called on every page load, and silent unless this particular load followed one. This
+ * is what makes an update observable at all: the page looks identical before and after,
+ * so without it a reader cannot distinguish a successful update from a button that did
+ * nothing — which is exactly what happened on the first device test.
  */
 export function confirmRecentUpdate() {
-  let accepted = null;
+  /** @type {string | null} */
+  let applied = null;
   try {
-    accepted = window.sessionStorage.getItem(ACCEPTED_KEY);
-    window.sessionStorage.removeItem(ACCEPTED_KEY);
+    applied = window.sessionStorage.getItem(APPLIED_KEY);
   } catch {
     return;
   }
-  if (accepted === null) {
+  if (applied === null) {
     return;
   }
+
+  // Cleared before announcing, and announced only if the clear succeeded. A marker that
+  // survives would repeat this on every subsequent load, which is noise wearing the
+  // clothes of information.
+  try {
+    window.sessionStorage.removeItem(APPLIED_KEY);
+  } catch {
+    return;
+  }
+
   showBanner({
     id: "update",
     text: "Updated. You are on the latest version.",
-    actions: [{ label: "Dismiss", onSelect: () => {} }],
+    actions: [{ label: "Dismiss", onSelect: dismissBanner }],
   });
 }
