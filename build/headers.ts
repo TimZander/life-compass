@@ -53,12 +53,61 @@ export function parseHeaders(source: string): readonly HeaderRule[] {
   return rules.map((rule) => ({ path: rule.path, headers: rule.headers }));
 }
 
-/** Directives that must be present on `/*`, and why removing one matters. */
-const REQUIRED_CSP: readonly (readonly [directive: string, because: string])[] = [
-  ["default-src 'self'", "third-party resources would load again"],
-  ["connect-src 'none'", "the application could transmit data — this is the privacy claim"],
-  ["form-action 'none'", "a form could exfiltrate answers with no script involved"],
+/**
+ * Split a policy into `directive -> sources`.
+ *
+ * Checking a policy by substring answers "does this text appear?" when the question is
+ * "is this directive exactly this?" — and those differ in the direction that matters.
+ * Policies are almost never weakened by deleting a directive; they are weakened by
+ * appending one more source to an existing one. `connect-src 'none' https://elsewhere`
+ * contains the substring `connect-src 'none'` and is not remotely the same policy.
+ */
+export function parseCsp(value: string): ReadonlyMap<string, readonly string[]> {
+  const directives = new Map<string, readonly string[]>();
+  for (const part of value.split(";")) {
+    const [name, ...sources] = part.trim().split(/\s+/).filter((token) => token !== "");
+    if (name !== undefined) {
+      directives.set(name.toLowerCase(), sources);
+    }
+  }
+  return directives;
+}
+
+/** Directives whose source list must match exactly, and why. */
+const REQUIRED_CSP: readonly {
+  readonly directive: string;
+  readonly sources: readonly string[];
+  readonly because: string;
+}[] = [
+  {
+    directive: "default-src",
+    sources: ["'self'"],
+    because: "third-party resources would load again",
+  },
+  {
+    directive: "connect-src",
+    sources: ["'none'"],
+    because: "the application could transmit data — this is the privacy claim",
+  },
+  {
+    directive: "form-action",
+    sources: ["'none'"],
+    because: "a form could exfiltrate answers with no script involved",
+  },
 ];
+
+/** Headers whose absence is a regression, with the reason each exists. */
+const REQUIRED_HEADERS: readonly (readonly [name: string, because: string])[] = [
+  ["x-content-type-options", "a mistyped content type could be reinterpreted as executable"],
+  ["referrer-policy", "a worksheet URL names which day someone is working through"],
+  ["permissions-policy", "docs/decisions/0006 decided this application asks for no microphone"],
+];
+
+/** Sources that are a bare keyword: `'self'`, `'none'`. Anything else names something. */
+const KEYWORD_SOURCE = /^'[a-z0-9-]+'$/;
+
+/** Keywords that are syntactically fine and defeat the point. */
+const FORBIDDEN_KEYWORDS: ReadonlySet<string> = new Set(["'unsafe-inline'", "'unsafe-eval'"]);
 
 /** Report anything that would quietly weaken the contract. */
 export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
@@ -70,21 +119,48 @@ export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
     return problems;
   }
 
-  const csp = catchAll.headers.get("content-security-policy");
-  if (csp === undefined) {
+  const declared = catchAll.headers.get("content-security-policy");
+  if (declared === undefined) {
     problems.push('_headers "/*" declares no Content-Security-Policy');
     return problems;
   }
 
-  for (const [directive, because] of REQUIRED_CSP) {
-    if (!csp.includes(directive)) {
-      problems.push(`_headers "/*" CSP is missing ${directive} — without it, ${because}`);
+  const csp = parseCsp(declared);
+
+  for (const { directive, sources, because } of REQUIRED_CSP) {
+    const actual = csp.get(directive);
+    if (actual === undefined) {
+      problems.push(`CSP has no ${directive} — without it, ${because}`);
+      continue;
+    }
+    if (actual.length !== sources.length || actual.some((src, i) => src !== sources[i])) {
+      problems.push(
+        `CSP ${directive} is "${actual.join(" ")}", expected exactly "${sources.join(" ")}" — ${because}`,
+      );
     }
   }
 
-  for (const header of ["x-content-type-options", "referrer-policy"]) {
+  // The broader rule, and the one that catches the realistic drift. This site is
+  // entirely self-hosted by construction: no CDN (docs/decisions/0003), nothing external
+  // (0006). So no directive may name a host, scheme or wildcard — not just the three
+  // above. An `img-src https://cdn…` added in two years by someone who has not read 0006
+  // fails the build rather than quietly ending the privacy claim. If a `data:` icon is
+  // ever genuinely wanted, this failing is the point: the exemption gets added on purpose.
+  for (const [directive, sources] of csp) {
+    for (const source of sources) {
+      if (!KEYWORD_SOURCE.test(source)) {
+        problems.push(
+          `CSP ${directive} names ${source}; only keyword sources are allowed, because nothing on this site is loaded from anywhere else`,
+        );
+      } else if (FORBIDDEN_KEYWORDS.has(source)) {
+        problems.push(`CSP ${directive} allows ${source}, which defeats the policy`);
+      }
+    }
+  }
+
+  for (const [header, because] of REQUIRED_HEADERS) {
     if (!catchAll.headers.has(header)) {
-      problems.push(`_headers "/*" no longer sets ${header}`);
+      problems.push(`_headers "/*" no longer sets ${header} — ${because}`);
     }
   }
 

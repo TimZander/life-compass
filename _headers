@@ -28,3 +28,8 @@
   X-Content-Type-Options: nosniff
   # A worksheet URL names which day someone is working through. Send nothing outward.
   Referrer-Policy: no-referrer
+  # docs/decisions/0006 decided against in-app speech recognition, because the obvious
+  # implementation ships audio to a vendor. This makes that decision structural rather
+  # than merely unimplemented: the page cannot ask for a microphone even if some future
+  # dependency tries. Dictation still works — it happens in the keyboard, not the page.
+  Permissions-Policy: microphone=(), camera=(), geolocation=()

@@ -485,9 +485,12 @@ describe("canonical urls", () => {
     const result = await site();
 
     // Act
+    // The fragment is stripped rather than excluded from the pattern: a character class
+    // that stops at "#" never matches an anchored link at all, so `/page.html#frag`
+    // was invisible to this assertion while it appeared to cover every emitted link.
     const withExtension = result.pages.flatMap((page) =>
-      [...page.html.matchAll(/href="(\/[^"#]*)"/g)]
-        .map((match) => match[1] ?? "")
+      [...page.html.matchAll(/href="(\/[^"]*)"/g)]
+        .map((match) => (match[1] ?? "").split("#")[0] ?? "")
         .filter((href) => href.endsWith(".html")),
     );
 

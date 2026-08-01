@@ -80,17 +80,18 @@ export async function resolveFile(urlPath: string, root: string = OUT): Promise<
     // fall through to the extensionless lookup
   }
 
-  if (path.extname(candidate) === "") {
-    try {
-      const asHtml = `${candidate}.html`;
-      await stat(asHtml);
-      return asHtml;
-    } catch {
-      return null;
-    }
+  // Attempted unconditionally rather than only for extensionless paths. Guarding on
+  // `extname === ""` looks tidy and silently excludes any page whose name contains a
+  // dot — `/v1.2-notes` has extname ".2-notes" — which would 404 locally while
+  // production served it, the exact split this branch exists to prevent. A file that
+  // does not exist simply fails the stat.
+  try {
+    const asHtml = `${candidate}.html`;
+    await stat(asHtml);
+    return asHtml;
+  } catch {
+    return null;
   }
-
-  return null;
 }
 
 export const server = http.createServer((request, response) => {

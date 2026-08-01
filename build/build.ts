@@ -237,6 +237,17 @@ export async function buildPages(
         detail: "_headers is missing — the site would deploy with no security headers at all",
       });
     }
+
+    // Validating the source file proves what was declared, not what ships. If _headers
+    // ever stopped being copied — a SKIP_FILES edit, a change to discover — the policy
+    // would vanish from production while this check still reported the contract intact.
+    if (!assets.includes("_headers")) {
+      problems.push({
+        kind: "headers",
+        source: "_headers",
+        detail: "_headers is not among the copied assets, so it would never reach the deployed site",
+      });
+    }
   }
 
   // The registry describes the real schema, so it is only meaningful against it.

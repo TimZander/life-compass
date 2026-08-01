@@ -41,6 +41,12 @@ jobs:
       # before publishing, not merely a build step.
       - run: npm run build
 
+      # Stamp the output so propagation can actually be detected. This is a deployment
+      # concern, not a build one — the build has no business knowing about commits — so
+      # it is written here rather than emitted by build.ts.
+      - name: Stamp the build
+        run: echo "$GITHUB_SHA" > dist/build.txt
+
       - name: Deploy to production
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
@@ -52,19 +58,30 @@ jobs:
 
       # Pages does not serve a new deploy on every edge instantly, so a smoke test run
       # immediately can read the PREVIOUS deployment and pass or fail for reasons that
-      # have nothing to do with this build. Poll until the deployed HTML is actually
-      # being served, then assert against it.
+      # have nothing to do with this build.
+      #
+      # Polling for a 200 on "/" — which this did until now — detects nothing: the
+      # previous deployment already answers 200, so the loop exited on its first attempt
+      # and every assertion below could run against the deployment it was meant to
+      # replace. A passing run was not evidence that THIS build was tested.
       - name: Wait for propagation, then smoke-test
         env:
           BASE_URL: https://lifecompass.timzander.com
         run: |
-          # ~3 minutes. Exits the moment the site answers, so this costs seconds on a
-          # normal deploy and only spends the budget on a genuinely slow tail.
-          for i in $(seq 1 36); do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/" || echo 000)
-            [ "$code" = "200" ] && break
+          # ~5 minutes, exiting the moment this commit's stamp appears — so a normal
+          # deploy costs seconds and only a genuinely slow tail spends the budget.
+          served=""
+          for _ in $(seq 1 60); do
+            served=$(curl -sS "$BASE_URL/build.txt" 2>/dev/null | tr -d '[:space:]' || echo "")
+            [ "$served" = "$GITHUB_SHA" ] && break
             sleep 5
           done
+
+          if [ "$served" != "$GITHUB_SHA" ]; then
+            echo "::error::this deployment never reached the edge (serving '$served', expected '$GITHUB_SHA'); nothing below would have tested it"
+            exit 1
+          fi
+          echo "ok  build.txt matches $GITHUB_SHA — asserting against this deployment"
 
           fail=0
           check() {
