@@ -10,13 +10,15 @@ becomes **Accepted** in the pull request that implements it.
 
 Options and consequences are labelled (`O1`, `C1`, …) so they can be cited precisely
 from issues, pull requests, and other records — `0004 · C3` is the third consequence
-of record 0004.
+of record 0004. A consequence added after a record is published gets a suffixed label
+(`C1a`) rather than renumbering the ones after it, since renumbering would invalidate
+every citation already written down.
 
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-voice-first-input-is-a-primary-constraint.md) | Voice-first input is a primary design constraint | Proposed |
-| [0002](0002-typescript-not-jsdoc-typed-javascript.md) | TypeScript, not JSDoc-typed JavaScript | Proposed |
-| [0003](0003-multi-page-static-rendering-no-framework.md) | Multi-page static rendering, no framework, no bundler | Proposed |
+| [0002](0002-typescript-not-jsdoc-typed-javascript.md) | TypeScript, not JSDoc-typed JavaScript | Accepted |
+| [0003](0003-multi-page-static-rendering-no-framework.md) | Multi-page static rendering, no framework, no bundler | Accepted |
 | [0004](0004-prose-in-markdown-questions-in-typescript.md) | Prose stays Markdown; question definitions become TypeScript | Proposed |
 | [0005](0005-cloudflare-pages-for-header-control.md) | Cloudflare Pages, for control over response headers | Proposed |
 | [0006](0006-no-in-app-speech-recognition.md) | No in-app speech recognition; scope the privacy claim honestly | Proposed |

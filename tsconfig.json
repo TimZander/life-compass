@@ -1,0 +1,43 @@
+{
+  // Typecheck only — nothing is emitted. Node 22.18+ strips types at load, so
+  // `node build/build.ts` runs the sources directly and there is no compile step
+  // to keep in sync (docs/decisions/0003). `tsc` is a checker here, not a compiler.
+  //
+  // When client-side code arrives (the workbook forms), browsers cannot strip types
+  // and that code WILL need emitting. Revisit then; it does not change this config's
+  // job, which is checking the build tooling.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+
+    // Dead code is the bulk of what a linter would catch here, and these cost no
+    // dependency. ESLint is deliberately not added: docs/decisions/0003 weighs
+    // dependency count against a project meant to sit untouched for years, and a lint
+    // toolchain is several packages plus a config that ages.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // Refuse syntax Node cannot strip (enums, namespaces, parameter properties).
+    // Without this, `tsc` would happily accept code that fails at runtime — the
+    // typecheck would pass and `npm run build` would not.
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+
+    // Node requires the real extension on relative imports, so the sources say
+    // `./slug.ts`. That is only legal alongside noEmit.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    "skipLibCheck": true
+  },
+  "include": ["build/**/*.ts"]
+}

@@ -6,8 +6,9 @@
 ## Context
 
 Every blank in the worksheets is currently marked `<span class="fill">______</span>` —
-418 of them. These are drawn underlines, not form fields: the stylesheet hides the
-underscores and draws a border. They carry no identity of any kind.
+443 of them, in two widths: 369 wide (`fill`, 15rem) and 74 narrow (`fill-sm`, 6rem).
+These are drawn underlines, not form fields: the stylesheet hides the underscores and
+draws a border. They carry no identity of any kind.
 
 Once answers are stored, every blank needs an identifier stable enough to survive edits
 to the prose around it, because that identifier is the storage key. Positional identity

@@ -5,7 +5,7 @@
 
 ## Context
 
-The workbook asks for extended free-text reflection — 418 discrete blanks across the
+The workbook asks for extended free-text reflection — 443 discrete blanks across the
 five-day and rigorous tracks, most of them wanting sentences rather than words. That
 volume of writing is a barrier to anyone who cannot type comfortably for long
 stretches, and every design decision so far has quietly assumed a keyboard and an
