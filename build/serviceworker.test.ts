@@ -241,6 +241,13 @@ describe("update confirmation", () => {
     const source = await readFile(path.join(ROOT, "assets", "js", "app.js"), "utf8");
 
     // Act & Assert
-    assert.ok(source.indexOf("confirmRecentUpdate()") < source.indexOf("serviceWorker.register"));
+    // `.register(` rather than `serviceWorker.register`: the call is chained across
+    // lines, so the longer string never matches and indexOf returns -1 — which compares
+    // as "earlier than everything" and fails for the wrong reason.
+    const confirmAt = source.indexOf("confirmRecentUpdate()");
+    const registerAt = source.indexOf(".register(");
+    assert.ok(confirmAt >= 0, "confirmRecentUpdate() is not called");
+    assert.ok(registerAt >= 0, "the worker is never registered");
+    assert.ok(confirmAt < registerAt);
   });
 });
