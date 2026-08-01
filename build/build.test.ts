@@ -18,6 +18,7 @@ import { build, buildPages, type BuildResult } from "./build.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
+  "404.html",
   "days/day-1-excavation.html",
   "days/day-2-values.html",
   "days/day-3-passions.html",
