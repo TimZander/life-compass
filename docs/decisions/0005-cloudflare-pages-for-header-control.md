@@ -1,6 +1,6 @@
 # 0005 — Cloudflare Pages, for control over response headers
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-07-29
 
 ## Context
@@ -50,3 +50,15 @@ leaking all its earlier ones — while still reporting success.
 
 **C5.** A Cloudflare account becomes a dependency, and deploy credentials become
 repository secrets.
+
+**C6.** Pages canonicalises `/page.html` to `/page` with a 308, and answers an unmatched
+path with 200 and the site's index unless a `404.html` exists. Neither is configurable,
+neither matches what GitHub Pages did, and neither was visible until something was
+actually deployed — the second meant a mistyped link looked like a working page. A 404
+page now exists; the redirect is left in place, because keeping `.html` files on disk is
+what allows links written before the move to survive it.
+
+The redirect is not finished business. A service worker caching `/page.html` caches a
+redirect rather than a page, so the canonical form has to be settled before one exists
+(#23), and this is where the "keep the extensions, that is what the live site serves"
+reasoning in `pages.ts` stops being true — the live site is now this build.

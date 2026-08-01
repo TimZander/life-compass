@@ -20,7 +20,7 @@ every citation already written down.
 | [0002](0002-typescript-not-jsdoc-typed-javascript.md) | TypeScript, not JSDoc-typed JavaScript | Accepted |
 | [0003](0003-multi-page-static-rendering-no-framework.md) | Multi-page static rendering, no framework, no bundler | Accepted |
 | [0004](0004-prose-in-markdown-questions-in-typescript.md) | Prose stays Markdown; question definitions become TypeScript | Proposed |
-| [0005](0005-cloudflare-pages-for-header-control.md) | Cloudflare Pages, for control over response headers | Proposed |
+| [0005](0005-cloudflare-pages-for-header-control.md) | Cloudflare Pages, for control over response headers | Accepted |
 | [0006](0006-no-in-app-speech-recognition.md) | No in-app speech recognition; scope the privacy claim honestly | Proposed |
 | [0007](0007-clipboard-is-the-airgap.md) | The clipboard is the airgap | Proposed |
 | [0008](0008-installation-makes-storage-durable.md) | Installation is what makes storage durable, and the app must say so | Proposed |

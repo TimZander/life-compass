@@ -1,11 +1,11 @@
 /**
- * The page shell — a direct port of the Liquid in `_layouts/default.html`.
+ * The page shell. Originally a port of the Liquid template this project used while it
+ * was built by Jekyll; that file is gone, and this is now the only layout.
  *
- * URLs are root-absolute (`/assets/css/style.css`) because that is exactly what
- * Jekyll's `relative_url` produced with an empty `baseurl`, which is what the live
- * site serves today. Computing document-relative paths instead would be equally
- * correct and would produce a different diff, which is the one thing this rewrite is
- * trying not to do.
+ * URLs are root-absolute (`/assets/css/style.css`) because that is what the Jekyll
+ * template emitted, and keeping them identical is what made the rewrite's output
+ * diffable against the site it replaced. Document-relative paths would be equally
+ * correct; there is simply no longer any reason to change.
  */
 
 const SITE_TITLE = "Life Compass";
