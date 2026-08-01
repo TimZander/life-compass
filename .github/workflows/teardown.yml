@@ -1,0 +1,100 @@
+name: Preview teardown
+
+# When a pull request closes, merged or not, delete the Cloudflare Pages preview
+# deployments it created so they do not accumulate indefinitely.
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+
+    steps:
+      - name: Delete preview deployments
+        env:
+          # LOAD-BEARING: must match the --branch value preview.yml deploys under.
+          # Cloudflare records it as deployment_trigger.metadata.branch, which is what
+          # the jq filter below selects on. If these drift apart this job finds nothing,
+          # exits 0, and previews leak forever — silently, which is the failure mode
+          # worth designing against.
+          BRANCH: pr-${{ github.event.pull_request.number }}
+          PROJECT: life-compass
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          API="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT}"
+
+          # The deployments list is paginated and offers no server-side branch filter,
+          # so walk every page and match client-side. Reading only the first page would
+          # reap a branch's newest deployment while leaving its earlier ones behind —
+          # and still report a clean sweep.
+          #
+          # per_page is deliberately not sent: it is reported to be ignored by this
+          # endpoint, so the loop terminates on an empty page rather than by comparing a
+          # returned count against a requested size. That is correct whether per_page is
+          # honoured, ignored, or rejected.
+          MAX_PAGES=100
+          PAGE=1
+          WALKED_ALL=0
+          IDS=""
+
+          while [ "$PAGE" -le "$MAX_PAGES" ]; do
+            # -s without -f so the response body is available on an error status.
+            RESPONSE=$(curl -sS -H "Authorization: Bearer $CF_API_TOKEN" "${API}/deployments?page=${PAGE}")
+
+            if [ "$(echo "$RESPONSE" | jq -r '.success')" != "true" ]; then
+              echo "::error::Failed to list deployments (page ${PAGE}): $(echo "$RESPONSE" | jq -c '.errors')"
+              exit 1
+            fi
+
+            COUNT=$(echo "$RESPONSE" | jq '.result | length')
+            if [ "$COUNT" -eq 0 ]; then
+              WALKED_ALL=1
+              break
+            fi
+
+            MATCHES=$(echo "$RESPONSE" | jq -r --arg b "$BRANCH" \
+              '.result[] | select(.deployment_trigger.metadata.branch == $b) | .id')
+            [ -n "$MATCHES" ] && IDS=$(printf '%s\n%s' "$IDS" "$MATCHES")
+
+            PAGE=$((PAGE + 1))
+          done
+
+          # Never stop early and silently: hitting the cap means deployments may remain,
+          # so fail loudly rather than report a sweep that did not happen.
+          if [ "$WALKED_ALL" -ne 1 ]; then
+            echo "::error::Stopped after ${MAX_PAGES} pages without reaching the end of the list. Deployments may remain — check whether the page parameter is still honoured."
+            exit 1
+          fi
+
+          # Drop the leading blank from the first append; sort -u guards against the API
+          # ever repeating a page, which would otherwise double-delete and fail.
+          IDS=$(echo "$IDS" | sed '/^$/d' | sort -u)
+
+          if [ -z "$IDS" ]; then
+            echo "Scanned $((PAGE - 1)) page(s); no preview deployments for branch: $BRANCH"
+            exit 0
+          fi
+
+          echo "Scanned $((PAGE - 1)) page(s); found $(echo "$IDS" | wc -l | tr -d ' ') deployment(s) for $BRANCH"
+
+          FAILED=0
+          for ID in $IDS; do
+            echo "Deleting $ID"
+            DEL=$(curl -sS -X DELETE -H "Authorization: Bearer $CF_API_TOKEN" "${API}/deployments/${ID}?force=true")
+            if [ "$(echo "$DEL" | jq -r '.success')" != "true" ]; then
+              echo "::warning::Failed to delete $ID: $(echo "$DEL" | jq -c '.errors')"
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "::error::One or more deployments failed to delete"
+            exit 1
+          fi
+
+          echo "Cleaned up preview deployments for $BRANCH"

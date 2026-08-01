@@ -1,0 +1,99 @@
+name: Deploy
+
+# Production deploy to Cloudflare Pages on every push to main.
+#
+# This does NOT serve lifecompass.timzander.com yet. That domain is still served from
+# main by GitHub Pages, and stays that way until the DNS cutover (#28) — see
+# docs/decisions/0005. Until then this publishes to life-compass-4ga.pages.dev, where a
+# mistake costs nothing.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Serialize production deploys and never cancel one mid-upload. A cancelled deploy can
+# leave the project serving a partially uploaded build, which is worse than a queue.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # The build refuses to emit on a broken link, an anchor naming a heading that does
+      # not exist, or a Markdown target reaching the output — so this is the last gate
+      # before publishing, not merely a build step.
+      - run: npm run build
+
+      - name: Deploy to production
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # --branch=main matches the project's production branch, which is what makes
+          # this a production deployment rather than a preview.
+          command: pages deploy dist --project-name=life-compass --branch=main
+
+      # Pages does not serve a new deploy on every edge instantly, so a smoke test run
+      # immediately can read the PREVIOUS deployment and pass or fail for reasons that
+      # have nothing to do with this build. Poll until the deployed HTML is actually
+      # being served, then assert against it.
+      - name: Wait for propagation, then smoke-test
+        env:
+          BASE_URL: https://life-compass-4ga.pages.dev
+        run: |
+          # ~3 minutes. Exits the moment the site answers, so this costs seconds on a
+          # normal deploy and only spends the budget on a genuinely slow tail.
+          for i in $(seq 1 36); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/" || echo 000)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+
+          fail=0
+          check() {
+            got=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL$1")
+            if [ "$got" != "$2" ]; then
+              echo "::error::$1 returned $got, expected $2"
+              fail=1
+            else
+              echo "ok  $1 -> $got"
+            fi
+          }
+
+          # One per URL shape the build produces. The expectations here were WRONG on
+          # first contact with a real deployment and are corrected from observed
+          # behaviour, not from what the local build serves:
+          #
+          #  - Pages canonicalises `/x.html` to `/x` with a 308. Every internal link in
+          #    the site is written with the extension, so the redirect is on the normal
+          #    path, not an edge case. Both forms are asserted: the redirect must stay a
+          #    redirect, and the canonical form must serve the page.
+          #  - Without a 404.html, Pages answers every unmatched path with 200 and the
+          #    home page, so a typo'd link looks like a working page. 404.md exists to
+          #    make that a real 404.
+          check "/" 200
+          check "/days/day-1-excavation" 200
+          check "/days/day-1-excavation.html" 308
+          check "/rigorous/" 200
+          check "/docs/decisions/" 200
+          check "/assets/css/style.css" 200
+          check "/definitely-not-a-page" 404
+
+          exit $fail

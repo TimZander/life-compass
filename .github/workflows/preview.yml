@@ -1,0 +1,113 @@
+name: Preview
+
+# Deploys every pull request to a Cloudflare Pages preview and comments the URL.
+#
+# Requires two repository secrets — CLOUDFLARE_API_TOKEN (Account > Cloudflare Pages >
+# Edit) and CLOUDFLARE_ACCOUNT_ID — and the `life-compass` Pages project, which already
+# exists with `main` as its production branch.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# One live preview per pull request; cancel superseded runs on rapid pushes. Keyed on
+# the PR number rather than the branch name: branch names are not unique across forks,
+# so two pull requests sharing a name would otherwise cancel each other.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Build here rather than reusing an artifact from the Checks workflow: a preview
+      # that silently deploys a stale or partial build is worse than one that fails.
+      # The build refuses to emit on a broken link or a missing heading anchor, so this
+      # step is also the last gate before anything is published.
+      - run: npm run build
+
+      - name: Deploy preview
+        id: deploy
+        # v4 installs wrangler@4 on demand. That is a problem for projects pinning
+        # @cloudflare/workers-types@4 (the peer ranges conflict), but this repo has no
+        # wrangler dependency at all, so there is nothing to resolve against.
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Deploy under a short, PR-unique branch name rather than the real one.
+          # Cloudflare truncates preview alias hostnames to 28 characters, and the
+          # `branches/<issue>-<slug>` convention spends nine of those on the prefix
+          # alone — so two pull requests against one issue would collide onto a single
+          # alias and silently overwrite each other's previews.
+          #
+          # LOAD-BEARING: teardown.yml matches deployments on this exact value. The two
+          # must change together, or teardown finds nothing, exits 0, and previews leak
+          # forever without a word.
+          command: >-
+            pages deploy dist
+            --project-name=life-compass
+            --branch=pr-${{ github.event.pull_request.number }}
+
+      - name: Comment the preview URL
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          # The alias is stable across pushes and always resolves to this branch's
+          # latest deploy; deployment-url changes on every push. Lead with the stable
+          # one so a bookmark keeps working, and keep the per-commit one for pinning an
+          # exact build.
+          ALIAS_URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deployment-url }}
+        with:
+          script: |
+            const url = process.env.DEPLOY_URL;
+            const stable = process.env.ALIAS_URL;
+            const marker = '<!-- cf-preview -->';
+            // Only advertise a bookmarkable link when the alias actually exists.
+            // Falling back to the per-commit URL would label something that goes stale
+            // on the next push as "always this branch's latest".
+            const stableLine = stable
+              ? `**Stable link** (always this branch's latest — bookmark this): ${stable}\n\n`
+              : '';
+            const body = `${marker}\nPreview deployment is ready.\n\n`
+              + stableLine
+              + `This-commit link: ${url}\n\n`
+              + `_Compare against the live site at https://lifecompass.timzander.com — `
+              + `the two should be visually identical until the DNS cutover (#28)._`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
