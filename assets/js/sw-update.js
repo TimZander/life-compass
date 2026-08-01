@@ -10,6 +10,9 @@
 
 import { showBanner } from "./banner.js";
 
+/** How long to wait for the reload before admitting it is not coming. */
+const ACTIVATION_TIMEOUT_MS = 10_000;
+
 /** @param {ServiceWorkerRegistration} registration */
 export function watchForUpdates(registration) {
   // A worker can ALREADY be waiting when this page loads — installed during an earlier
@@ -42,9 +45,35 @@ function offer(worker) {
     text: "A new version of the workbook is ready.",
     actions: [
       { label: "Later", onSelect: () => {} },
-      { label: "Update", primary: true, onSelect: () => activate(worker) },
+      { label: "Update", primary: true, onSelect: () => accept(worker) },
     ],
   });
+}
+
+/**
+ * Take the update, and say so.
+ *
+ * The banner is replaced rather than dismissed. Dismissing it made a successful update
+ * and a silent failure look identical — the strip vanished either way, and because the
+ * page reloads into the same content there was nothing at all to see. A control that
+ * appears to do nothing is a defect even when it worked.
+ *
+ * @param {ServiceWorker} worker
+ */
+function accept(worker) {
+  showBanner({ id: "update", text: "Updating\u2026", actions: [] });
+
+  // If the reload never arrives, say that rather than leaving "Updating..." forever.
+  // A stuck progress message is the same lie as no feedback, told more slowly.
+  window.setTimeout(() => {
+    showBanner({
+      id: "update",
+      text: "The update did not finish. Close the app and open it again.",
+      actions: [{ label: "Dismiss", onSelect: () => {} }],
+    });
+  }, ACTIVATION_TIMEOUT_MS);
+
+  activate(worker);
 }
 
 /** @param {ServiceWorker} worker */

@@ -188,3 +188,27 @@ describe("update prompting", () => {
     assert.ok(source.includes("self.clients.claim()"));
   });
 });
+
+describe("update feedback", () => {
+  it("swUpdate_AcceptingAnUpdate_ReplacesTheBannerRatherThanDismissingIt", async () => {
+    // Arrange — dismissing made a successful update and a silent failure look identical:
+    // the strip vanished either way, and the page reloads into the same content, so
+    // there was nothing to see. Confirmed on a device before this was changed.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+
+    // Act & Assert
+    assert.ok(source.includes("Updating"));
+    assert.ok(source.includes("did not finish"));
+  });
+
+  it("swUpdate_ReloadListener_IsAttachedOnlyAfterTheReaderAccepts", async () => {
+    // Arrange — controllerchange also fires on a first install, so a listener attached
+    // at startup would reload a page nobody asked to reload.
+    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+    const beforeAccept = source.slice(0, source.indexOf("function accept"));
+
+    // Act & Assert
+    assert.ok(!beforeAccept.includes("controllerchange"));
+    assert.ok(source.includes("controllerchange"));
+  });
+});
