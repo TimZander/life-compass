@@ -54,11 +54,11 @@ const EXPECTED_PAGES: readonly string[] = [
 /** Nav entries every page carries, from the layout. */
 const NAV_HREFS: readonly string[] = [
   "/",
-  "/one-page-anchor.html",
-  "/days/day-1-excavation.html",
+  "/one-page-anchor",
+  "/days/day-1-excavation",
   "/rigorous/",
-  "/with-a-partner.html",
-  "/optional-add-ons.html",
+  "/with-a-partner",
+  "/optional-add-ons",
   "/docs/decisions/",
 ];
 
@@ -210,7 +210,7 @@ describe("buildPages", () => {
   it("buildPages_AnchoredCrossPageLink_KeepsItsFragment", async () => {
     // Arrange — the em-dash-derived double hyphen is the fragile part.
     const source = "with-a-partner.md";
-    const expectedHref = "/optional-add-ons.html#add-on-a--outside-input";
+    const expectedHref = "/optional-add-ons#add-on-a--outside-input";
 
     // Act
     const result = await site();
@@ -474,5 +474,49 @@ describe("question anchors", () => {
     // Assert
     assert.deepEqual(result.problems, []);
     assert.ok(result.pages[0]?.html.includes("<!-- just a note -->"));
+  });
+});
+
+describe("canonical urls", () => {
+  it("buildPages_EmittedLinks_CarryNoHtmlExtension", async () => {
+    // Arrange — Pages 308s /page.html to /page, so emitting the extension puts a
+    // redirect on every navigation and would have a service worker caching redirects
+    // rather than pages (0005 · C6).
+    const result = await site();
+
+    // Act
+    // The fragment is stripped rather than excluded from the pattern: a character class
+    // that stops at "#" never matches an anchored link at all, so `/page.html#frag`
+    // was invisible to this assertion while it appeared to cover every emitted link.
+    const withExtension = result.pages.flatMap((page) =>
+      [...page.html.matchAll(/href="(\/[^"]*)"/g)]
+        .map((match) => (match[1] ?? "").split("#")[0] ?? "")
+        .filter((href) => href.endsWith(".html")),
+    );
+
+    // Assert
+    assert.deepEqual(withExtension, []);
+  });
+
+  it("buildPages_FilesOnDisk_KeepTheirHtmlNames", async () => {
+    // Arrange — the extension survives on disk so links written before this change
+    // still resolve, via the very redirect the emitted URLs now avoid.
+    const result = await site();
+
+    // Act
+    const page = result.pages.find((c) => c.source === "days/day-1-excavation.md");
+
+    // Assert
+    assert.equal(page?.output, "days/day-1-excavation.html");
+    assert.equal(page?.url, "/days/day-1-excavation");
+  });
+
+  it("buildPages_DirectoryIndexes_StayDirectoryUrls", async () => {
+    // Arrange & Act
+    const result = await site();
+
+    // Assert
+    assert.equal(result.pages.find((c) => c.source === "rigorous/README.md")?.url, "/rigorous/");
+    assert.equal(result.pages.find((c) => c.source === "README.md")?.url, "/");
   });
 });

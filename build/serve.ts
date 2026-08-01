@@ -64,14 +64,31 @@ export async function resolveFile(urlPath: string, root: string = OUT): Promise<
     return null;
   }
 
+  // Mirror what Cloudflare Pages does, in this order: an exact file, a directory's
+  // index, then the extensionless form of a `.html` file. The third is not a nicety —
+  // every link the build emits is now extensionless, so without it local preview 404s
+  // on every navigation while production works fine.
   try {
     const info = await stat(candidate);
-    if (info.isDirectory()) {
-      const index = path.join(candidate, "index.html");
-      await stat(index);
-      return index;
+    if (!info.isDirectory()) {
+      return candidate;
     }
-    return candidate;
+    const index = path.join(candidate, "index.html");
+    await stat(index);
+    return index;
+  } catch {
+    // fall through to the extensionless lookup
+  }
+
+  // Attempted unconditionally rather than only for extensionless paths. Guarding on
+  // `extname === ""` looks tidy and silently excludes any page whose name contains a
+  // dot — `/v1.2-notes` has extname ".2-notes" — which would 404 locally while
+  // production served it, the exact split this branch exists to prevent. A file that
+  // does not exist simply fails the stat.
+  try {
+    const asHtml = `${candidate}.html`;
+    await stat(asHtml);
+    return asHtml;
   } catch {
     return null;
   }

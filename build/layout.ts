@@ -33,11 +33,11 @@ function documentTitle(pageTitle: string | null): string {
 
 const NAV: readonly (readonly [href: string, label: string])[] = [
   ["/", "Home"],
-  ["/one-page-anchor.html", "Quick Start"],
-  ["/days/day-1-excavation.html", "5-Day"],
+  ["/one-page-anchor", "Quick Start"],
+  ["/days/day-1-excavation", "5-Day"],
   ["/rigorous/", "Rigorous"],
-  ["/with-a-partner.html", "Partner"],
-  ["/optional-add-ons.html", "Add-ons"],
+  ["/with-a-partner", "Partner"],
+  ["/optional-add-ons", "Add-ons"],
   ["/docs/decisions/", "Decisions"],
 ];
 
