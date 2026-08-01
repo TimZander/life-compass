@@ -147,9 +147,18 @@ describe("renderQuestion", () => {
     assert.ok(html.includes('<span class="fill-sm" data-field="t.chapters.learned"'));
   });
 
-  it("renderQuestion_LabelContainingMarkup_IsEscaped", () => {
-    // Arrange — negative case: labels are authored text, not trusted markup.
-    const hostile: Question = { kind: "single", id: "t.x", label: '<script>"x"', size: "long" };
+  it("renderQuestion_FieldLabelContainingMarkup_IsEscaped", () => {
+    // Arrange — negative case: labels are authored text, not trusted markup. Checked on
+    // a repeat field rather than a single, because a single question's label is
+    // deliberately not printed — the prose above it already asks the question.
+    const hostile: Question = {
+      kind: "repeat",
+      id: "t.x",
+      label: "X",
+      min: 1,
+      max: 1,
+      fields: [{ id: "f", label: '<script>"x"', size: "long" }],
+    };
 
     // Act
     const html = renderQuestion(hostile);
@@ -157,5 +166,16 @@ describe("renderQuestion", () => {
     // Assert
     assert.ok(html.includes("&lt;script&gt;&quot;x&quot;"));
     assert.ok(!html.includes("<script>"));
+  });
+
+  it("renderQuestion_SingleQuestion_DoesNotPrintItsLabel", () => {
+    // Arrange — the prose immediately above already asks the question, so printing the
+    // label produced "Patterns — what kind of work…" followed by "Patterns: ____".
+    // Act
+    const html = renderQuestion(NOTE);
+
+    // Assert
+    assert.ok(!html.includes("Note"));
+    assert.ok(html.includes('data-question="t.note"'));
   });
 });

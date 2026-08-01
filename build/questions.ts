@@ -104,15 +104,24 @@ function blank(fieldId: string, size: "short" | "long"): string {
  * same, but nothing could find them.
  */
 export function renderQuestion(question: Question): string {
+  // A single question renders as a bare answer line. Its label is NOT printed: the
+  // prose immediately above it already asks the question ("Patterns — what kind of
+  // work…"), so printing the label repeats the word and reads like a stutter. The label
+  // is kept in the schema for the form field's accessible name (#24).
   if (question.kind === "single") {
     return (
       `<p class="q-single" data-question="${escape(question.id)}">` +
-      `${escape(question.label)}: ${blank(question.id, question.size)}</p>`
+      `${blank(question.id, question.size)}</p>`
     );
   }
 
-  // An ordered list, so instance numbering comes from the list rather than from
-  // labels baked into the markup — which matters once the reader can add or remove one.
+  // An ordered list, so instance numbering comes from the list rather than from labels
+  // baked into the markup — which matters once the reader can add or remove one.
+  //
+  // No per-instance heading is printed. Repeating the group's label above its first
+  // field produced "Moment / Moment: ____" and "Hard moment / Hard moment: ____"; the
+  // list number is identity enough. `label` stays in the schema for the add-another
+  // control (#24), where it reads as a verb phrase rather than a heading.
   const items: string[] = [];
   for (let index = 0; index < question.min; index += 1) {
     if (question.fields.length === 1) {
@@ -125,24 +134,28 @@ export function renderQuestion(question: Question): string {
       );
       continue;
     }
-    const fields = question.fields
+    // The first field sits inline with the list number and the rest nest beneath it.
+    // Nesting all of them leaves the number alone on an otherwise empty line, which
+    // reads as though something failed to render.
+    const [first, ...rest] = question.fields;
+    if (first === undefined) {
+      continue;
+    }
+    const head = `${escape(first.label)}: ${blank(`${question.id}.${first.id}`, first.size)}`;
+    const nested = rest
       .map(
         (field) =>
           `<li>${escape(field.label)}: ${blank(`${question.id}.${field.id}`, field.size)}</li>`,
       )
       .join("\n");
-    items.push(
-      `<li><strong>${escape(question.label)}</strong>\n<ul>\n${fields}\n</ul>\n</li>`,
-    );
+    items.push(`<li>${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }
 
-  const range =
-    question.max > question.min
-      ? ` <span class="q-range">(${question.min}–${question.max})</span>`
-      : "";
-
+  // The permitted range is carried as data, not printed. Rendering "(5–8)" advertises
+  // an affordance the page does not yet have — nothing can add a sixth chapter until
+  // #24 — and it appeared as unstyled debris between the list and the next heading.
   return (
     `<ol class="q-repeat" data-question="${escape(question.id)}"` +
-    ` data-min="${question.min}" data-max="${question.max}">\n${items.join("\n")}\n</ol>${range}`
+    ` data-min="${question.min}" data-max="${question.max}">\n${items.join("\n")}\n</ol>`
   );
 }
