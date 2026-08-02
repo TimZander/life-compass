@@ -38,6 +38,7 @@ export type ProblemKind =
   | "unanchored-question"
   | "registry"
   | "schema"
+  | "task-list"
   | "headers";
 
 export type BuildProblem = {
@@ -183,14 +184,21 @@ export async function buildPages(
     questions: schema.byId,
   };
 
+  const problems: BuildProblem[] = [];
   const built: BuiltPage[] = [];
   for (const page of pages) {
     const markdown = await readFile(path.join(root, page.source), "utf8");
-    const { html, title, links, headingIds, anchors } = render(markdown, page.source, context);
+    const rendered = render(markdown, page.source, context);
+    const { html, title, links, headingIds, anchors } = rendered;
     built.push({ ...page, html: layout(html, title), title, links, headingIds, anchors });
+    for (const marker of rendered.taskMarkers) {
+      problems.push({
+        kind: "task-list",
+        source: page.source,
+        detail: `${marker} renders as literal text — a tick is a checklist question, not Markdown`,
+      });
+    }
   }
-
-  const problems: BuildProblem[] = [];
 
   for (const page of built) {
     for (const link of page.links) {

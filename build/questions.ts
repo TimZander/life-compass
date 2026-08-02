@@ -138,18 +138,37 @@ function textOf(question: Question): readonly (readonly [string, string])[] {
 }
 
 /**
+ * Every sequence markdown-it's typographer would have converted, and what to write.
+ *
+ * The list mirrors the typographer's own: smart quotes, then the replacements. `(c)` and
+ * friends are left out — no worksheet has one, and unlike the rest they read fine either
+ * way.
+ */
+const TYPOGRAPHY: readonly (readonly [RegExp, string, string])[] = [
+  [/'/, "a straight apostrophe", "’"],
+  [/"/, "a straight double quote", "“ ”"],
+  [/\.\.\./, "three dots", "…"],
+  [/---/, "three hyphens", "—"],
+  [/(?<!-)--(?!-)/, "two hyphens", "–"],
+];
+
+/**
  * Author text is prose and ships as written, so it has to be typeset like prose.
  *
- * markdown-it's typographer turns `'` into `’` for everything in the Markdown, but it
- * never sees these strings — they are injected after parsing. A straight apostrophe
- * therefore lands on the page beside curly ones set from the same paragraph, which is
- * the kind of thing nobody notices in a diff and everybody notices in print.
+ * markdown-it's typographer converts these for everything in the Markdown, but it never
+ * sees these strings — they are injected after parsing. A straight apostrophe therefore
+ * lands on the page beside curly ones set from the same paragraph, which is the kind of
+ * thing nobody notices in a diff and everybody notices in print. The anchor page's two
+ * quoted sentences were the first text to need the double-quote half, and they got it by
+ * hand, which is the argument for the build knowing rather than the author remembering.
  */
 function checkText(question: Question): readonly string[] {
   const problems: string[] = [];
   for (const [what, text] of textOf(question)) {
-    if (text.includes("'")) {
-      problems.push(`${question.id} ${what} uses a straight apostrophe — write ’ instead`);
+    for (const [pattern, name, instead] of TYPOGRAPHY) {
+      if (pattern.test(text)) {
+        problems.push(`${question.id} ${what} uses ${name} — write ${instead} instead`);
+      }
     }
     if (text.trim() === "") {
       problems.push(`${question.id} ${what} is empty`);

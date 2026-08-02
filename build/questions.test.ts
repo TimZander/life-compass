@@ -304,6 +304,56 @@ describe("checkSchema", () => {
     assert.ok(problems.some((problem) => problem.includes("straight apostrophe")));
   });
 
+  it("checkSchema_StraightDoubleQuoteInATemplate_IsReported", () => {
+    // Arrange — negative case. The anchor page's two quoted sentences needed curly quotes
+    // and got them by hand; this is the build knowing instead of the author remembering.
+    const question: Question = {
+      kind: "sentence",
+      id: "t.quoted",
+      template: String.fromCharCode(34) + "I default to {rule}." + String.fromCharCode(34),
+      fields: [{ id: "rule", label: "Rule", size: "short" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("straight double quote")));
+  });
+
+  it("checkSchema_ThreeDotsAndDoubleHyphen_AreReported", () => {
+    // Arrange — negative case: the typographer would have made these … and –, and it
+    // never sees generated text.
+    const question: Question = {
+      kind: "group",
+      id: "t.g",
+      fields: [
+        { id: "a", label: "Wait for it...", size: "long" },
+        { id: "b", label: "Pages 3--4", size: "long" },
+      ],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("three dots")));
+    assert.ok(problems.some((problem) => problem.includes("two hyphens")));
+  });
+
+  it("checkSchema_TypographicPunctuation_IsAccepted", () => {
+    // Arrange — the positive counterpart, so the rules cannot be satisfied by banning the
+    // punctuation outright. An em dash is not two hyphens and must pass.
+    const question: Question = {
+      kind: "group",
+      id: "t.g",
+      fields: [{ id: "a", label: "Wait for it… — “quoted”, it’s fine", size: "long" }],
+    };
+
+    // Act & Assert
+    assert.deepEqual(checkSchema(loadSchema([{ source: "t.md", questions: [question] }])), []);
+  });
+
   it("checkSchema_CurlyApostropheInALabel_IsAccepted", () => {
     // Arrange — the positive counterpart, so the rule cannot be satisfied by banning
     // apostrophes outright.

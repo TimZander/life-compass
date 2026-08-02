@@ -17,7 +17,6 @@ import { createSlugger } from "./slug.ts";
 import { resolveLink, type LinkContext, type ResolvedLink } from "./links.ts";
 import { ANCHOR, renderQuestion } from "./questions.ts";
 import type { Question } from "../src/questions/types.ts";
-import { taskLists } from "./tasklists.ts";
 
 export type RenderResult = {
   readonly html: string;
@@ -29,6 +28,15 @@ export type RenderResult = {
   readonly headingIds: readonly string[];
   /** Question ids this page anchored, in order, for the bidirectional check. */
   readonly anchors: readonly string[];
+  /**
+   * Hand-written `- [ ]` markers, which no longer render as checkboxes.
+   *
+   * markdown-it does not do task lists, and the rule that used to add them is gone: the
+   * only ticks in the workbook are `checklist` questions now, which emit the markup
+   * themselves. Without this, a hand-written one renders as the literal text "[ ] Values
+   * filled in" — which is what it did on the day this was first noticed.
+   */
+  readonly taskMarkers: readonly string[];
 };
 
 const md: MarkdownIt = new MarkdownIt({
@@ -42,9 +50,6 @@ const md: MarkdownIt = new MarkdownIt({
   // on text tokens, not on attributes (pinned by a test in build.test.ts).
   typographer: true,
 });
-
-// `- [ ] item` -> a disabled checkbox, matching what kramdown emits on the live site.
-md.use(taskLists);
 
 /**
  * The visible text of an inline token, with markup removed.
@@ -78,12 +83,16 @@ export type RenderContext = LinkContext & {
   readonly questions: ReadonlyMap<string, Question>;
 };
 
+/** `- [ ]` or `- [x]` at the head of a list item, which markdown-it leaves as text. */
+const TASK_MARKER = /^\[[ xX]\]\s/;
+
 export function render(markdown: string, source: string, context: RenderContext): RenderResult {
   const tokens = md.parse(markdown, {});
   const slug = createSlugger();
   const links: ResolvedLink[] = [];
   const headingIds: string[] = [];
   const anchors: string[] = [];
+  const taskMarkers: string[] = [];
   let title: string | null = null;
 
   for (let i = 0; i < tokens.length; i += 1) {
@@ -130,6 +139,12 @@ export function render(markdown: string, source: string, context: RenderContext)
       continue;
     }
 
+    // Checked on the token stream rather than the raw source, so a fenced example that
+    // shows the syntax is not mistaken for one that meant it.
+    if (token.type === "inline" && TASK_MARKER.test(token.content)) {
+      taskMarkers.push(token.content.split("\n")[0] ?? "");
+    }
+
     if (token.type === "inline" && token.children !== null) {
       for (const child of token.children) {
         // Images carry their target in `src`, links in `href`. Both need rewriting and
@@ -150,5 +165,12 @@ export function render(markdown: string, source: string, context: RenderContext)
     }
   }
 
-  return { html: md.renderer.render(tokens, md.options, {}), title, links, headingIds, anchors };
+  return {
+    html: md.renderer.render(tokens, md.options, {}),
+    title,
+    links,
+    headingIds,
+    anchors,
+    taskMarkers,
+  };
 }
