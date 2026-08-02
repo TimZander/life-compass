@@ -2,9 +2,17 @@
  * Where answers live: one IndexedDB object store, keyed by field identifier.
  *
  * The identifiers are the ones frozen in docs/decisions/0011 and rendered into every
- * blank as `data-field`. That is the whole schema — no per-page grouping, no nesting —
- * because a flat key/value map is what survives a worksheet being reordered, and
- * reordering prose is expected while identifiers are not.
+ * blank as `data-field`. A flat key/value map is what survives a worksheet being
+ * reordered, and reordering prose is expected while identifiers are not.
+ *
+ * IT DOES NOT YET COVER REPEAT GROUPS, and that is 334 of the 447 blanks. 0011 stores a
+ * repeat as an ordered array of instances, each with an identifier minted when the reader
+ * adds one — but the pages render a fixed number of slots and there is no adding yet, so
+ * every instance of `day1.chapters.title` currently carries the same `data-field` and 264
+ * blanks would collide on a key another blank already uses. Deciding instance identity
+ * for statically-rendered slots is its own slice, and it lands before the DOM binding.
+ * Until then this store is correct for single-valued fields and silent about the rest,
+ * which is why nothing binds to it yet.
  *
  * IndexedDB rather than localStorage: localStorage is synchronous, so a write blocks the
  * main thread mid-keystroke, which is precisely what docs/decisions/0001 forbids. It also
@@ -20,7 +28,7 @@
  * ever needs replacing (an encrypted store is already anticipated — 0009).
  */
 export type Store = {
-  /** Every answer, for restoring a page. */
+  /** Every answer, for restoring a page. Single-valued fields only — see the note above. */
   readAll(): Promise<ReadonlyMap<string, string>>;
   /** One field. Writing an empty string removes it rather than storing blankness. */
   write(field: string, value: string): Promise<void>;
@@ -87,7 +95,15 @@ export function openStore(): Promise<Store> {
   });
 }
 
-function fromDatabase(database: IDBDatabase): Store {
+/**
+ * The Store over an open database.
+ *
+ * Exported for tests: the request-to-promise plumbing needs a real IndexedDB, but the
+ * decisions layered on top of it — pairing keys to values, refusing to store blankness,
+ * surfacing what cannot be read — are this file's own, and a handful of fake requests is
+ * enough to hold them still.
+ */
+export function fromDatabase(database: IDBDatabase): Store {
   /**
    * Run one transaction to completion.
    *
@@ -126,12 +142,21 @@ function fromDatabase(database: IDBDatabase): Store {
           settled(store.getAll()),
         ]);
         const answers = new Map<string, string>();
+        const unreadable: string[] = [];
         keys.forEach((key, index) => {
           const value = values[index];
           if (typeof key === "string" && typeof value === "string") {
             answers.set(key, value);
+            return;
           }
+          // Not dropped quietly. 0011 requires an orphan to be retained AND surfaced, and
+          // an entry this cannot read is still occupying its key — invisible here would
+          // mean invisible in an export too, which is the failure that record names.
+          unreadable.push(String(key));
         });
+        if (unreadable.length > 0) {
+          console.warn("life-compass: stored answers this version cannot read", unreadable);
+        }
         return answers;
       });
     },
@@ -147,6 +172,5 @@ function fromDatabase(database: IDBDatabase): Store {
         }
       });
     },
-
   };
 }

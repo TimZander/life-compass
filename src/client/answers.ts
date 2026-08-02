@@ -27,22 +27,15 @@ export const QUIET_MS = 800;
 /**
  * The longest a value may sit unwritten, however steadily the reader is going.
  *
- * A debounce alone waits for a pause, and dictation does not reliably pause: someone
- * speaking steadily produced zero writes in testing until they stopped. That is the exact
- * session #24 exists to protect — a locked phone or a dropped tab mid-flow would have lost
- * all of it. This is the ceiling that makes "an interrupted session resumes without
- * re-speaking anything" true rather than aspirational.
+ * A debounce alone waits for a pause, and dictation does not reliably pause: steady input
+ * wrote nothing at all until it stopped, which a locked phone mid-flow would have lost
+ * entirely. The ceiling bounds that loss to a few seconds rather than a whole session.
+ *
+ * It does not eliminate it. Up to this much speech is still unwritten at any moment, and
+ * the page-hide flush that would narrow it further is not wired to anything yet — that
+ * comes with the DOM binding. Until then this is a smaller window, not a closed one.
  */
 export const MAX_WAIT_MS = 5000;
-
-/**
- * How many times a failing write is retried on its own before it waits for a reason.
- *
- * Enough to ride out a transient error, few enough that a genuinely broken store is not
- * written to forever in the background. After this the value stays queued, and the next
- * keystroke or the page-hide flush is what tries again.
- */
-const MAX_RETRIES = 3;
 
 export type Answers = {
   /** Everything stored, for populating a page. */
@@ -51,6 +44,16 @@ export type Answers = {
   set(field: string, value: string): void;
   /** Write everything outstanding now, and wait for it. */
   flush(): Promise<void>;
+  /**
+   * Stop retrying and release the timer.
+   *
+   * A store that never recovers is retried for as long as anything is queued, which is
+   * right for a page — the reader is still looking at text that has not been saved. But
+   * a pending timer keeps its host alive, so anything that outlives its page, a test
+   * included, needs a way to say the work is over. Queued values are NOT written; call
+   * `flush` first if they matter.
+   */
+  stop(): void;
 };
 
 export type AnswersOptions = {
@@ -86,7 +89,23 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
       console.error("life-compass: an answer could not be saved", error);
       return;
     }
-    options.onFailure(error);
+    announce(() => options.onFailure?.(error));
+  };
+
+  /**
+   * Call a handler without letting it break the write loop.
+   *
+   * A throwing `onFailure` propagated out of `drain`, which abandoned the pass — every
+   * value it was still holding was dropped, and `void flush()` turned it into an
+   * unhandled rejection. A caller's bug in a notification must not cost the answer the
+   * notification is about.
+   */
+  const announce = (run: () => void): void => {
+    try {
+      run();
+    } catch (error) {
+      console.error("life-compass: an answers callback threw", error);
+    }
   };
 
   /**
@@ -105,7 +124,6 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
   let timer: ReturnType<typeof setTimeout> | undefined;
   let writing: Promise<void> | undefined;
   let reportedFailure = false;
-  let consecutiveFailures = 0;
   /** When the oldest unwritten change was made, for the maximum-wait ceiling. */
   let oldestPendingAt: number | undefined;
 
@@ -123,7 +141,6 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
     // the first failure was worse — one field that could never be written starved every
     // other field on the page, so a single bad value stopped the whole workbook saving.
     const deferred = new Map<string, string>();
-    let wroteSomething = false;
 
     for (;;) {
       const next = pending.entries().next();
@@ -136,14 +153,18 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
       pending.delete(field);
       try {
         await store.write(field, value);
-        wroteSomething = true;
+        // Forgotten as soon as a later write for the same field lands. Without this, a
+        // value that failed early in the pass was re-queued after the pass and written
+        // OVER the newer text the reader dictated while it was running — the store ended
+        // holding the older paragraph while the screen showed the newer one.
+        deferred.delete(field);
         failed.delete(field);
         // Only once nothing is still failing. Clearing on any success meant a write to
         // one field announced recovery while another field's answer was still unsaved —
         // the reassurance being the thing that stops a reader checking.
         if (reportedFailure && failed.size === 0) {
           reportedFailure = false;
-          options.onRecovery?.();
+          announce(() => options.onRecovery?.());
         }
       } catch (error) {
         // Kept, not dropped. Dropping lost the value outright while the store was
@@ -158,23 +179,17 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
       }
     }
 
-    // A newer value for the same field wins: it is the one the reader can see.
+    // The loop only exits with `pending` empty, so nothing here can overwrite a newer
+    // value — the newer ones were already written above and removed from `deferred`.
     for (const [field, value] of deferred) {
-      if (!pending.has(field)) {
-        pending.set(field, value);
-      }
+      pending.set(field, value);
     }
 
-    // Progress, not failures, is what resets the budget. A pass that wrote something is
-    // evidence the store works, even if one field in it did not.
-    if (wroteSomething) {
-      consecutiveFailures = 0;
-    } else if (deferred.size > 0) {
-      consecutiveFailures += 1;
-    }
-    if (pending.size === 0) {
-      oldestPendingAt = undefined;
-    }
+    // Measured from this attempt, not from the original keystroke. Leaving it at the
+    // first change meant a field that could never be written aged past the ceiling and
+    // pinned the delay at zero, so every later keystroke — in any field — drained
+    // immediately and the coalescing this module exists for stopped happening.
+    oldestPendingAt = pending.size === 0 ? undefined : Date.now();
   }
 
   function scheduleDrain(): void {
@@ -208,11 +223,16 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
     // could be written that failed without it.
     writing ??= drain().finally(() => {
       writing = undefined;
-      // A pass that stopped on a failure leaves the value queued. Retry on the timer a
-      // bounded number of times so a transient error heals itself, then stop and let the
-      // next keystroke — or the page-hide flush — be the reason to try again, rather than
-      // writing to a broken store forever in the background.
-      if (pending.size > 0 && consecutiveFailures > 0 && consecutiveFailures < MAX_RETRIES) {
+      // Anything a pass could not write is still queued, so try again on the timer. No
+      // attempt budget: a bounded one had to decide what counts as progress, and the
+      // answer it reached — reset the budget whenever any field succeeded — meant the
+      // one case retries exist for, a field failing alongside a healthy one, was the
+      // single case that never retried. The debounce already paces this to one attempt
+      // per quiet period, which is a negligible cost against a store that may recover.
+      // It does mean a store that never recovers is retried for as long as the page is
+      // open. That is the right trade while the reader is looking at unsaved text, and
+      // `stop` is how anything outliving its page ends it.
+      if (pending.size > 0) {
         scheduleDrain();
       }
     });
@@ -232,5 +252,12 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
     },
 
     flush,
+
+    stop() {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    },
   };
 }
