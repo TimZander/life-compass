@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { describe, it } from "node:test";
+import ts from "typescript";
 import { ROOT } from "./build.ts";
 import { buildClient } from "./client.ts";
 import { layout } from "./layout.ts";
@@ -168,14 +169,35 @@ describe("shipped client scripts", () => {
       assert.ok(module.code.length > 0, `${module.output} emitted nothing`);
       // Type annotations are gone and the specifier a browser resolves is untouched.
       assert.ok(!/^(import type|export type)/m.test(module.code), `${module.output} kept types`);
-      assert.ok(!/from "\.\/[a-z-]+";/.test(module.code), `${module.output} lost its .js`);
+      assert.ok(!/from "\.[^"]*(?<!\.js)";/.test(module.code), `${module.output} lost its .js`);
     }
   });
 
   it("buildClient_MissingDirectory_IsEmptyRatherThanAThrow", async () => {
-    // Arrange — negative case: fixture roots have no client modules.
+    // Arrange — negative case: fixture roots have no client modules. Only ENOENT is
+    // tolerated; any other error throws, so a build cannot quietly ship no JavaScript.
     // Act & Assert
     assert.deepEqual(await buildClient(path.join(ROOT, "docs")), []);
+  });
+
+  it("buildClient_EmittedModules_ParseAsEsModules", async () => {
+    // Arrange — the assertions above all pass on `export {};`, which is what a syntax
+    // error emits when transpileModule's diagnostics are ignored. Parsing is what tells
+    // the two apart, and it has to be parsing rather than evaluation: these modules call
+    // into `document` at load, so importing them here would fail for reasons that say
+    // nothing about their syntax.
+    const modules = await buildClient(ROOT);
+
+    // Act & Assert — re-parsed by the same compiler that emitted them. Anything it
+    // cannot read, a browser cannot either.
+    for (const module of modules) {
+      const { diagnostics } = ts.transpileModule(module.code, {
+        compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext },
+        fileName: module.output,
+        reportDiagnostics: true,
+      });
+      assert.deepEqual(diagnostics ?? [], [], `${module.output} does not parse`);
+    }
   });
 
   it("clientEntry_ShippedFile_RegistersTheWorkerAndReportsFailure", async () => {

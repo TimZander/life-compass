@@ -54,21 +54,48 @@ export async function buildClient(root: string): Promise<readonly ClientModule[]
   // gating on `root === ROOT` keeps the string-identity check out of this path; the real
   // root is guarded instead by a test asserting it emits exactly the modules it should,
   // so a directory that goes missing fails loudly rather than emitting nothing quietly.
-  let entries: string[];
+  //
+  // Only a missing directory is tolerated. Swallowing every error meant a permissions or
+  // I/O failure produced a site with no client JavaScript and a build that said it
+  // succeeded, which is the same silence with none of the reason.
+  let found: string[];
   try {
-    entries = await readdir(directory);
-  } catch {
-    return [];
+    // Recursive, because tsconfig.client.json checks `src/client/**/*.ts`. Reading only
+    // the top level meant a module in a subdirectory typechecked and was never emitted —
+    // an import that resolves for the compiler and 404s for the browser.
+    found = await readdir(directory, { recursive: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
   }
-  entries = entries.filter((name) => name.endsWith(".ts")).sort();
+
+  // `.d.ts` carries no code and `.test.ts` is not for shipping; both would otherwise be
+  // emitted and published, and these files bypass the discovered-asset list that exists
+  // to stop exactly that.
+  const entries = found
+    .filter((name) => name.endsWith(".ts") && !name.endsWith(".d.ts") && !name.endsWith(".test.ts"))
+    .map((name) => name.split(path.sep).join("/"))
+    .sort();
 
   const modules: ClientModule[] = [];
   for (const entry of entries) {
     const source = await readFile(path.join(directory, entry), "utf8");
-    const { outputText } = ts.transpileModule(source, {
+    const { outputText, diagnostics } = ts.transpileModule(source, {
       compilerOptions: OPTIONS,
       fileName: entry,
+      reportDiagnostics: true,
     });
+    // Without this a syntax error emits `export {};` — an empty module — and the build
+    // reports success. Every function the file exported becomes undefined at the import
+    // site, which is a harder failure to trace than the error being thrown here.
+    if (diagnostics !== undefined && diagnostics.length > 0) {
+      const detail = diagnostics
+        .map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "))
+        .join("; ");
+      throw new Error(`${CLIENT_DIR}/${entry} could not be transpiled: ${detail}`);
+    }
     modules.push({
       output: `${CLIENT_URL_PREFIX}/${entry.replace(/\.ts$/, ".js")}`,
       code: outputText,

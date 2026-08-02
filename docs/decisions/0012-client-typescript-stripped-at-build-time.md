@@ -35,7 +35,7 @@ here needs bundling: the pages load ES modules directly and the module graph is 
 files deep. A bundler would buy minification and cost a toolchain.
 
 **O3. Strip types at build time, emit nothing else.** *Chosen.* `ts.transpileModule` on
-each file, from `src/client/*.ts` to `assets/js/*.js` in the output. TypeScript is
+each file, from `src/client/**/*.ts` to `assets/js/` in the output. TypeScript is
 already a dependency, so this adds none.
 
 ## Decision
@@ -53,10 +53,21 @@ Type **checking** does not move. It stays in `tsc -p tsconfig.client.json --noEm
 which is the only thing standing between a type error and production, because the emit
 never looks at types — it only removes them.
 
-`erasableSyntaxOnly` is set on that config, and it is what makes the split safe rather
-than merely convenient. It rejects enums, parameter properties and namespaces —
-everything whose emit would be more than erasure. So what ships is always the source
-minus its types, and the emit cannot be asked to do something it does not do.
+Two settings on that config are what make the split safe rather than merely convenient,
+and both were added after review found the gap they close.
+
+`erasableSyntaxOnly` rejects enums, parameter properties and namespaces — everything
+whose emit would be more than erasure. So what ships is always the source minus its
+types, and the emit cannot be asked to do something it does not do.
+
+`verbatimModuleSyntax` makes the checker and the emit agree about what an import means.
+The emit preserves every import exactly as written; without the same setting on the
+checker, `import { BannerMessage }` — a type imported as a value — typechecks and is
+emitted verbatim, and the browser answers "does not provide an export named
+BannerMessage". `app.js` is the entry module, so that single line takes the banner,
+update prompting and worker registration down together. A checker and an emitter
+configured differently is the whole failure mode of this arrangement, and these two
+settings are where it is prevented.
 
 ## Consequences
 
@@ -72,10 +83,17 @@ source. Asserting against source would keep passing if the transpile step stoppe
 running, and a silent failure on this tier removes offline support and storage
 durability with no signal at all — which is the failure those tests exist to catch.
 
+**C3a.** The emit reads `src/client` recursively, because the checker does. Reading only
+the top level meant a module in a subdirectory typechecked and was never emitted — an
+import that resolves for the compiler and 404s for the browser. Anything that narrows one
+side of that pair has to narrow the other.
+
 **C4.** `buildClient` returns nothing for a root without `src/client`, so fixture builds
-work unchanged. That silence is made safe by a test asserting the real root emits
-exactly the modules it should; without it, a directory that moved would ship a site
-whose every page loads zero modules and whose build reports success.
+work unchanged — and only for that, since swallowing every error meant an I/O failure
+produced a site with no client JavaScript and a build that said it succeeded. That
+silence is made safe by a test asserting the real root emits exactly the modules it
+should; without it, a directory that moved would ship a site whose every page loads zero
+modules and whose build reports success.
 
 **C5.** This replaces the arrangement in 0002 · C4 for client code only. The reasoning
 there was sound and its condition was stated precisely enough to know when it expired,
