@@ -24,8 +24,6 @@ export type Store = {
   readAll(): Promise<ReadonlyMap<string, string>>;
   /** One field. Writing an empty string removes it rather than storing blankness. */
   write(field: string, value: string): Promise<void>;
-  /** Everything, for the reader who asks to erase their answers. */
-  clear(): Promise<void>;
 };
 
 const DATABASE = "life-compass";
@@ -63,14 +61,41 @@ export function openStore(): Promise<Store> {
     // Fired when another tab holds an open connection to an older version. Without a
     // handler this hangs forever with no error, which reads to the reader as a page that
     // simply never loads their answers.
-    request.onblocked = () => reject(new Error("another tab is holding the database open"));
+    let abandoned = false;
+    request.onblocked = () => {
+      abandoned = true;
+      reject(new Error("another tab is holding the database open"));
+    };
 
     request.onerror = () => reject(request.error ?? new Error("IndexedDB could not be opened"));
-    request.onsuccess = () => resolve(fromDatabase(request.result));
+
+    request.onsuccess = () => {
+      const database = request.result;
+      // A blocked open can still succeed later, once the other tab closes. Resolving is a
+      // no-op by then, so without this the connection stays open forever — and an open
+      // connection is what blocks the NEXT upgrade, which is the failure just reported.
+      if (abandoned) {
+        database.close();
+        return;
+      }
+      // Closes this connection when another tab wants to upgrade the schema. Without it,
+      // a future version bump waits on every tab still holding this one, which is a hang
+      // rather than an error and cannot be fixed from the tab doing the waiting.
+      database.onversionchange = () => database.close();
+      resolve(fromDatabase(database));
+    };
   });
 }
 
 function fromDatabase(database: IDBDatabase): Store {
+  /**
+   * Run one transaction to completion.
+   *
+   * `run` must issue every request it needs before awaiting anything that is not an
+   * IndexedDB request. A transaction commits as soon as the event loop turns with none
+   * outstanding, so awaiting a fetch or a timer in the middle silently closes it and the
+   * next request throws `TransactionInactiveError`.
+   */
   function transact<T>(
     mode: IDBTransactionMode,
     run: (store: IDBObjectStore) => Promise<T>,
@@ -93,6 +118,9 @@ function fromDatabase(database: IDBDatabase): Store {
   return {
     async readAll() {
       return transact("readonly", async (store) => {
+        // Both requests are issued before either is awaited, so they share this
+        // transaction. Pairing them by index is safe because IndexedDB returns both in
+        // key order — the nth key belongs to the nth value by definition, not by luck.
         const [keys, values] = await Promise.all([
           settled(store.getAllKeys()),
           settled(store.getAll()),
@@ -120,10 +148,5 @@ function fromDatabase(database: IDBDatabase): Store {
       });
     },
 
-    async clear() {
-      await transact("readwrite", async (store) => {
-        await settled(store.clear());
-      });
-    },
   };
 }

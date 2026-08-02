@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createAnswers, type Answers } from "./answers.ts";
+import { createAnswers, type Answers, type AnswersOptions } from "./answers.ts";
 import type { Store } from "./store.ts";
 
 const QUIET = 10;
@@ -25,6 +25,8 @@ type Recorder = Store & {
   /** Writes suspended inside the store, oldest first. Only used when `hold` is true. */
   readonly held: Held[];
   fail: boolean;
+  /** Fail only this field, for testing partial failure. */
+  failField?: string;
   hold: boolean;
   /** Wait for a write to reach the store, then let it through. */
   releaseNext(): Promise<void>;
@@ -49,14 +51,10 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()): Recorder {
         // or silently tested nothing.
         await new Promise<void>((resolve) => held.push({ field, resolve }));
       }
-      if (state.fail) {
+      if (state.fail || state.failField === field) {
         throw new Error("quota exceeded");
       }
       state.writes.push(`${field}=${value}`);
-    },
-
-    async clear() {
-      state.writes.length = 0;
     },
 
     async releaseNext() {
@@ -74,8 +72,10 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()): Recorder {
   return state;
 }
 
-function answersFor(store: Store, options = {}): Answers {
-  return createAnswers(store, { quietMs: QUIET, ...options });
+function answersFor(store: Store, options: AnswersOptions = {}): Answers {
+  // Typed, so a misspelled handler is a compile error rather than a test that passes
+  // because the callback it asserts on was never wired up.
+  return createAnswers(store, { quietMs: QUIET, maxWaitMs: QUIET * 100, ...options });
 }
 
 /** Let the debounce elapse and every queued microtask settle. */
@@ -123,6 +123,40 @@ describe("autosave coalescing", () => {
 
     // Assert
     assert.deepEqual(store.writes, []);
+  });
+});
+
+describe("maximum wait", () => {
+  it("set_SteadyInputWithNoPause_StillWritesWithinTheCeiling", async () => {
+    // Arrange — the failure this exists for: a plain debounce restarts on every keystroke,
+    // so dictating steadily produced zero writes until the reader stopped talking. A
+    // locked phone mid-flow lost the whole session.
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET, maxWaitMs: QUIET * 3 });
+
+    // Act — a keystroke every few ms, never pausing long enough to trip the debounce.
+    const started = Date.now();
+    while (Date.now() - started < QUIET * 6) {
+      answers.set("day1.threads", `so far ${Date.now() - started}ms`);
+      await new Promise((resolve) => setTimeout(resolve, Math.max(1, QUIET / 4)));
+    }
+
+    // Assert — at least one write landed while they were still going.
+    assert.ok(store.writes.length > 0, "steady input never wrote anything");
+  });
+
+  it("set_ShortBurstThenPause_WritesOnceOnTheDebounce", async () => {
+    // Arrange — negative case: the ceiling must not turn every burst into several writes.
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET, maxWaitMs: QUIET * 100 });
+
+    // Act
+    answers.set("day1.threads", "one");
+    answers.set("day1.threads", "two");
+    await quiet();
+
+    // Assert
+    assert.deepEqual(store.writes, ["day1.threads=two"]);
   });
 });
 
@@ -245,6 +279,71 @@ describe("storage failure", () => {
 
     // Assert
     assert.deepEqual({ failures, recoveries }, { failures: 2, recoveries: 1 });
+  });
+
+  it("set_WriteFails_ValueIsRetriedRatherThanDropped", async () => {
+    // Arrange — dropping it lost the answer outright while the store was briefly
+    // unavailable, and left the reader looking at text that would not survive a reload.
+    const store = recorder();
+    store.fail = true;
+    const answers = answersFor(store);
+
+    // Act — one failing write, then the store recovers and the reader types elsewhere.
+    answers.set("day1.threads", "a dictated paragraph");
+    await quiet();
+    assert.deepEqual(store.writes, [], "precondition: the first attempt failed");
+    store.fail = false;
+    await answers.flush();
+
+    // Assert — the value that failed is written, without being retyped.
+    assert.deepEqual(store.writes, ["day1.threads=a dictated paragraph"]);
+  });
+
+  it("set_OneFieldStillFailing_DoesNotAnnounceRecovery", async () => {
+    // Arrange — clearing the flag on any success meant a write to one field announced
+    // recovery while another field's answer was still unsaved. The reassurance is what
+    // stops a reader checking, so it has to be true.
+    const store = recorder();
+    let recoveries = 0;
+    const answers = answersFor(store, {
+      onFailure: () => {},
+      onRecovery: () => {
+        recoveries += 1;
+      },
+    });
+
+    // Act — "threads" fails permanently; "patterns" writes fine.
+    store.failField = "day1.threads";
+    answers.set("day1.threads", "never lands");
+    await quiet();
+    answers.set("day1.patterns", "lands fine");
+    await quiet();
+
+    // Assert
+    assert.ok(store.writes.includes("day1.patterns=lands fine"));
+    assert.equal(recoveries, 0, "recovery announced while a field was still failing");
+  });
+
+  it("set_WriteFailsWithNoHandler_IsReportedOnTheConsole", async () => {
+    // Arrange — `createAnswers(store)` with no options is a legitimate call, and this
+    // layer losing a write is the one thing on the page that must not happen quietly.
+    const store = recorder();
+    store.fail = true;
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => errors.push(args);
+
+    // Act
+    try {
+      const answers = createAnswers(store, { quietMs: QUIET });
+      answers.set("day1.threads", "one");
+      await quiet();
+    } finally {
+      console.error = original;
+    }
+
+    // Assert
+    assert.equal(errors.length, 1);
   });
 
   it("set_WriteFails_DoesNotRejectIntoTheCaller", async () => {
