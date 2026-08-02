@@ -72,8 +72,9 @@ export const DAY5: readonly Question[] = [
     id: "day5.realignment",
     instances: "row",
     label: "Move",
-    // "pick the 1–2 you'll actually do" — one is a complete answer, two is the ceiling.
-    min: 1,
+    // "pick the 1–2 you'll actually do" — one is a complete answer, but two slots are
+    // what the worksheet printed and what the ask invites. See the note on min.
+    min: 2,
     max: 2,
     fields: [{ id: "move", label: "Move", size: "long" }],
   },

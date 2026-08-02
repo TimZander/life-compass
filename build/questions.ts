@@ -333,7 +333,7 @@ export function renderQuestion(question: Question): string {
       return "";
     }
     const sections: string[] = [];
-    for (let index = 0; index < question.max; index += 1) {
+    for (let index = 0; index < question.min; index += 1) {
       // Every other heading on the site is given an id by the slugger, which never sees
       // this markup — it is injected after parsing. Composing one from the identifier and
       // the instance number keeps these linkable and keeps the build's anchor check able
@@ -361,7 +361,7 @@ export function renderQuestion(question: Question): string {
   // its first field produced "Moment / Moment: ____" and "Hard moment / Hard moment:
   // ____"; the list number is identity enough.
   const items: string[] = [];
-  for (let index = 0; index < question.max; index += 1) {
+  for (let index = 0; index < question.min; index += 1) {
     if (question.fields.length === 1) {
       const field = question.fields[0];
       if (field === undefined) {

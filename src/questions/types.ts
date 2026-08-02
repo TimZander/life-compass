@@ -68,15 +68,21 @@ export type RepeatQuestion = {
    * docs/decisions/0001 makes a real cost rather than a stylistic one.
    */
   readonly instances: "row" | "section";
-  /** Fewest instances the worksheet asks for. What #24 will require before it is done. */
-  readonly min: number;
   /**
-   * Most the worksheet invites, and the number of slots the sheet prints.
+   * Fewest instances the worksheet asks for, and how many slots the sheet prints.
    *
-   * Printing the ceiling rather than the floor is the print-first reading of a range:
-   * until #24 the reader cannot add a slot, so a slot they were invited to use and did
-   * not get is a lost answer, while one they leave blank costs nothing.
+   * These are two jobs for one number, and where a question has a genuine range they
+   * pull apart: Day 1 asks for "5–8 chapters" and prints five, because eight blocks of
+   * three fields is a wall of ruled lines rather than an invitation. Printing the
+   * ceiling instead was tried and reverted — the extra slots read as padding.
+   *
+   * The cost is that `min` overstates the requirement wherever the range is real. That
+   * only bites when something enforces it, which is #24, and #24 is where the third
+   * number belongs if one turns out to be needed. It is not worth carrying now for the
+   * two questions that would use it.
    */
+  readonly min: number;
+  /** Most the reader may add once #24 can add them. Not printed. */
   readonly max: number;
   readonly fields: readonly Field[];
 };

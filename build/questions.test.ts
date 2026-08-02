@@ -157,9 +157,9 @@ describe("renderQuestion", () => {
     assert.equal(html.match(/class="fill(?:-sm)?"/g)?.length, 1);
   });
 
-  it("renderQuestion_RepeatQuestion_RendersMaxInstancesWithEveryField", () => {
-    // Arrange — the sheet prints the ceiling of the range: four instances of two fields.
-    const expectedBlanks = CHAPTERS.kind === "repeat" ? CHAPTERS.max * CHAPTERS.fields.length : 0;
+  it("renderQuestion_RepeatQuestion_RendersMinInstancesWithEveryField", () => {
+    // Arrange — the sheet prints the floor of the range: two instances of two fields.
+    const expectedBlanks = CHAPTERS.kind === "repeat" ? CHAPTERS.min * CHAPTERS.fields.length : 0;
 
     // Act
     const html = renderQuestion(CHAPTERS);
@@ -516,22 +516,23 @@ describe("repeat instance weight", () => {
 });
 
 describe("repeat ranges", () => {
-  it("renderQuestion_GenuineRange_PrintsTheCeilingNotTheFloor", () => {
-    // Arrange — "divide your life into 5–8 chapters". Until #24 nothing can add a sixth
-    // slot, so printing the floor loses three answers the worksheet invited.
+  it("renderQuestion_GenuineRange_PrintsTheFloorNotTheCeiling", () => {
+    // Arrange — "divide your life into 5–8 chapters". Printing eight was tried and read
+    // as padding: eight blocks of three fields is a wall of ruled lines. The range is
+    // still carried for #24, which is what will let a reader add the sixth.
     const question: Question = { ...CHAPTERS, min: 5, max: 8 };
 
     // Act
     const html = renderQuestion(question);
 
     // Assert
-    assert.equal(html.match(/data-field="t\.chapters\.title"/g)?.length, 8);
+    assert.equal(html.match(/data-field="t\.chapters\.title"/g)?.length, 5);
     assert.ok(html.includes('data-min="5" data-max="8"'));
   });
 
-  it("renderQuestion_SectionRange_PrintsTheCeilingToo", () => {
+  it("renderQuestion_SectionRange_PrintsTheFloorToo", () => {
     // Arrange — negative counterpart: the two shapes must not disagree about how many
-    // instances a range means, or Day 3 prints three themes where Day 1 prints eight.
+    // instances a range means, or one worksheet prints its floor and another its ceiling.
     const question: Question = {
       kind: "repeat", id: "t.themes", instances: "section", label: "Theme",
       min: 3, max: 5,
@@ -545,6 +546,6 @@ describe("repeat ranges", () => {
     const html = renderQuestion(question);
 
     // Assert
-    assert.equal(html.match(/<h3 id=/g)?.length, 5);
+    assert.equal(html.match(/<h3 id=/g)?.length, 3);
   });
 });

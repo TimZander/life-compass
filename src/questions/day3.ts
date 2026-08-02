@@ -44,11 +44,10 @@ export const DAY3: readonly Question[] = [
     id: "day3.themes",
     instances: "section",
     label: "Theme",
-    // "Group everything into 3–5 themes" — a genuine range, so three are asked for and
-    // five are printed. The worksheet used to mark 4 and 5 "(optional)" in their
-    // headings; the range now carries that, and every theme gets the same three example
-    // slots instead of the first three getting three and the last two getting two.
-    min: 3,
+    // "Group everything into 3–5 themes". min prints, so five: the worksheet always
+    // offered five, and a reader with five themes and three slots is worse off than one
+    // with three themes and five. See the note on min in types.ts.
+    min: 5,
     max: 5,
     fields: [
       { id: "name", label: "Theme", size: "long" },
