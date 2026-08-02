@@ -34,8 +34,8 @@ export const DAY5: readonly Question[] = [
     kind: "group",
     id: "day5.money",
     fields: [
-      { id: "in_service", label: "Am I earning and spending in service of what I value, or of habits and expectations?", size: "long" },
-      { id: "overspending", label: "What am I overspending on that doesn't serve the compass?", size: "long" },
+      { id: "in_service", label: "Am I earning and spending in service of what I value, or of habits/expectations?", size: "long" },
+      { id: "overspending", label: "What am I overspending on that doesn’t serve the compass?", size: "long" },
       { id: "underspending", label: "What am I underspending on that would?", size: "long" },
       { id: "change", label: "One change", size: "long" },
     ],
@@ -62,8 +62,8 @@ export const DAY5: readonly Question[] = [
     kind: "group",
     id: "day5.time",
     fields: [
-      { id: "percent", label: "Look at last week's calendar. What percentage of waking hours served the compass?", size: "long" },
-      { id: "recurring", label: "What recurring time commitments don't?", size: "long" },
+      { id: "percent", label: "Look at last week’s calendar. What % of waking hours served the compass?", size: "long" },
+      { id: "recurring", label: "What recurring time commitments don’t?", size: "long" },
       { id: "change", label: "One change", size: "long" },
     ],
   },
@@ -72,7 +72,8 @@ export const DAY5: readonly Question[] = [
     id: "day5.realignment",
     instances: "row",
     label: "Move",
-    min: 2,
+    // "pick the 1–2 you'll actually do" — one is a complete answer, two is the ceiling.
+    min: 1,
     max: 2,
     fields: [{ id: "move", label: "Move", size: "long" }],
   },

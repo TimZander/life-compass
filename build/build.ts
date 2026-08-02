@@ -13,7 +13,7 @@ import { discover, pageUrls, type Page } from "./pages.ts";
 import { render } from "./markdown.ts";
 import { layout } from "./layout.ts";
 import type { ResolvedLink } from "./links.ts";
-import { checkRegistry, checkSentences, loadSchema, type Schema } from "./questions.ts";
+import { checkRegistry, checkSchema, loadSchema, type Schema } from "./questions.ts";
 import { checkHeaders, parseHeaders } from "./headers.ts";
 import { icons } from "./icons.ts";
 import { renderServiceWorker, type PrecacheEntry } from "./serviceworker.ts";
@@ -220,7 +220,7 @@ export async function buildPages(
   problems.push(...checkAnchors(built));
   problems.push(...checkQuestionAnchors(built, schema));
   problems.push(
-    ...checkSentences(schema).map((detail) => ({
+    ...checkSchema(schema).map((detail) => ({
       kind: "schema" as const,
       source: "src/questions",
       detail,

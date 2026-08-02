@@ -46,7 +46,7 @@ export const DAY4: readonly Question[] = [
   {
     kind: "sentence",
     id: "day4.harder_to",
-    template: "When I'm gone, I want it to be harder for people to {harder} because of what I built.",
+    template: "When I’m gone, I want it to be harder for people to {harder} because of work I did.",
     fields: [{ id: "harder", label: "Harder to", size: "short" }],
   },
   {
@@ -72,7 +72,7 @@ export const DAY4: readonly Question[] = [
   {
     kind: "sentence",
     id: "day4.chosen_draft",
-    template: "Draft {draft} — because {reason}.",
+    template: "Draft # {draft} — because {reason}",
     fields: [
       { id: "draft", label: "Draft number", size: "short" },
       { id: "reason", label: "Because", size: "short" },

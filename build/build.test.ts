@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
+import { WORKSHEETS } from "../src/questions/index.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -68,11 +69,13 @@ const NAV_HREFS: readonly string[] = [
  * still using raw `<span>` markup that means HTML passthrough, and for the migrated ones
  * it means the schema still produces what it produced.
  *
- * 445, up from 443: Day 3's themes 4 and 5 carried two example slots where the first
- * three carried three. The repeat gives all five the same three, which adds two blanks
- * and removes an inconsistency that read as arbitrary rather than deliberate.
+ * 454, up from 443. Two changes, both deliberate. Day 3's themes 4 and 5 carried two
+ * example slots where the first three carried three; the repeat gives all five the same
+ * three. And a repeat now prints the ceiling of its range rather than the floor, so Day
+ * 1 offers the eight chapters its prose invites instead of five — until #24 nothing can
+ * add a slot, and a slot the reader was invited to use and did not get is a lost answer.
  */
-const EXPECTED_FILL_MARKERS = 445;
+const EXPECTED_FILL_MARKERS = 454;
 
 /** Built once and shared: rendering 29 pages per test is pure waste. */
 let cached: Promise<BuildResult> | undefined;
@@ -430,6 +433,25 @@ describe("heading ids", () => {
     // Assert
     assert.ok(page !== undefined);
     assert.ok(!/id="[^"]*span-class/.test(page.html), "an id still contains tag text");
+    // Kept positive as well: the negative alone passes on a page with no headings, so on
+    // its own it would stop guarding anything the day this file stopped writing them.
+    assert.ok(page.html.includes('<h3 id="value-1--______">'));
+  });
+
+  it("buildPages_GeneratedHeading_CarriesAnIdLikeEveryOtherHeading", async () => {
+    // Arrange — section repeats are injected after parsing, so the slugger never sees
+    // them. Without an id of their own, Day 2's five values are the only headings on the
+    // site that cannot be linked to and that the build's anchor check cannot see.
+    const source = "days/day-2-values.md";
+
+    // Act
+    const result = await site();
+    const page = result.pages.find((candidate) => candidate.source === source);
+
+    // Assert
+    assert.ok(page !== undefined);
+    assert.ok(page.html.includes('<h3 id="day2-operationalised-1">'));
+    assert.ok(page.headingIds.includes("day2-operationalised-5"));
   });
 });
 
@@ -450,6 +472,40 @@ describe("question anchors", () => {
     const blanks = page.html.match(/class="fill(?:-sm)?"/g)?.length ?? 0;
     const identified = page.html.match(/class="fill(?:-sm)?" data-field=/g)?.length ?? 0;
     assert.equal(identified, blanks);
+  });
+
+  it("buildPages_EveryMigratedWorksheet_RendersItsQuestionsAndNoAnonymousBlanks", async () => {
+    // Arrange — the Day 1 assertions above are what prove a migration landed, so they
+    // run for every worksheet rather than only the pilot. Day 1's copy stays because it
+    // names the specific identifiers; this one comes from the schema, so #22's remaining
+    // slices are covered the moment they are declared.
+    const result = await site();
+
+    // Act & Assert
+    for (const worksheet of WORKSHEETS) {
+      const page = result.pages.find((candidate) => candidate.source === worksheet.source);
+      assert.ok(page !== undefined, `${worksheet.source} was not built`);
+      const blanks = page.html.match(/class="fill(?:-sm)?"/g)?.length ?? 0;
+      const identified = page.html.match(/class="fill(?:-sm)?" data-field=/g)?.length ?? 0;
+      assert.equal(identified, blanks, `${worksheet.source} has anonymous blanks`);
+      assert.ok(blanks > 0, `${worksheet.source} rendered no blanks at all`);
+      for (const question of worksheet.questions) {
+        assert.ok(
+          page.html.includes(`data-question="${question.id}"`),
+          `${worksheet.source} never rendered ${question.id}`,
+        );
+      }
+    }
+  });
+
+  it("buildPages_EveryMigratedWorksheet_HasNoHandWrittenBlanksLeft", async () => {
+    // Arrange — negative case: a blank the migration missed still renders and still
+    // looks right, and is invisible to storage. The generated ones all carry data-field.
+    // Act & Assert
+    for (const worksheet of WORKSHEETS) {
+      const source = await readFile(path.join(ROOT, worksheet.source), "utf8");
+      assert.ok(!source.includes('<span class="fill'), `${worksheet.source} still writes blanks`);
+    }
   });
 
   it("buildPages_Day1_AnchorsEveryQuestionExactlyOnce", async () => {

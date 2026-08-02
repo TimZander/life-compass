@@ -68,7 +68,15 @@ export type RepeatQuestion = {
    * docs/decisions/0001 makes a real cost rather than a stylistic one.
    */
   readonly instances: "row" | "section";
+  /** Fewest instances the worksheet asks for. What #24 will require before it is done. */
   readonly min: number;
+  /**
+   * Most the worksheet invites, and the number of slots the sheet prints.
+   *
+   * Printing the ceiling rather than the floor is the print-first reading of a range:
+   * until #24 the reader cannot add a slot, so a slot they were invited to use and did
+   * not get is a lost answer, while one they leave blank costs nothing.
+   */
   readonly max: number;
   readonly fields: readonly Field[];
 };
@@ -96,9 +104,10 @@ export type ChecklistQuestion = {
  * capture the same data while changing what is being asked: completing a sentence is a
  * different act from filling a form, and the sentence is the exercise.
  *
- * Every `{name}` must have a matching field, and every field must appear in the
- * template. The build checks both, because a gap with no field renders as literal
- * braces and a field with no gap is an answer the reader can never give.
+ * Every `{name}` must have a matching field, every field must appear in the template,
+ * and no name may be used twice. The build checks all three, because a gap with no
+ * field renders as nothing at all, a field with no gap is an answer the reader can
+ * never give, and a repeated name puts two blanks on one identifier.
  */
 export type SentenceQuestion = {
   readonly kind: "sentence";
@@ -140,7 +149,16 @@ export function identifiersOf(question: Question): readonly string[] {
   return [question.id, ...question.fields.map((field) => `${question.id}.${field.id}`)];
 }
 
-/** The `{name}` gaps in a sentence template, in the order they appear. */
+/**
+ * One `{name}` gap in a sentence template.
+ *
+ * Shared with the renderer, which splits on it. Two copies of this pattern would let the
+ * renderer accept a gap the checker never validated — the check would pass and the blank
+ * would render anyway.
+ */
+export const GAP = /\{([A-Za-z0-9_]+)\}/;
+
+/** The `{name}` gaps in a sentence template, in the order they appear, duplicates kept. */
 export function gapsOf(template: string): readonly string[] {
-  return [...template.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map((match) => match[1] ?? "");
+  return [...template.matchAll(new RegExp(GAP, "g"))].map((match) => match[1] ?? "");
 }

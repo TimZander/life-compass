@@ -1,14 +1,22 @@
 /**
  * Day 1 — Excavation.
  *
- * Labels are plain text. The worksheet currently renders these with varying emphasis
- * and list markers — bullets here, numbers there, blockquotes for the two standalone
- * answers — but that variety is incidental decoration rather than meaning, and encoding
- * it would put formatting detail permanently into a schema that a form UI will ignore.
- * The renderer applies one consistent treatment per kind instead.
+ * Labels are plain text. The worksheet renders these with varying emphasis and list
+ * markers — bullets here, numbers there, blockquotes for the two standalone answers —
+ * but that variety is incidental decoration rather than meaning, and encoding it would
+ * put formatting detail permanently into a schema that a form UI will ignore. The
+ * renderer applies one consistent treatment per kind instead, deriving the emphasis it
+ * does apply from the label's own punctuation rather than from a flag.
+ *
+ * Days 2 and 3 found the edge of that: `instances` is presentation the schema DOES
+ * carry, because a heading is a landmark a screen reader navigates by, and losing five
+ * of them is a cost to a reader rather than a change of look (docs/decisions/0001).
+ * The line is whether a form UI could ignore it without harming anyone.
  *
  * `min`/`max` come from the worksheet's own wording. Day 1 asks for "5–8 chapters" but
- * exactly five peak moments and three low points, so only the first is a genuine range.
+ * exactly five peak moments and three low points, so only the first is a genuine range —
+ * and the sheet prints eight chapter slots, because until #24 a slot the reader was
+ * invited to use and did not get is a lost answer.
  */
 
 import type { Question } from "./types.ts";
@@ -51,7 +59,7 @@ export const DAY1: readonly Question[] = [
     fields: [
       { id: "moment", label: "Hard moment", size: "long" },
       { id: "violated", label: "Violated / missing", size: "long" },
-      { id: "taught", label: "Taught me I need / won't accept", size: "long" },
+      { id: "taught", label: "Taught me I need / won’t accept", size: "long" },
     ],
   },
   {

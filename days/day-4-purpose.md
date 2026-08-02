@@ -35,15 +35,15 @@ isn't bragging, it's inventory.
 - **Who do you want to be useful to?** Be specific — not "people" but a particular kind
   of person or group.
 
-<!-- questions: day4.who -->
+  <!-- questions: day4.who -->
 
 - **What problem of theirs do you want to help with?**
 
-<!-- questions: day4.problem -->
+  <!-- questions: day4.problem -->
 
 - **What would change in their world if you did your work well?**
 
-<!-- questions: day4.changes -->
+  <!-- questions: day4.changes -->
 
 ---
 

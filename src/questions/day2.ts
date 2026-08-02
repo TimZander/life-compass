@@ -6,9 +6,11 @@
  * rather than one, because they are answered at different points and the earlier ones
  * stay legible after the later ones are filled in — that is the exercise.
  *
- * `### Value 1 — ______` was a heading the reader names. That becomes a repeat whose
- * first field is the name, following the normalisation already applied to Day 1: the
- * page loses four `###` headings and gains a numbered list.
+ * `### Value 1 — ______` was a heading the reader names five times over. That is a
+ * repeat whose first field is the name, but a section-weight one: flattening the five
+ * into list rows would have taken five headings off the page, and a heading is a
+ * landmark a screen reader navigates by (docs/decisions/0001). The narrowing lists
+ * above it are rows — a value there is one word, not a unit of work.
  */
 
 import type { Question } from "./types.ts";
