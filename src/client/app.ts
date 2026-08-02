@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * Everything the pages load.
  *

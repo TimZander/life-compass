@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * The banner surface.
  *
@@ -17,10 +16,17 @@
  *   arrives mid-sentence waits until the sentence is finished.
  */
 
-/**
- * @typedef {{ label: string, onSelect: () => void, primary?: boolean }} BannerAction
- * @typedef {{ id: string, text: string, actions: readonly BannerAction[] }} BannerMessage
- */
+export type BannerAction = {
+  readonly label: string;
+  readonly onSelect: () => void;
+  readonly primary?: boolean;
+};
+
+export type BannerMessage = {
+  readonly id: string;
+  readonly text: string;
+  readonly actions: readonly BannerAction[];
+};
 
 const REGION_ID = "banner-region";
 
@@ -32,10 +38,8 @@ const REGION_ID = "banner-region";
  * task is routinely missed entirely. Since docs/decisions/0001 makes accessibility the
  * point rather than a courtesy, an announcement that silently does not happen is worse
  * here than almost anywhere.
- *
- * @returns {HTMLElement | null}
  */
-function region() {
+function region(): HTMLElement | null {
   const found = document.getElementById(REGION_ID);
   if (found === null) {
     // Loud rather than silent: the layout is supposed to provide this, and quietly
@@ -46,7 +50,7 @@ function region() {
 }
 
 /** Is the reader mid-input right now? */
-function isTyping() {
+function isTyping(): boolean {
   const active = document.activeElement;
   if (active === null || !(active instanceof HTMLElement)) {
     return false;
@@ -61,10 +65,8 @@ function isTyping() {
  * listener per deferred message leaked one for every message a reader typed through, and
  * let two already-scheduled timeouts both observe "not typing" and render twice. One
  * slot also makes "the newest wins" true, which was previously only claimed.
- *
- * @type {BannerMessage | null}
  */
-let pending = null;
+let pending: BannerMessage | null = null;
 let watchingForPause = false;
 
 /**
@@ -72,7 +74,7 @@ let watchingForPause = false;
  * much mid-thought, and `document.activeElement` has not moved yet. Letting focus settle
  * first avoids treating a tab between fields as a pause.
  */
-function onFocusOut() {
+function onFocusOut(): void {
   window.setTimeout(() => {
     if (isTyping() || pending === null) {
       return;
@@ -85,8 +87,7 @@ function onFocusOut() {
   }, 0);
 }
 
-/** @param {BannerMessage} message */
-function deferUntilPause(message) {
+function deferUntilPause(message: BannerMessage): void {
   pending = message;
   if (watchingForPause) {
     return;
@@ -95,8 +96,7 @@ function deferUntilPause(message) {
   document.addEventListener("focusout", onFocusOut);
 }
 
-/** @param {BannerMessage} message */
-function render(message) {
+function render(message: BannerMessage): void {
   const host = region();
   if (host === null) {
     return;
@@ -138,10 +138,8 @@ function render(message) {
  * waiting for a pause. Precedence between *kinds* of message becomes a real decision
  * when install and storage messages arrive alongside this one; until then, last-wins is
  * the whole rule.
- *
- * @param {BannerMessage} message
  */
-export function showBanner(message) {
+export function showBanner(message: BannerMessage): void {
   if (isTyping()) {
     deferUntilPause(message);
     return;
@@ -149,7 +147,7 @@ export function showBanner(message) {
   render(message);
 }
 
-export function dismissBanner() {
+export function dismissBanner(): void {
   pending = null;
   region()?.replaceChildren();
 }
