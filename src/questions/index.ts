@@ -8,6 +8,10 @@
 
 import type { Question } from "./types.ts";
 import { DAY1 } from "./day1.ts";
+import { DAY2 } from "./day2.ts";
+import { DAY3 } from "./day3.ts";
+import { DAY4 } from "./day4.ts";
+import { DAY5 } from "./day5.ts";
 
 export type Worksheet = {
   /** Repo-relative POSIX path of the Markdown this belongs to. */
@@ -17,4 +21,8 @@ export type Worksheet = {
 
 export const WORKSHEETS: readonly Worksheet[] = [
   { source: "days/day-1-excavation.md", questions: DAY1 },
+  { source: "days/day-2-values.md", questions: DAY2 },
+  { source: "days/day-3-passions.md", questions: DAY3 },
+  { source: "days/day-4-purpose.md", questions: DAY4 },
+  { source: "days/day-5-synthesis.md", questions: DAY5 },
 ];

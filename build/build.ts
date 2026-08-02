@@ -13,7 +13,7 @@ import { discover, pageUrls, type Page } from "./pages.ts";
 import { render } from "./markdown.ts";
 import { layout } from "./layout.ts";
 import type { ResolvedLink } from "./links.ts";
-import { checkRegistry, loadSchema, type Schema } from "./questions.ts";
+import { checkRegistry, checkSchema, loadSchema, type Schema } from "./questions.ts";
 import { checkHeaders, parseHeaders } from "./headers.ts";
 import { icons } from "./icons.ts";
 import { renderServiceWorker, type PrecacheEntry } from "./serviceworker.ts";
@@ -37,6 +37,7 @@ export type ProblemKind =
   | "unresolved-question-anchor"
   | "unanchored-question"
   | "registry"
+  | "schema"
   | "headers";
 
 export type BuildProblem = {
@@ -218,6 +219,13 @@ export async function buildPages(
 
   problems.push(...checkAnchors(built));
   problems.push(...checkQuestionAnchors(built, schema));
+  problems.push(
+    ...checkSchema(schema).map((detail) => ({
+      kind: "schema" as const,
+      source: "src/questions",
+      detail,
+    })),
+  );
   // _headers is deployed verbatim, so this cannot change what Cloudflare serves — it
   // refuses to build when the directives the privacy claim rests on have gone missing.
   // Only meaningful for the real root; a fixture has no _headers and needs none.

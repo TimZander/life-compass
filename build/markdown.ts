@@ -103,7 +103,16 @@ export function render(markdown: string, source: string, context: RenderContext)
         const question = context.questions.get(id);
         // An unresolvable anchor is reported by the build rather than thrown here;
         // leaving the comment in place keeps the failure legible in the output too.
-        token.content = question === undefined ? token.content : `${renderQuestion(question)}\n`;
+        if (question !== undefined) {
+          const generated = renderQuestion(question);
+          token.content = `${generated}\n`;
+          // Generated headings never pass through the slugger above, so without this the
+          // build's anchor check treats a link to one as broken and the page's landmarks
+          // are missing from every list built off headingIds.
+          for (const heading of generated.matchAll(/<h[1-6] id="([^"]+)"/g)) {
+            headingIds.push(heading[1] ?? "");
+          }
+        }
       }
       continue;
     }

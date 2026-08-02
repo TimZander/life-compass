@@ -10,7 +10,14 @@
 
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 import { REGISTRY } from "../src/questions/registry.ts";
-import { identifiersOf, type Question } from "../src/questions/types.ts";
+import {
+  GAP,
+  gapsOf,
+  identifiersOf,
+  type Question,
+  type RepeatQuestion,
+  type SentenceQuestion,
+} from "../src/questions/types.ts";
 
 /** `<!-- questions: day1.chapters -->` on a line of its own. */
 export const ANCHOR = /^<!--\s*questions:\s*([A-Za-z0-9._-]+)\s*-->$/;
@@ -82,6 +89,138 @@ export function checkRegistry(schema: Schema): readonly string[] {
   return problems;
 }
 
+/**
+ * Everything about a question that must hold before it can be rendered honestly.
+ *
+ * These are the failures that leave no trace in the output. A sentence gap with no
+ * field renders as nothing at all; a field with no gap is a question the reader is
+ * never shown but which the registry, the storage layer and the assistant contract all
+ * believe exists; a question with no fields renders as an empty string where a
+ * question should be. None of them can be seen by reading the built page, which is
+ * what makes the build the only place they can be caught.
+ */
+export function checkSchema(schema: Schema): readonly string[] {
+  const problems: string[] = [];
+  for (const question of schema.byId.values()) {
+    problems.push(...checkText(question));
+    problems.push(...checkParts(question));
+    if (question.kind === "repeat") {
+      problems.push(...checkRange(question));
+    }
+    if (question.kind === "sentence") {
+      problems.push(...checkGaps(question));
+    }
+  }
+  return problems;
+}
+
+/** Every author-written string a question can carry, paired with what to call it. */
+function textOf(question: Question): readonly (readonly [string, string])[] {
+  if (question.kind === "sentence") {
+    return [["template", question.template]];
+  }
+  if (question.kind === "checklist") {
+    return question.items.map((item) => [`item "${item.id}"`, item.label] as const);
+  }
+  if (question.kind === "repeat") {
+    return [
+      ["label", question.label],
+      ...question.fields.map((field) => [`field "${field.id}"`, field.label] as const),
+    ];
+  }
+  if (question.kind === "single") {
+    // Never printed today, but it becomes the form field's accessible name at #24, so it
+    // is author-facing text like any other.
+    return [["label", question.label]];
+  }
+  return question.fields.map((field) => [`field "${field.id}"`, field.label] as const);
+}
+
+/**
+ * Author text is prose and ships as written, so it has to be typeset like prose.
+ *
+ * markdown-it's typographer turns `'` into `’` for everything in the Markdown, but it
+ * never sees these strings — they are injected after parsing. A straight apostrophe
+ * therefore lands on the page beside curly ones set from the same paragraph, which is
+ * the kind of thing nobody notices in a diff and everybody notices in print.
+ */
+function checkText(question: Question): readonly string[] {
+  const problems: string[] = [];
+  for (const [what, text] of textOf(question)) {
+    if (text.includes("'")) {
+      problems.push(`${question.id} ${what} uses a straight apostrophe — write ’ instead`);
+    }
+    if (text.trim() === "") {
+      problems.push(`${question.id} ${what} is empty`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * A question needs parts to render, and each part needs its own identifier.
+ *
+ * Duplicate part ids survive `identifiersOf` and then collapse in the registry check's
+ * set, so two blanks end up sharing one `data-field` with nothing reporting it — the
+ * rename hazard 0011 was written to close, arrived at by copy-paste instead.
+ */
+function checkParts(question: Question): readonly string[] {
+  if (question.kind === "single") {
+    return [];
+  }
+  const ids = question.kind === "checklist"
+    ? question.items.map((item) => item.id)
+    : question.fields.map((field) => field.id);
+  const problems: string[] = [];
+  if (ids.length === 0) {
+    problems.push(`${question.id} is a ${question.kind} with nothing to fill in`);
+  }
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) {
+      problems.push(`${question.id} declares "${id}" twice`);
+    }
+    seen.add(id);
+  }
+  return problems;
+}
+
+/** `max` is what the sheet prints, so a range that runs backwards prints nothing. */
+function checkRange(question: RepeatQuestion): readonly string[] {
+  const problems: string[] = [];
+  if (question.min < 1) {
+    problems.push(`${question.id} has min ${question.min}; a worksheet prints at least one`);
+  }
+  if (question.max < question.min) {
+    problems.push(`${question.id} has max ${question.max} below min ${question.min}`);
+  }
+  return problems;
+}
+
+/** Sentence gaps and fields must account for each other exactly, in both directions. */
+function checkGaps(question: SentenceQuestion): readonly string[] {
+  const problems: string[] = [];
+  const named = gapsOf(question.template);
+  const gaps = new Set(named);
+  const fields = new Set(question.fields.map((field) => field.id));
+  if (named.length !== gaps.size) {
+    // Two gaps of one name render as two blanks sharing one `data-field`, and the
+    // set comparison below would call that agreement.
+    problems.push(`${question.id} names the same gap more than once`);
+  }
+  for (const gap of gaps) {
+    if (!fields.has(gap)) {
+      problems.push(`${question.id} has a {${gap}} gap with no matching field`);
+    }
+  }
+  for (const field of fields) {
+    if (!gaps.has(field)) {
+      problems.push(`${question.id} defines "${field}" but the sentence has no {${field}} gap`);
+    }
+  }
+  return problems;
+}
+
 function escape(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -94,6 +233,23 @@ function escape(value: string): string {
 function blank(fieldId: string, size: "short" | "long"): string {
   const cls = size === "short" ? "fill-sm" : "fill";
   return `<span class="${cls}" data-field="${escape(fieldId)}">______</span>`;
+}
+
+/**
+ * A field's label in front of its blank.
+ *
+ * A label ending in a question mark IS the question, and is printed exactly as written:
+ * Day 5 asks "Does it use my passions, or just my skills?" and appending a colon to that
+ * produced "…my skills?: ______". Any other label names the answer rather than asking
+ * for it — "My definition", "One change" — and reads as a bold lead-in, which is how
+ * every worksheet wrote them before the migration and why Day 5's "One specific change"
+ * stood apart from the three questions above it.
+ */
+function labelled(label: string, fieldId: string, size: "short" | "long"): string {
+  const filled = blank(fieldId, size);
+  return label.trimEnd().endsWith("?")
+    ? `${escape(label)} ${filled}`
+    : `<strong>${escape(label)}:</strong> ${filled}`;
 }
 
 /**
@@ -115,22 +271,109 @@ export function renderQuestion(question: Question): string {
     );
   }
 
-  // An ordered list, so instance numbering comes from the list rather than from labels
-  // baked into the markup — which matters once the reader can add or remove one.
+  if (question.kind === "group") {
+    // A plain list of labelled answers. No numbering, because these prompts differ from
+    // one another rather than repeating — numbering them would imply an order that is
+    // not there.
+    const items = question.fields
+      .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
+      .join("\n");
+    return `<ul class="q-group" data-question="${escape(question.id)}">\n${items}\n</ul>`;
+  }
+
+  if (question.kind === "checklist") {
+    // Same markup kramdown produced for `- [ ]`, so the printed and on-screen forms stay
+    // the ones readers already know. Disabled until #24 can store what was ticked —
+    // a box that forgets is worse than one that cannot be ticked at all.
+    const items = question.items
+      .map(
+        (item) =>
+          `<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox"` +
+          ` disabled="disabled" data-field="${escape(`${question.id}.${item.id}`)}" />` +
+          `${escape(item.label)}</li>`,
+      )
+      .join("\n");
+    return (
+      `<ul class="task-list q-checklist" data-question="${escape(question.id)}">\n${items}\n</ul>`
+    );
+  }
+
+  if (question.kind === "sentence") {
+    // Text and blanks interleaved, so the sentence survives. Splitting on the gaps keeps
+    // the literal parts and the fields in step without a second pass over the string.
+    const parts = question.template.split(GAP);
+    const byId = new Map(question.fields.map((field) => [field.id, field]));
+    let html = "";
+    for (const [index, part] of parts.entries()) {
+      if (index % 2 === 0) {
+        html += escape(part);
+        continue;
+      }
+      const field = byId.get(part);
+      // A gap with no field is caught by checkSchema before this runs; rendering the
+      // literal brace here would only hide it.
+      html += field === undefined ? "" : blank(`${question.id}.${part}`, field.size);
+    }
+    return `<p class="q-sentence" data-question="${escape(question.id)}">${html}</p>`;
+  }
+
+  // A section-weight repeat gives each instance a heading: "Value 1 — ______", composed
+  // from the label, the instance number and the first field. Those headings are how the
+  // worksheet has always read, and they are navigation as well as hierarchy — a screen
+  // reader moves by them, so rendering five sections as five list rows silently removes
+  // five landmarks from the page (docs/decisions/0001).
   //
-  // No per-instance heading is printed. Repeating the group's label above its first
-  // field produced "Moment / Moment: ____" and "Hard moment / Hard moment: ____"; the
-  // list number is identity enough. `label` stays in the schema for the add-another
-  // control (#24), where it reads as a verb phrase rather than a heading.
+  // The number is display only. Nothing derives identity from it; instances carry their
+  // own identifiers once the reader can add and remove them (0011).
+  if (question.instances === "section") {
+    const [name, ...rest] = question.fields;
+    // checkSchema refuses a repeat with no fields, so this is unreachable rather than
+    // silent — returning "" here would put an empty section where a question should be.
+    if (name === undefined) {
+      return "";
+    }
+    const sections: string[] = [];
+    for (let index = 0; index < question.max; index += 1) {
+      // Every other heading on the site is given an id by the slugger, which never sees
+      // this markup — it is injected after parsing. Composing one from the identifier and
+      // the instance number keeps these linkable and keeps the build's anchor check able
+      // to see them, and unlike the old `id="value-1--______"` it says what it points at.
+      const anchor = `${question.id.replace(/\./g, "-")}-${index + 1}`;
+      const heading =
+        `<h3 id="${escape(anchor)}">${escape(question.label)} ${index + 1} — ` +
+        `${blank(`${question.id}.${name.id}`, name.size)}</h3>`;
+      const fields = rest
+        .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
+        .join("\n");
+      sections.push(`${heading}\n<ul>\n${fields}\n</ul>`);
+    }
+    return (
+      `<div class="q-repeat" data-question="${escape(question.id)}"` +
+      ` data-min="${question.min}" data-max="${question.max}">\n${sections.join("\n")}\n</div>`
+    );
+  }
+
+  // Otherwise an ordered list, so instance numbering comes from the list rather than
+  // from labels baked into the markup — which matters once the reader can add or remove
+  // one.
+  //
+  // No per-instance heading is printed in this shape. Repeating the group's label above
+  // its first field produced "Moment / Moment: ____" and "Hard moment / Hard moment:
+  // ____"; the list number is identity enough.
   const items: string[] = [];
-  for (let index = 0; index < question.min; index += 1) {
+  for (let index = 0; index < question.max; index += 1) {
     if (question.fields.length === 1) {
       const field = question.fields[0];
       if (field === undefined) {
         continue;
       }
+      // A lone field whose label just restates the group's is the same stutter the
+      // comment above describes, one line lower down: ten rows reading "Value: ____"
+      // under a heading that already says "Narrow to 10". The list number is enough.
       items.push(
-        `<li>${escape(field.label)}: ${blank(`${question.id}.${field.id}`, field.size)}</li>`,
+        field.label === question.label
+          ? `<li>${blank(`${question.id}.${field.id}`, field.size)}</li>`
+          : `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`,
       );
       continue;
     }
@@ -141,12 +384,9 @@ export function renderQuestion(question: Question): string {
     if (first === undefined) {
       continue;
     }
-    const head = `${escape(first.label)}: ${blank(`${question.id}.${first.id}`, first.size)}`;
+    const head = labelled(first.label, `${question.id}.${first.id}`, first.size);
     const nested = rest
-      .map(
-        (field) =>
-          `<li>${escape(field.label)}: ${blank(`${question.id}.${field.id}`, field.size)}</li>`,
-      )
+      .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
       .join("\n");
     items.push(`<li>${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }

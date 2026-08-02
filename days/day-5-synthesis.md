@@ -16,10 +16,7 @@ statement, and non-negotiables.
 > Tip: copy the template to `my-compass.md` at the repo root so the blank template stays
 > clean for future annual redos.
 
-- [ ] Values filled in
-- [ ] Passions filled in
-- [ ] Purpose filled in
-- [ ] Non-negotiables filled in
+<!-- questions: day5.ready -->
 
 ---
 
@@ -30,35 +27,23 @@ gap?**
 
 ### Career
 
-- Does my work let me live my values daily, or require me to suppress them? <span class="fill">______</span>
-- Does it use my passions, or just my skills? <span class="fill">______</span>
-- Is it serving my purpose, or unrelated to it? <span class="fill">______</span>
-- **One specific change that would move this closer to aligned:** <span class="fill">______</span>
+<!-- questions: day5.career -->
 
 ### Money
 
-- Am I earning and spending in service of what I value, or of habits/expectations? <span class="fill">______</span>
-- What am I overspending on that doesn't serve the compass? <span class="fill">______</span>
-- What am I underspending on that would? <span class="fill">______</span>
-- **One change:** <span class="fill">______</span>
+<!-- questions: day5.money -->
 
 ### Place
 
-- Does where I live support my values, passions, and purpose? <span class="fill">______</span>
-- What would have to be true about where I live for it to be a full yes? <span class="fill">______</span>
-- **One change:** <span class="fill">______</span>
+<!-- questions: day5.place -->
 
 ### People
 
-- Who in my life amplifies the compass? Who pulls against it? <span class="fill">______</span>
-- Who do I need more of? Less of? <span class="fill">______</span>
-- **One change:** <span class="fill">______</span>
+<!-- questions: day5.people -->
 
 ### Time
 
-- Look at last week's calendar. What % of waking hours served the compass? <span class="fill">______</span>
-- What recurring time commitments don't? <span class="fill">______</span>
-- **One change:** <span class="fill">______</span>
+<!-- questions: day5.time -->
 
 ---
 
@@ -67,15 +52,13 @@ gap?**
 From the five "one change" answers, pick the **1–2** you'll actually do in the next 90
 days. Be ruthless.
 
-1. <span class="fill">______</span>
-2. <span class="fill">______</span>
+<!-- questions: day5.realignment -->
 
 ---
 
 ## 4. Set a review cadence (5 min)
 
-- **Next quarterly review (15 min):** <span class="fill">______</span>
-- **Next annual review (90 min):** <span class="fill">______</span>
+<!-- questions: day5.review -->
 
 > - **Quarterly:** Re-read. Adjust compass items that no longer fit. Pick next 90-day moves.
 > - **Annually:** Redo Day 5 in full. Optionally redo a single earlier day if something feels off.

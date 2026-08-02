@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { checkRegistry, loadSchema, renderQuestion, ANCHOR } from "./questions.ts";
-import { identifiersOf, type Question } from "../src/questions/types.ts";
+import { ANCHOR, checkRegistry, checkSchema, loadSchema, renderQuestion } from "./questions.ts";
+import { gapsOf, identifiersOf, type Question } from "../src/questions/types.ts";
 import type { Worksheet } from "../src/questions/index.ts";
 
 const CHAPTERS: Question = {
   kind: "repeat",
   id: "t.chapters",
+  instances: "row",
   label: "Chapter",
   min: 2,
   max: 4,
@@ -63,6 +64,40 @@ describe("identifiersOf", () => {
   it("identifiersOf_SingleQuestion_IsJustItsOwnId", () => {
     // Act & Assert
     assert.deepEqual(identifiersOf(NOTE), ["t.note"]);
+  });
+
+  it("identifiersOf_ChecklistQuestion_IncludesEveryItem", () => {
+    // Arrange — a checklist carries items rather than fields, so it takes its own branch.
+    const checklist: Question = {
+      kind: "checklist",
+      id: "t.ready",
+      items: [
+        { id: "a", label: "First" },
+        { id: "b", label: "Second" },
+      ],
+    };
+
+    // Act & Assert
+    assert.deepEqual(identifiersOf(checklist), ["t.ready", "t.ready.a", "t.ready.b"]);
+  });
+});
+
+describe("gapsOf", () => {
+  it("gapsOf_TemplateWithGaps_ReturnsThemInOrder", () => {
+    // Act & Assert
+    assert.deepEqual(gapsOf("Enough {excess}, more {lack}."), ["excess", "lack"]);
+  });
+
+  it("gapsOf_RepeatedName_KeepsBothOccurrences", () => {
+    // Arrange — checkSchema compares against a Set, so it needs the duplicate preserved
+    // here to be able to notice it at all.
+    // Act & Assert
+    assert.deepEqual(gapsOf("{x} and {x}"), ["x", "x"]);
+  });
+
+  it("gapsOf_ProseWithNoGaps_IsEmpty", () => {
+    // Act & Assert — negative case: braces are not gaps unless they name one.
+    assert.deepEqual(gapsOf("A sentence with { spaces } and no gaps."), []);
   });
 });
 
@@ -122,9 +157,9 @@ describe("renderQuestion", () => {
     assert.equal(html.match(/class="fill(?:-sm)?"/g)?.length, 1);
   });
 
-  it("renderQuestion_RepeatQuestion_RendersMinInstancesWithEveryField", () => {
-    // Arrange — two instances of two fields.
-    const expectedBlanks = CHAPTERS.kind === "repeat" ? CHAPTERS.min * CHAPTERS.fields.length : 0;
+  it("renderQuestion_RepeatQuestion_RendersMaxInstancesWithEveryField", () => {
+    // Arrange — the sheet prints the ceiling of the range: four instances of two fields.
+    const expectedBlanks = CHAPTERS.kind === "repeat" ? CHAPTERS.max * CHAPTERS.fields.length : 0;
 
     // Act
     const html = renderQuestion(CHAPTERS);
@@ -154,6 +189,7 @@ describe("renderQuestion", () => {
     const hostile: Question = {
       kind: "repeat",
       id: "t.x",
+      instances: "row",
       label: "X",
       min: 1,
       max: 1,
@@ -177,5 +213,338 @@ describe("renderQuestion", () => {
     // Assert
     assert.ok(!html.includes("Note"));
     assert.ok(html.includes('data-question="t.note"'));
+  });
+});
+
+describe("sentence questions", () => {
+  const SENTENCE: Question = {
+    kind: "sentence",
+    id: "t.sentence",
+    template: "The world has enough {excess}. It needs more {lack}.",
+    fields: [
+      { id: "excess", label: "Enough of", size: "short" },
+      { id: "lack", label: "More of", size: "short" },
+    ],
+  };
+
+  it("renderQuestion_Sentence_InterleavesProseAndBlanks", () => {
+    // Arrange — the sentence is the exercise; splitting it into labelled fields would
+    // capture the same words while asking a different thing.
+    // Act
+    const html = renderQuestion(SENTENCE);
+
+    // Assert
+    assert.ok(html.includes("The world has enough "));
+    assert.ok(html.includes(". It needs more "));
+    assert.equal(html.match(/class="fill-sm"/g)?.length, 2);
+  });
+
+  it("checkSchema_GapWithNoField_IsReported", () => {
+    // Arrange — negative case, and invisible in the output: a gap with no field renders
+    // as nothing at all.
+    const broken: Question = { ...SENTENCE, template: "Enough {excess}, more {missing}." };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [broken] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("{missing} gap with no matching field")));
+  });
+
+  it("checkSchema_FieldWithNoGap_IsReported", () => {
+    // Arrange — negative case: a field the reader is never shown, but which the
+    // registry, storage and the assistant contract all believe exists.
+    const broken: Question = { ...SENTENCE, template: "The world has enough {excess}." };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [broken] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes('defines "lack"')));
+  });
+
+  it("checkSchema_RepeatedGapName_IsReported", () => {
+    // Arrange — negative case that the set comparison alone calls agreement: both blanks
+    // would render carrying one data-field, so #24 would store one answer for two.
+    const broken: Question = {
+      kind: "sentence",
+      id: "t.twice",
+      template: "Enough {excess}. More {excess}.",
+      fields: [{ id: "excess", label: "Enough of", size: "short" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [broken] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("names the same gap more than once")));
+  });
+
+  it("checkSchema_RealSchema_IsClean", () => {
+    // Act & Assert — the shipped sentences and their fields must agree.
+    assert.deepEqual(checkSchema(loadSchema()), []);
+  });
+});
+
+describe("checkSchema", () => {
+  it("checkSchema_StraightApostropheInALabel_IsReported", () => {
+    // Arrange — negative case, and invisible in a diff: generated text never reaches
+    // markdown-it's typographer, so a straight apostrophe ships beside curly ones set
+    // from the same paragraph.
+    const question: Question = {
+      kind: "group",
+      id: "t.g",
+      fields: [{ id: "f", label: "What doesn't serve you?", size: "long" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("straight apostrophe")));
+  });
+
+  it("checkSchema_CurlyApostropheInALabel_IsAccepted", () => {
+    // Arrange — the positive counterpart, so the rule cannot be satisfied by banning
+    // apostrophes outright.
+    const question: Question = {
+      kind: "group",
+      id: "t.g",
+      fields: [{ id: "f", label: "What doesn’t serve you?", size: "long" }],
+    };
+
+    // Act & Assert
+    assert.deepEqual(checkSchema(loadSchema([{ source: "t.md", questions: [question] }])), []);
+  });
+
+  it("checkSchema_DuplicateFieldId_IsReported", () => {
+    // Arrange — negative case: identifiersOf emits both and checkRegistry's set collapses
+    // them, so nothing else in the build can see two blanks sharing one identifier.
+    const question: Question = {
+      kind: "group",
+      id: "t.g",
+      fields: [
+        { id: "f", label: "First", size: "long" },
+        { id: "f", label: "Second", size: "long" },
+      ],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes('declares "f" twice')));
+  });
+
+  it("checkSchema_QuestionWithNoFields_IsReported", () => {
+    // Arrange — negative case: renderQuestion returns an empty string for this, so the
+    // anchor resolves and the page simply has no question where one was asked for.
+    const question: Question = { kind: "group", id: "t.g", fields: [] };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("nothing to fill in")));
+  });
+
+  it("checkSchema_MaxBelowMin_IsReported", () => {
+    // Arrange — negative case: max is what the sheet prints, so an inverted range prints
+    // fewer slots than the worksheet requires, or none at all.
+    const question: Question = { ...CHAPTERS, min: 4, max: 2 };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("max 2 below min 4")));
+  });
+
+  it("checkSchema_MinOfZero_IsReported", () => {
+    // Arrange — negative case: a worksheet prints at least one of anything it asks for.
+    const question: Question = { ...CHAPTERS, min: 0, max: 0 };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("a worksheet prints at least one")));
+  });
+});
+
+describe("checklist and group questions", () => {
+  it("renderQuestion_Checklist_RendersOneListWithAFieldPerItem", () => {
+    // Arrange — one question with several items, not one question per tick: four
+    // questions would need four anchors and render as four separate lists.
+    const checklist: Question = {
+      kind: "checklist",
+      id: "t.ready",
+      items: [
+        { id: "a", label: "First" },
+        { id: "b", label: "Second" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(checklist);
+
+    // Assert
+    assert.equal(html.match(/<ul/g)?.length, 1);
+    assert.ok(html.includes('data-field="t.ready.a"'));
+    assert.ok(html.includes('data-field="t.ready.b"'));
+    assert.ok(html.includes('disabled="disabled"'));
+  });
+
+  it("renderQuestion_Group_IsUnnumbered", () => {
+    // Arrange — these prompts differ from one another rather than repeating, so
+    // numbering them would imply an order that is not there.
+    const group: Question = {
+      kind: "group",
+      id: "t.group",
+      fields: [{ id: "a", label: "A", size: "long" }],
+    };
+
+    // Act
+    const html = renderQuestion(group);
+
+    // Assert
+    assert.ok(html.includes("<ul"));
+    assert.ok(!html.includes("<ol"));
+  });
+});
+
+describe("field labels", () => {
+  function group(label: string): Question {
+    return { kind: "group", id: "t.g", fields: [{ id: "f", label, size: "long" }] };
+  }
+
+  it("renderQuestion_LabelEndingInAQuestionMark_IsPrintedAsWritten", () => {
+    // Arrange — Day 5's labels are the questions themselves. Appending a separator gave
+    // "Does it use my passions, or just my skills?: ______" on twelve rows.
+    // Act
+    const html = renderQuestion(group("Does it use my passions, or just my skills?"));
+
+    // Assert
+    assert.ok(html.includes("or just my skills? <span"));
+    assert.ok(!html.includes("?:"));
+    assert.ok(!html.includes("<strong>"));
+  });
+
+  it("renderQuestion_LabelNamingTheAnswer_IsABoldLeadIn", () => {
+    // Arrange — "**My definition:**" is how every worksheet wrote these before the
+    // migration, and it is what set Day 5's "One change" apart from the questions above
+    // it. Negative counterpart of the case above.
+    // Act
+    const html = renderQuestion(group("My definition"));
+
+    // Assert
+    assert.ok(html.includes("<strong>My definition:</strong> <span"));
+  });
+
+  it("renderQuestion_LoneFieldRestatingTheGroupLabel_PrintsOnlyTheBlank", () => {
+    // Arrange — ten rows reading "Value: ____" under a heading that already says
+    // "Narrow to 10"; the source printed bare numbered blanks.
+    const question: Question = {
+      kind: "repeat", id: "t.ten", instances: "row", label: "Value",
+      min: 3, max: 3, fields: [{ id: "value", label: "Value", size: "long" }],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.ok(!html.includes("Value"));
+    assert.equal(html.match(/<li>/g)?.length, 3);
+  });
+});
+
+describe("repeat instance weight", () => {
+  const FIELDS = [
+    { id: "name", label: "Value", size: "long" as const },
+    { id: "definition", label: "My definition", size: "long" as const },
+  ];
+
+  it("renderQuestion_SectionInstances_GiveEachOneAHeading", () => {
+    // Arrange — headings are navigation as well as hierarchy: a screen reader moves by
+    // them, so rendering five sections as five list rows removes five landmarks (0001).
+    const question: Question = {
+      kind: "repeat", id: "t.values", instances: "section", label: "Value",
+      min: 3, max: 3, fields: FIELDS,
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.equal(html.match(/<h3 id=/g)?.length, 3);
+    assert.ok(html.includes('<h3 id="t-values-1">Value 1 — '));
+    assert.ok(html.includes('<h3 id="t-values-3">Value 3 — '));
+    assert.ok(!html.includes("<ol"));
+  });
+
+  it("renderQuestion_RowInstances_StayANumberedListWithNoHeadings", () => {
+    // Arrange — negative case: short notes do not earn a heading each, and Day 1's
+    // chapters read worse with one.
+    const question: Question = {
+      kind: "repeat", id: "t.chapters", instances: "row", label: "Chapter",
+      min: 3, max: 3, fields: FIELDS,
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.ok(html.includes("<ol"));
+    assert.ok(!html.includes("<h3"));
+  });
+
+  it("renderQuestion_SectionInstances_PutTheFirstFieldInTheHeading", () => {
+    // Arrange — "Value 1 — ______" is the reader naming the section, so that blank
+    // belongs in the heading rather than beneath it.
+    const question: Question = {
+      kind: "repeat", id: "t.values", instances: "section", label: "Value",
+      min: 1, max: 1, fields: FIELDS,
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.ok(/<h3 id="t-values-1">Value 1 — <span[^>]*data-field="t\.values\.name"/.test(html));
+    assert.ok(html.includes('data-field="t.values.definition"'));
+  });
+});
+
+describe("repeat ranges", () => {
+  it("renderQuestion_GenuineRange_PrintsTheCeilingNotTheFloor", () => {
+    // Arrange — "divide your life into 5–8 chapters". Until #24 nothing can add a sixth
+    // slot, so printing the floor loses three answers the worksheet invited.
+    const question: Question = { ...CHAPTERS, min: 5, max: 8 };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.equal(html.match(/data-field="t\.chapters\.title"/g)?.length, 8);
+    assert.ok(html.includes('data-min="5" data-max="8"'));
+  });
+
+  it("renderQuestion_SectionRange_PrintsTheCeilingToo", () => {
+    // Arrange — negative counterpart: the two shapes must not disagree about how many
+    // instances a range means, or Day 3 prints three themes where Day 1 prints eight.
+    const question: Question = {
+      kind: "repeat", id: "t.themes", instances: "section", label: "Theme",
+      min: 3, max: 5,
+      fields: [
+        { id: "name", label: "Theme", size: "long" },
+        { id: "example", label: "Example", size: "long" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.equal(html.match(/<h3 id=/g)?.length, 5);
   });
 });
