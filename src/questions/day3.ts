@@ -12,6 +12,7 @@ export const DAY3: readonly Question[] = [
   {
     kind: "repeat",
     id: "day3.energy",
+    instances: "row",
     label: "Activity",
     min: 5,
     max: 5,
@@ -24,6 +25,7 @@ export const DAY3: readonly Question[] = [
   {
     kind: "repeat",
     id: "day3.flow",
+    instances: "row",
     label: "Activity",
     min: 5,
     max: 5,
@@ -38,6 +40,7 @@ export const DAY3: readonly Question[] = [
   {
     kind: "repeat",
     id: "day3.themes",
+    instances: "section",
     label: "Theme",
     min: 5,
     max: 5,

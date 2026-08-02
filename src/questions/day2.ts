@@ -23,6 +23,7 @@ export const DAY2: readonly Question[] = [
   {
     kind: "repeat",
     id: "day2.shortlist_ten",
+    instances: "row",
     label: "Value",
     min: 10,
     max: 10,
@@ -31,6 +32,7 @@ export const DAY2: readonly Question[] = [
   {
     kind: "repeat",
     id: "day2.shortlist_five",
+    instances: "row",
     label: "Value",
     min: 5,
     max: 5,
@@ -39,6 +41,7 @@ export const DAY2: readonly Question[] = [
   {
     kind: "repeat",
     id: "day2.operationalised",
+    instances: "section",
     label: "Value",
     min: 5,
     max: 5,
@@ -52,6 +55,7 @@ export const DAY2: readonly Question[] = [
   {
     kind: "repeat",
     id: "day2.conflicts",
+    instances: "row",
     label: "Decision",
     min: 3,
     max: 3,
@@ -63,6 +67,7 @@ export const DAY2: readonly Question[] = [
   {
     kind: "repeat",
     id: "day2.ranked",
+    instances: "row",
     label: "Value",
     min: 5,
     max: 5,

@@ -53,6 +53,21 @@ export type RepeatQuestion = {
   readonly id: string;
   /** Singular noun for one instance, e.g. "Chapter". */
   readonly label: string;
+  /**
+   * How much weight one instance carries.
+   *
+   * `"row"` renders instances as numbered list items — right for short notes, like Day
+   * 1's chapters. `"section"` gives each instance a heading composed from the label, its
+   * number, and its first field: "Value 1 — ______". Right where an instance is a unit
+   * of work in its own right, like Day 2's values, which take four fields each and are
+   * referred back to for the rest of the workbook.
+   *
+   * This is semantic weight rather than decoration, in the same way the size hint is.
+   * Headings are also navigation: a screen reader moves by them, so rendering five
+   * sections as five list rows removes five landmarks from the page — which
+   * docs/decisions/0001 makes a real cost rather than a stylistic one.
+   */
+  readonly instances: "row" | "section";
   readonly min: number;
   readonly max: number;
   readonly fields: readonly Field[];

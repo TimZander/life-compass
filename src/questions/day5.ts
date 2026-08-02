@@ -70,6 +70,7 @@ export const DAY5: readonly Question[] = [
   {
     kind: "repeat",
     id: "day5.realignment",
+    instances: "row",
     label: "Move",
     min: 2,
     max: 2,

@@ -7,6 +7,7 @@ import type { Worksheet } from "../src/questions/index.ts";
 const CHAPTERS: Question = {
   kind: "repeat",
   id: "t.chapters",
+  instances: "row",
   label: "Chapter",
   min: 2,
   max: 4,
@@ -154,6 +155,7 @@ describe("renderQuestion", () => {
     const hostile: Question = {
       kind: "repeat",
       id: "t.x",
+      instances: "row",
       label: "X",
       min: 1,
       max: 1,
@@ -271,5 +273,62 @@ describe("checklist and group questions", () => {
     // Assert
     assert.ok(html.includes("<ul"));
     assert.ok(!html.includes("<ol"));
+  });
+});
+
+describe("repeat instance weight", () => {
+  const FIELDS = [
+    { id: "name", label: "Value", size: "long" as const },
+    { id: "definition", label: "My definition", size: "long" as const },
+  ];
+
+  it("renderQuestion_SectionInstances_GiveEachOneAHeading", () => {
+    // Arrange — headings are navigation as well as hierarchy: a screen reader moves by
+    // them, so rendering five sections as five list rows removes five landmarks (0001).
+    const question: Question = {
+      kind: "repeat", id: "t.values", instances: "section", label: "Value",
+      min: 3, max: 3, fields: FIELDS,
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.equal(html.match(/<h3>/g)?.length, 3);
+    assert.ok(html.includes("<h3>Value 1 — "));
+    assert.ok(html.includes("<h3>Value 3 — "));
+    assert.ok(!html.includes("<ol"));
+  });
+
+  it("renderQuestion_RowInstances_StayANumberedListWithNoHeadings", () => {
+    // Arrange — negative case: short notes do not earn a heading each, and Day 1's
+    // chapters read worse with one.
+    const question: Question = {
+      kind: "repeat", id: "t.chapters", instances: "row", label: "Chapter",
+      min: 3, max: 3, fields: FIELDS,
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.ok(html.includes("<ol"));
+    assert.ok(!html.includes("<h3"));
+  });
+
+  it("renderQuestion_SectionInstances_PutTheFirstFieldInTheHeading", () => {
+    // Arrange — "Value 1 — ______" is the reader naming the section, so that blank
+    // belongs in the heading rather than beneath it.
+    const question: Question = {
+      kind: "repeat", id: "t.values", instances: "section", label: "Value",
+      min: 1, max: 1, fields: FIELDS,
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.ok(/<h3>Value 1 — <span[^>]*data-field="t\.values\.name"/.test(html));
+    assert.ok(html.includes('data-field="t.values.definition"'));
   });
 });

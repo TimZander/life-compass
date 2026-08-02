@@ -193,13 +193,45 @@ export function renderQuestion(question: Question): string {
     return `<p class="q-sentence" data-question="${escape(question.id)}">${html}</p>`;
   }
 
-  // An ordered list, so instance numbering comes from the list rather than from labels
-  // baked into the markup — which matters once the reader can add or remove one.
+  // A section-weight repeat gives each instance a heading: "Value 1 — ______", composed
+  // from the label, the instance number and the first field. Those headings are how the
+  // worksheet has always read, and they are navigation as well as hierarchy — a screen
+  // reader moves by them, so rendering five sections as five list rows silently removes
+  // five landmarks from the page (docs/decisions/0001).
   //
-  // No per-instance heading is printed. Repeating the group's label above its first
-  // field produced "Moment / Moment: ____" and "Hard moment / Hard moment: ____"; the
-  // list number is identity enough. `label` stays in the schema for the add-another
-  // control (#24), where it reads as a verb phrase rather than a heading.
+  // The number is display only. Nothing derives identity from it; instances carry their
+  // own identifiers once the reader can add and remove them (0011).
+  if (question.instances === "section") {
+    const [name, ...rest] = question.fields;
+    if (name === undefined) {
+      return "";
+    }
+    const sections: string[] = [];
+    for (let index = 0; index < question.min; index += 1) {
+      const heading =
+        `<h3>${escape(question.label)} ${index + 1} — ` +
+        `${blank(`${question.id}.${name.id}`, name.size)}</h3>`;
+      const fields = rest
+        .map(
+          (field) =>
+            `<li>${escape(field.label)}: ${blank(`${question.id}.${field.id}`, field.size)}</li>`,
+        )
+        .join("\n");
+      sections.push(`${heading}\n<ul>\n${fields}\n</ul>`);
+    }
+    return (
+      `<div class="q-repeat" data-question="${escape(question.id)}"` +
+      ` data-min="${question.min}" data-max="${question.max}">\n${sections.join("\n")}\n</div>`
+    );
+  }
+
+  // Otherwise an ordered list, so instance numbering comes from the list rather than
+  // from labels baked into the markup — which matters once the reader can add or remove
+  // one.
+  //
+  // No per-instance heading is printed in this shape. Repeating the group's label above
+  // its first field produced "Moment / Moment: ____" and "Hard moment / Hard moment:
+  // ____"; the list number is identity enough.
   const items: string[] = [];
   for (let index = 0; index < question.min; index += 1) {
     if (question.fields.length === 1) {

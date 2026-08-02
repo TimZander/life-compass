@@ -62,6 +62,7 @@ export const DAY4: readonly Question[] = [
   {
     kind: "repeat",
     id: "day4.statements",
+    instances: "row",
     label: "Purpose statement",
     min: 3,
     max: 3,

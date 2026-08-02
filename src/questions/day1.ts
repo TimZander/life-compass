@@ -17,6 +17,7 @@ export const DAY1: readonly Question[] = [
   {
     kind: "repeat",
     id: "day1.chapters",
+    instances: "row",
     label: "Chapter",
     min: 5,
     max: 8,
@@ -29,6 +30,7 @@ export const DAY1: readonly Question[] = [
   {
     kind: "repeat",
     id: "day1.peaks",
+    instances: "row",
     label: "Moment",
     min: 5,
     max: 5,
@@ -42,6 +44,7 @@ export const DAY1: readonly Question[] = [
   {
     kind: "repeat",
     id: "day1.low_points",
+    instances: "row",
     label: "Hard moment",
     min: 3,
     max: 3,
@@ -54,6 +57,7 @@ export const DAY1: readonly Question[] = [
   {
     kind: "repeat",
     id: "day1.energizers",
+    instances: "row",
     label: "Activity",
     min: 5,
     max: 5,
@@ -62,6 +66,7 @@ export const DAY1: readonly Question[] = [
   {
     kind: "repeat",
     id: "day1.drainers",
+    instances: "row",
     label: "Drainer",
     min: 5,
     max: 5,
