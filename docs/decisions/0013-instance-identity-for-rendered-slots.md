@@ -1,6 +1,6 @@
 # 0013 — Instance identity for slots the build renders
 
-- **Status:** Accepted
+- **Status:** Proposed
 - **Date:** 2026-08-02
 
 ## Context
@@ -48,10 +48,13 @@ A slot is a position on the page; an instance is a thing with an identity. The b
 renders slots and the client materialises instances.
 
 **The markup carries the slot.** Every rendered instance is one element with
-`data-instance="<slot index>"` — a `<li>` for a row or line repeat, a wrapping
-`<div class="q-instance">` for a section repeat, which previously had no element of its
-own. `data-field` is unchanged and still holds the frozen identifier from 0011, so a
-blank's DOM address is the pair `(data-instance on the nearest ancestor, data-field)`.
+`data-instance="<slot index>"`, counting from zero — a `<li>` for a row or line repeat, a
+wrapping `<div class="q-instance">` for a section repeat, which previously had no element
+of its own. `data-field` is unchanged and still holds the frozen identifier from 0011, so
+a blank's DOM address is the pair `(data-instance on the nearest ancestor, data-field)`.
+
+Zero-based because it indexes the stored order array. The visible numbering beside it
+("Value 1") and the heading anchor stay one-based, because those are for a reader.
 
 **Materialising is all-or-nothing per group.** On the first write to any field of a
 group, identifiers are minted for every slot then rendered and the order is stored. A
@@ -67,8 +70,55 @@ day1.chapters              -> ["5f1c…","9a34…","c701…","4b19…","e8a2…"
 day1.chapters.5f1c….title  -> "The garage-band years"
 ```
 
-`src/client/keys.ts` is the only place that spells this out, because it is the one format
-in the project that cannot be changed once answers exist.
+Reading such a key back means finding where the group identifier ends, which is only
+possible if no identifier is a dotted prefix of another and no single segment contains a
+dot. Both were true across all 254 identifiers and enforced by nothing; `checkSchema` now
+refuses a build that breaks either, because 0011 · C2 means the registry never shrinks
+and the property would otherwise have to survive by accident forever.
+
+## What is built, and what is not
+
+This record is **Proposed**, not Accepted, because only the first half exists.
+
+**Built:** the slot markers, the `q-instance` wrapper, the identifier-shape checks, and a
+test asserting every repeat marks each slot exactly once and holds its own blanks.
+
+**Not built:** the key encoding, minting, materialisation, and order-to-slot
+reconciliation. Those land with the DOM binding rather than before it. A first attempt
+wrote the encoder alone, and review found that nearly every defect in it — a missing
+decoder, two functions disagreeing about a valid identifier, and a `data-field` that
+carries the full identifier where the encoder wanted a bare segment — existed because
+nothing consumed it. A format that cannot be changed later should not be frozen by a
+pull request containing nothing that exercises it.
+
+## Open questions the binding has to answer
+
+**Q1. Atomicity.** "All-or-nothing per group" means writing the order and the first
+answer together, and `Store` exposes only single-key `write`. IndexedDB can do this — one
+`readwrite` transaction can read the order and conditionally write both — but the
+interface has to grow an operation, and that also settles the two-tab race where both
+materialise the same group and the loser's answers are stranded.
+
+**Q2. `min` in both directions.** Shrinking leaves stored answers with no slot to show
+them in, and 0011's orphan surface will not catch them because their identifiers are
+still active. Growing leaves a rendered slot with no instance and no rule for what a
+write to it does. Both are reachable by an ordinary worksheet edit against readers who
+have already answered.
+
+**Q3. Corrupt or partial orders.** An order that cannot be read must be distinguishable
+from a group that was never materialised, or materialise-on-first-write will mint fresh
+identifiers over it and orphan everything beneath. Dropping unreadable entries also
+shifts every later instance one slot, which is the positional drift O1 was rejected for.
+
+**Q4. Migration reach.** 0011 rewrites stored identifiers matching a retired entry.
+`day1.chapters.<uuid>.title` splices the instance into the middle of
+`day1.chapters.title`, so exact matching cannot reach any of the 334 blanks inside
+repeats. Either the rewrite becomes prefix-and-suffix aware, or 0011's mechanism has to
+say it does not cover repeats.
+
+**Q5. Orphan surface.** 0011 · C3 puts orphans in the export envelope alongside live
+answers. An answer whose instance is absent from the order is, to a flat string map,
+indistinguishable from a live one — finding it needs the decoder Q4 also needs.
 
 ## Consequences
 
@@ -76,25 +126,18 @@ in the project that cannot be changed once answers exist.
 the store's existing contract already covers them — which is why the storage slice could
 ship narrowed rather than blocked.
 
-**C2.** The store's values stop being uniformly prose: exactly one key per repeat group
-holds JSON. Nothing needs a type tag to tell them apart, because the schema already knows
-which identifiers are groups — but an export (#25) has to know it too, and a reader
-looking at raw storage will see one machine-shaped value per group.
+**C2.** The store's values stop being uniformly prose once the encoding lands: exactly
+one key per repeat group will hold JSON. Nothing needs a type tag to tell them apart,
+because the schema already knows which identifiers are groups — but an export (#25) has
+to know it too.
 
-**C3.** Order is data, not position. Once materialised, the array decides which slot a
-stored answer appears in, so a page rendering five slots against a stored order of three
-shows three filled and two empty — not three answers spread across five slots. The
-binding has to read the order before it reads any answer.
+**C3.** Order becomes data rather than position. Once materialised, the array decides
+which slot a stored answer appears in, so the binding has to read the order before it
+reads any answer.
 
-**C4.** An unreadable order is recoverable rather than fatal. `readOrder` returns empty
-for anything it cannot parse and leaves the stored value alone, so one corrupt group
-costs that group's instances rather than the page — and nothing is destroyed by being
-unreadable to today's code.
+**C4.** `min` acquires a second job — the number of instances a first-time reader
+materialises — alongside "how many slots to print". #24 already noted it doing two jobs;
+Q2 is where that gets resolved rather than noted again.
 
-**C5.** `min` becomes the number of instances a first-time reader materialises, which
-gives it a second job alongside "how many slots to print". #24's note on `min` doing two
-jobs now has a third; whichever way that is resolved, it has to keep materialisation
-stable for readers who have already answered.
-
-**C6.** This is still not the add-another control. It makes one possible without a
-migration, which is the whole point of doing it before answers exist rather than after.
+**C5.** This is still not the add-another control. It makes one possible without a
+migration, which is the point of doing it before answers exist rather than after.

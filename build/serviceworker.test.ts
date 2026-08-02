@@ -168,7 +168,6 @@ describe("shipped client scripts", () => {
       "assets/js/answers.js",
       "assets/js/app.js",
       "assets/js/banner.js",
-      "assets/js/keys.js",
       "assets/js/store.js",
       "assets/js/sw-update.js",
     ]);

@@ -6,13 +6,14 @@
  * reordered, and reordering prose is expected while identifiers are not.
  *
  * IT DOES NOT YET COVER REPEAT GROUPS, and that is 334 of the 447 blanks. 0011 stores a
- * repeat as an ordered array of instances, each with an identifier minted when the reader
- * adds one — but the pages render a fixed number of slots and there is no adding yet, so
- * every instance of `day1.chapters.title` currently carries the same `data-field` and 264
- * blanks would collide on a key another blank already uses. Deciding instance identity
- * for statically-rendered slots is its own slice, and it lands before the DOM binding.
- * Until then this store is correct for single-valued fields and silent about the rest,
- * which is why nothing binds to it yet.
+ * repeat as an ordered array of instances; 0013 works out where those identifiers come
+ * from for slots the build renders rather than the reader adds, and the markup now
+ * carries a `data-instance` slot marker so a blank can be told apart from the same field
+ * in another instance. What is still missing is the storage half — the key encoding, and
+ * a write that can set a group's instance order and its first answer together, which
+ * this interface cannot express. Both land with the DOM binding, against a consumer that
+ * can prove them. Until then this store is correct for single-valued fields and silent
+ * about the rest, which is why nothing binds to it yet.
  *
  * IndexedDB rather than localStorage: localStorage is synchronous, so a write blocks the
  * main thread mid-keystroke, which is precisely what docs/decisions/0001 forbids. It also

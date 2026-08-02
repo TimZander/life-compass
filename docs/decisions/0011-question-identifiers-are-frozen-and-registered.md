@@ -81,7 +81,11 @@ day1.chapters -> [
 ```
 
 The group (`day1.chapters`) and the field (`title`) come from the schema; the instance
-comes from the reader's own act of adding one. Order lives in the array, so instance
+comes from the reader's own act of adding one.
+
+*Amended 2026-08-02 by [0013](0013-instance-identity-for-rendered-slots.md): the site
+renders a fixed set of slots and has no adding, so "when the reader adds it" had nowhere
+to attach. 0013 keeps the shape and moves the minting to the first write.* Order lives in the array, so instance
 identifiers carry no ordering and need not be sortable. Reordering, inserting, and
 deleting are all safe, and an orphan is traceable to a specific chapter rather than to
 "slot 3".

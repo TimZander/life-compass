@@ -16,6 +16,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
+import { renderQuestion } from "./questions.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -478,32 +479,66 @@ describe("heading ids", () => {
     }
   });
 
-  it("buildPages_EveryBlankInsideARepeat_IsAddressableByInstanceAndField", async () => {
-    // Arrange — before 0013 every slot of a group carried the same data-field, so 264 of
+  it("buildPages_EveryRepeatSlot_IsMarkedExactlyOnceAndHoldsItsOwnBlanks", async () => {
+    // Arrange — before this, every slot of a group carried the same data-field, so 264 of
     // the site's blanks shared a key with another blank and would have overwritten each
     // other in storage. The pair (data-instance, data-field) is what makes them distinct.
+    //
+    // Asserted against the schema rather than by matching the rendered block. The first
+    // version of this scraped the page with a non-greedy regex terminated by </div>,
+    // which the new q-instance wrapper cut short: it inspected one instance of every
+    // section repeat and passed while all five claimed slot zero.
     const result = await site();
 
     // Act & Assert
-    for (const page of result.pages) {
-      for (const repeat of page.html.matchAll(/<(ol|div) class="q-repeat"[\s\S]*?<\/\1>/g)) {
-        const block = repeat[0];
-        const blanks = block.match(/class="fill(?:-sm)?" data-field=/g)?.length ?? 0;
-        if (blanks === 0) {
+    for (const worksheet of WORKSHEETS) {
+      const page = result.pages.find((candidate) => candidate.source === worksheet.source);
+      assert.ok(page !== undefined, `${worksheet.source} was not built`);
+      for (const question of worksheet.questions) {
+        if (question.kind !== "repeat") {
           continue;
         }
-        const slots = new Set(
-          [...block.matchAll(/data-instance="(\d+)"/g)].map((one) => one[1]),
+        const rendered = renderQuestion(question);
+        // Split on the marker itself, so the shape of the element carrying it does not
+        // matter — a <li> and a wrapping <div> are read the same way.
+        const [preamble, ...slots] = rendered.split('data-instance="');
+        assert.equal(
+          preamble?.includes("data-field"),
+          false,
+          `${question.id}: a blank sits outside every instance`,
         );
-        assert.ok(slots.size > 0, `${page.output}: a repeat with no instance markers`);
-        // Every slot index appears exactly once per instance, and they are 0..n-1.
         assert.deepEqual(
-          [...slots].map(Number).sort((a, b) => a - b),
-          Array.from({ length: slots.size }, (_, index) => index),
-          `${page.output}: instance markers are not a contiguous run from zero`,
+          slots.map((slot) => Number(slot.slice(0, slot.indexOf('"')))),
+          Array.from({ length: question.min }, (_, index) => index),
+          `${question.id}: slots are not one marker each, numbered 0 upward`,
         );
+        for (const [index, slot] of slots.entries()) {
+          assert.equal(
+            slot.match(/data-field=/g)?.length ?? 0,
+            question.fields.length,
+            `${question.id} slot ${index}: wrong number of blanks`,
+          );
+        }
       }
     }
+  });
+
+  it("buildPages_SiteWide_MarksAsManySlotsAsTheSchemaDeclares", async () => {
+    // Arrange — the per-question check above runs the renderer directly, so this is what
+    // proves the same markup actually reached the pages.
+    const expected = WORKSHEETS.flatMap((worksheet) => worksheet.questions)
+      .filter((question) => question.kind === "repeat")
+      .reduce((total, question) => total + question.min, 0);
+
+    // Act
+    const result = await site();
+    const marked = result.pages.reduce(
+      (total, page) => total + (page.html.match(/data-instance="/g)?.length ?? 0),
+      0,
+    );
+
+    // Assert
+    assert.equal(marked, expected);
   });
 
   it("buildPages_GeneratedHeading_CarriesAnIdLikeEveryOtherHeading", async () => {

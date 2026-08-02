@@ -102,6 +102,7 @@ export function checkRegistry(schema: Schema): readonly string[] {
  */
 export function checkSchema(schema: Schema): readonly string[] {
   const problems: string[] = [];
+  problems.push(...checkIdentifierShape(schema));
   for (const question of schema.byId.values()) {
     problems.push(...checkText(question));
     problems.push(...checkParts(question));
@@ -110,6 +111,54 @@ export function checkSchema(schema: Schema): readonly string[] {
     }
     if (question.kind === "sentence") {
       problems.push(...checkGaps(question));
+    }
+  }
+  return problems;
+}
+
+/**
+ * The two properties a stored key depends on, which were true by luck until now.
+ *
+ * Answers are keyed by identifier, and repeat answers will splice an instance identifier
+ * between the group and the field. Reading such a key back means finding where the group
+ * ends, which only works if no identifier is a dotted prefix of another and no single
+ * part contains a dot. Both hold across all 254 identifiers today and nothing enforced
+ * either, so the whole scheme rested on a coincidence that the registry — which by 0011
+ * never shrinks — would have had to preserve forever by accident.
+ *
+ * Checked here rather than in the registry because it is a property OF the set: one
+ * entry cannot know whether another is its prefix.
+ */
+function checkIdentifierShape(schema: Schema): readonly string[] {
+  const problems: string[] = [];
+  // Which question each identifier came from. A group legitimately prefixes its own
+  // fields — that IS the structure — so only pairs from different questions matter.
+  const owner = new Map<string, string>();
+
+  for (const question of schema.byId.values()) {
+    for (const id of identifiersOf(question)) {
+      if (id.split(".").some((part) => part === "")) {
+        problems.push(`${id} has an empty segment`);
+      }
+      const already = owner.get(id);
+      // Two questions can each be internally consistent and still produce one identifier
+      // between them — a repeat `day1.chapters` and a group `day1` with a field
+      // `chapters`. Nothing else notices: loadSchema compares question ids, checkParts
+      // looks inside one question, and checkRegistry collapses both into a set.
+      if (already !== undefined && already !== question.id) {
+        problems.push(`${id} is produced by both ${already} and ${question.id}`);
+      }
+      owner.set(id, question.id);
+    }
+  }
+
+  for (const [id, from] of owner) {
+    for (const [other, otherFrom] of owner) {
+      if (from !== otherFrom && other.startsWith(`${id}.`)) {
+        problems.push(
+          `${id} (${from}) is a prefix of ${other} (${otherFrom}); a stored key could not be read back unambiguously`,
+        );
+      }
     }
   }
   return problems;
@@ -275,9 +324,14 @@ function labelled(label: string, fieldId: string, size: "short" | "long"): strin
 /**
  * Render one question.
  *
- * `data-question` and `data-field` are the seam the storage layer binds to (#24). They
- * are the reason to generate this markup at all — hand-written spans could look the
- * same, but nothing could find them.
+ * `data-question`, `data-instance` and `data-field` are the seam the storage layer binds
+ * to (#24). They are the reason to generate this markup at all — hand-written spans could
+ * look the same, but nothing could find them.
+ *
+ * Inside a repeat, `data-field` alone is NOT unique: every instance of a group renders
+ * the same field identifier, by design, because that identifier is frozen (0011). A
+ * blank's address is the pair — the `data-instance` on its nearest ancestor, and its
+ * own `data-field` (0013).
  */
 export function renderQuestion(question: Question): string {
   // A single question renders as a bare answer line. Its label is NOT printed: the
@@ -343,8 +397,10 @@ export function renderQuestion(question: Question): string {
   // reader moves by them, so rendering five sections as five list rows silently removes
   // five landmarks from the page (docs/decisions/0001).
   //
-  // The number is display only. Nothing derives identity from it; instances carry their
-  // own identifiers once the reader can add and remove them (0011).
+  // The printed number is display only — nothing stores it. The slot index emitted as
+  // `data-instance` is a different thing and IS load-bearing: it is how a blank is told
+  // apart from the same field in another instance, and what the client maps to a real
+  // instance identifier (docs/decisions/0013).
   if (question.instances === "section") {
     const [name, ...rest] = question.fields;
     // checkSchema refuses a repeat with no fields, so this is unreachable rather than
