@@ -182,4 +182,89 @@ export const REGISTRY: readonly RegistryEntry[] = [
   { id: "day5.review", status: "active" },
   { id: "day5.review.quarterly", status: "active" },
   { id: "day5.review.annual", status: "active" },
+
+  // ---- rigorous/day-0-prep ----
+
+  { id: "rday0.gather", status: "active" },
+  { id: "rday0.gather.calendar", status: "active" },
+  { id: "rday0.gather.spending", status: "active" },
+  { id: "rday0.gather.history", status: "active" },
+  { id: "rday0.gather.screen_time", status: "active" },
+
+  { id: "rday0.come_to_you_for", status: "active" },
+
+  { id: "rday0.brushed_off", status: "active" },
+
+  // ---- rigorous/day-1-excavation ----
+
+  { id: "rday1.chapters", status: "active" },
+  { id: "rday1.chapters.title", status: "active" },
+  { id: "rday1.chapters.defined_by", status: "active" },
+  { id: "rday1.chapters.learned", status: "active" },
+
+  { id: "rday1.peaks", status: "active" },
+  { id: "rday1.peaks.moment", status: "active" },
+  { id: "rday1.peaks.doing", status: "active" },
+  { id: "rday1.peaks.with", status: "active" },
+  { id: "rday1.peaks.quality", status: "active" },
+
+  { id: "rday1.low_points", status: "active" },
+  { id: "rday1.low_points.moment", status: "active" },
+  { id: "rday1.low_points.violated", status: "active" },
+  { id: "rday1.low_points.value_tag", status: "active" },
+  { id: "rday1.low_points.taught", status: "active" },
+
+  { id: "rday1.month_energized", status: "active" },
+  { id: "rday1.month_energized.what", status: "active" },
+  { id: "rday1.month_energized.quality", status: "active" },
+
+  { id: "rday1.month_drained", status: "active" },
+  { id: "rday1.month_drained.what", status: "active" },
+  { id: "rday1.month_drained.quality", status: "active" },
+
+  { id: "rday1.year_energizing", status: "active" },
+  { id: "rday1.year_energizing.moment", status: "active" },
+
+  { id: "rday1.year_draining", status: "active" },
+  { id: "rday1.year_draining.moment", status: "active" },
+
+  { id: "rday1.patterns", status: "active" },
+
+  { id: "rday1.threads", status: "active" },
+
+  { id: "rday1.external", status: "active" },
+
+  // ---- rigorous/day-2-values ----
+
+  { id: "rday2.generated", status: "active" },
+  { id: "rday2.generated.value", status: "active" },
+  { id: "rday2.generated.evidence", status: "active" },
+
+  { id: "rday2.added_from_list", status: "active" },
+
+  { id: "rday2.claimed_not_lived", status: "active" },
+
+  { id: "rday2.disconfirming", status: "active" },
+
+  { id: "rday2.shortlist_ten", status: "active" },
+  { id: "rday2.shortlist_ten.value", status: "active" },
+
+  { id: "rday2.shortlist_five", status: "active" },
+  { id: "rday2.shortlist_five.value", status: "active" },
+
+  { id: "rday2.operationalised", status: "active" },
+  { id: "rday2.operationalised.name", status: "active" },
+  { id: "rday2.operationalised.definition", status: "active" },
+  { id: "rday2.operationalised.living", status: "active" },
+  { id: "rday2.operationalised.betraying", status: "active" },
+  { id: "rday2.operationalised.evidence", status: "active" },
+
+  { id: "rday2.aspirations", status: "active" },
+
+  { id: "rday2.conflicts", status: "active" },
+  { id: "rday2.conflicts.decision", status: "active" },
+  { id: "rday2.conflicts.chosen", status: "active" },
+
+  { id: "rday2.ranked", status: "active" },
+  { id: "rday2.ranked.value", status: "active" },
 ];

@@ -386,22 +386,22 @@ describe("build", () => {
 
 describe("task lists", () => {
   it("buildPages_CheckboxSyntax_RendersADisabledCheckboxLikeKramdown", async () => {
-    // Arrange — the remaining hand-written task lists. Day 5's moved to a checklist
-    // question in #22, so this now covers rigorous/day-0-prep, which is still Markdown.
-    // Without the rule these render as the literal text "[ ] ...".
-    const source = "rigorous/day-0-prep.md";
+    // Arrange — a fixture, not a real page. This asserts a markdown-it rule rather than a
+    // property of any worksheet, and pointing it at real content made it fail twice as #22
+    // migrated first Day 5 and then rigorous/day-0 out from under it. No worksheet writes
+    // `- [ ]` by hand any more; the rule stays because the Markdown still supports it, and
+    // a fixture is what keeps that supported rather than merely present.
+    const root = await fixture({ "README.md": "# Home\n\n- [ ] Values filled in\n" });
     const expected =
       '<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" ' +
-      'disabled="disabled" />';
+      'disabled="disabled" />Values filled in</li>';
 
     // Act
-    const result = await site();
-    const page = result.pages.find((candidate) => candidate.source === source);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
-    assert.ok(page !== undefined);
-    assert.ok(page.html.includes('<ul class="task-list">'));
-    assert.ok(page.html.includes(expected));
+    assert.ok(result.pages[0]?.html.includes('<ul class="task-list">'));
+    assert.ok(result.pages[0]?.html.includes(expected));
   });
 
   it("buildPages_OrdinaryBulletStartingWithABracket_IsNotTreatedAsATask", async () => {
@@ -418,22 +418,34 @@ describe("task lists", () => {
 
 describe("heading ids", () => {
   it("buildPages_HeadingContainingRawHtml_KeepsTheMarkupOutOfTheId", async () => {
-    // Arrange — several worksheets have headings shaped `### Value 1 — <span ...>`.
-    // Including the raw HTML produced id="value-1--span-classfill______span".
-    // Day 2's reader-named headings became repeat instances in #22, so this now covers
-    // the rigorous track, which still writes them by hand.
-    const source = "rigorous/day-2-values.md";
+    // Arrange — a fixture for the same reason as the checkbox test above: this asserts how
+    // the slugger treats raw HTML in a heading, and every real page that had one is being
+    // migrated away by #22. Including the markup produced
+    // id="value-1--span-classfill______span".
+    const root = await fixture({
+      "README.md": '# Home\n\n### Value 1 — <span class="fill">______</span>\n',
+    });
 
     // Act
-    const result = await site();
-    const page = result.pages.find((candidate) => candidate.source === source);
+    const result = await buildPages(root, undefined, []);
 
     // Assert
-    assert.ok(page !== undefined);
-    assert.ok(!/id="[^"]*span-class/.test(page.html), "an id still contains tag text");
-    // Kept positive as well: the negative alone passes on a page with no headings, so on
-    // its own it would stop guarding anything the day this file stopped writing them.
-    assert.ok(page.html.includes('<h3 id="value-1--______">'));
+    assert.ok(result.pages[0]?.html.includes('<h3 id="value-1--______">'));
+  });
+
+  it("buildPages_EveryPage_HasNoTagTextInAnyId", async () => {
+    // Arrange — the durable half, over real content: whatever a heading contains, no id
+    // anywhere on the site may carry tag text. Unlike a named page this cannot go stale as
+    // the remaining worksheets migrate.
+    const result = await site();
+
+    // Assert
+    for (const page of result.pages) {
+      assert.ok(!/id="[^"]*span-class/.test(page.html), `${page.output} has tag text in an id`);
+      for (const id of page.headingIds) {
+        assert.ok(!id.includes("<") && !id.includes(">"), `${page.output} id "${id}" has markup`);
+      }
+    }
   });
 
   it("buildPages_GeneratedHeading_CarriesAnIdLikeEveryOtherHeading", async () => {

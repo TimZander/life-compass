@@ -482,6 +482,29 @@ describe("repeat instance weight", () => {
     assert.ok(!html.includes("<ol"));
   });
 
+  it("renderQuestion_LineInstances_PutEveryFieldOnOneRow", () => {
+    // Arrange — ten brainstormed values stacked two-deep is twenty lines of page for ten
+    // words, and the list stops reading as the quick scan the exercise asks for.
+    const question: Question = {
+      kind: "repeat", id: "t.generated", instances: "line", label: "Value",
+      min: 2, max: 2,
+      fields: [
+        { id: "value", label: "Value", size: "short" },
+        { id: "evidence", label: "Evidence", size: "short" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert — two rows, both fields on each, and the label matching the group's collapses
+    // exactly as it does for a single-field row.
+    assert.equal(html.match(/<li>/g)?.length, 2);
+    assert.ok(!html.includes("<ul"));
+    assert.ok(html.includes(" — <strong>Evidence:</strong> "));
+    assert.ok(!html.includes("<strong>Value:</strong>"));
+  });
+
   it("renderQuestion_RowInstances_StayANumberedListWithNoHeadings", () => {
     // Arrange — negative case: short notes do not earn a heading each, and Day 1's
     // chapters read worse with one.

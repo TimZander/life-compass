@@ -14,10 +14,7 @@ Memory is a lossy, self-serving compressor. It remembers the version of your mon
 flatters you. These records don't. You'll mine them on **Day 3** (passions) and **Day 5**
 (measurement), so collect them now:
 
-- [ ] Export or screenshot **last month's calendar** — where your time actually went.
-- [ ] Pull **last 2–3 months of spending**, roughly categorized — where your money actually went.
-- [ ] Open your **browser / watch / listen history** and note what you return to unprompted.
-- [ ] Grab your **screen-time breakdown** by app or category, if your phone tracks it.
+<!-- questions: rday0.gather -->
 
 > Just collect and set aside. You're assembling the uncompressed source record; the analysis
 > comes later.
@@ -36,9 +33,13 @@ blind spot. Two versions; the light one needs no one but you.
 Don't ask anyone. Just recall and write down:
 
 - **What do people consistently come to you for?** (advice, a kind of help, a perspective)
-  → <span class="fill">______</span>
+
+  <!-- questions: rday0.come_to_you_for -->
+
 - **What compliment do you brush off** because it feels too easy to count? That's usually a
-  real strength hiding behind how effortless it feels. → <span class="fill">______</span>
+  real strength hiding behind how effortless it feels.
+
+  <!-- questions: rday0.brushed_off -->
 
 This captures most of the value with zero social cost. If you do nothing else here, do this.
 
