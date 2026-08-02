@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * Offering a new version rather than imposing one.
  *
@@ -28,8 +27,7 @@ const ACTIVATION_TIMEOUT_MS = 10_000;
  */
 const APPLIED_KEY = "life-compass:update-applied";
 
-/** @param {ServiceWorkerRegistration} registration */
-export function watchForUpdates(registration) {
+export function watchForUpdates(registration: ServiceWorkerRegistration): void {
   // A worker can ALREADY be waiting when this page loads — installed during an earlier
   // visit and never activated because the reader closed the tab. Without this the offer
   // would only ever appear for an update that arrives while a page happens to be open,
@@ -63,8 +61,7 @@ export function watchForUpdates(registration) {
   });
 }
 
-/** @param {ServiceWorker} worker */
-function offer(worker) {
+function offer(worker: ServiceWorker): void {
   showBanner({
     id: "update",
     text: "A new version of the workbook is ready.",
@@ -82,10 +79,8 @@ function offer(worker) {
  * and a silent failure look identical — the strip vanished either way, and because the
  * page reloads into the same content there was nothing at all to see. A control that
  * appears to do nothing is a defect even when it worked.
- *
- * @param {ServiceWorker} worker
  */
-function accept(worker) {
+function accept(worker: ServiceWorker): void {
   showBanner({ id: "update", text: "Updating…", actions: [] });
 
   // If the reload never arrives, say so rather than leaving "Updating..." forever.
@@ -127,9 +122,8 @@ function accept(worker) {
  * so without it a reader cannot distinguish a successful update from a button that did
  * nothing — which is exactly what happened on the first device test.
  */
-export function confirmRecentUpdate() {
-  /** @type {string | null} */
-  let applied = null;
+export function confirmRecentUpdate(): void {
+  let applied: string | null = null;
   try {
     applied = window.sessionStorage.getItem(APPLIED_KEY);
   } catch {

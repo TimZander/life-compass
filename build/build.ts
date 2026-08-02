@@ -16,6 +16,7 @@ import type { ResolvedLink } from "./links.ts";
 import { checkRegistry, checkSchema, loadSchema, type Schema } from "./questions.ts";
 import { checkHeaders, parseHeaders } from "./headers.ts";
 import { icons } from "./icons.ts";
+import { buildClient } from "./client.ts";
 import { renderServiceWorker, type PrecacheEntry } from "./serviceworker.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
@@ -320,6 +321,16 @@ export async function build(
   // Pages consumes rather than serves is dropped by `precachable`, not here, so the
   // rule lives in one place.
   const precache: PrecacheEntry[] = [{ url: "/questions.json", content: schemaJson }];
+
+  // Client modules are emitted rather than copied — the one thing on the site that is not
+  // served exactly as it is committed. They join the precache here so the cache version
+  // covers the code that shipped rather than the TypeScript it came from.
+  for (const module of await buildClient(root)) {
+    const destination = path.join(out, module.output);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, module.code, "utf8");
+    precache.push({ url: `/${module.output}`, content: module.code });
+  }
 
   for (const asset of result.assets) {
     const destination = path.join(out, asset);

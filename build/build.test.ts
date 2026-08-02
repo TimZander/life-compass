@@ -36,6 +36,7 @@ const EXPECTED_PAGES: readonly string[] = [
   "docs/decisions/0009-encryption-is-an-opt-in-add-on.html",
   "docs/decisions/0010-printing-is-a-supported-output.html",
   "docs/decisions/0011-question-identifiers-are-frozen-and-registered.html",
+  "docs/decisions/0012-client-typescript-stripped-at-build-time.html",
   "docs/decisions/index.html",
   "index.html",
   "one-page-anchor.html",
@@ -708,15 +709,9 @@ describe("what ships", () => {
     //
     // This list is the safety net: a new root-level file fails here until someone
     // decides, deliberately, whether it belongs on a public site.
-    const expected = [
-      "LICENSE",
-      "_headers",
-      "assets/css/style.css",
-      "assets/js/app.js",
-      "assets/js/banner.js",
-      "assets/js/sw-update.js",
-      "manifest.webmanifest",
-    ];
+    // Client modules are no longer here: they are emitted from src/client rather than
+    // copied, so they are not discovered assets. dist/assets/js is asserted separately.
+    const expected = ["LICENSE", "_headers", "assets/css/style.css", "manifest.webmanifest"];
 
     // Act
     const result = await site();

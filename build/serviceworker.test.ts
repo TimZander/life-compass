@@ -1,10 +1,30 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { ROOT } from "./build.ts";
+import { buildClient } from "./client.ts";
 import { layout } from "./layout.ts";
 import { cacheVersion, precachable, renderServiceWorker } from "./serviceworker.ts";
+
+/**
+ * The emitted modules, keyed by output path.
+ *
+ * Read from the emit rather than from `src/client/*.ts`, because the emit is what the
+ * browser gets. Asserting against the source would have kept passing if the transpile
+ * step ever stopped running — and these assertions exist precisely because a silent
+ * failure on this tier removes offline support and storage durability with no signal.
+ */
+let emitted: Promise<Map<string, string>> | undefined;
+function client(name: string): Promise<string> {
+  emitted ??= buildClient(ROOT).then(
+    (modules) => new Map(modules.map((module) => [module.output, module.code])),
+  );
+  return emitted.then((modules) => {
+    const code = modules.get(`assets/js/${name}`);
+    assert.ok(code !== undefined, `no emitted module for ${name}`);
+    return code;
+  });
+}
 
 const ENTRIES = [
   { url: "/", content: "<p>home</p>" },
@@ -132,6 +152,32 @@ describe("renderServiceWorker", () => {
 });
 
 describe("shipped client scripts", () => {
+  it("buildClient_RealRoot_EmitsEveryModuleAsBrowserReadyJavaScript", async () => {
+    // Arrange — buildClient returns [] for a root with no src/client, which is what lets
+    // fixture builds work. This is the guard that makes that silence safe: if the real
+    // directory moved or emptied, every page would load zero modules and only this fails.
+    // Act
+    const modules = await buildClient(ROOT);
+
+    // Assert
+    assert.deepEqual(
+      modules.map((module) => module.output).sort(),
+      ["assets/js/app.js", "assets/js/banner.js", "assets/js/sw-update.js"],
+    );
+    for (const module of modules) {
+      assert.ok(module.code.length > 0, `${module.output} emitted nothing`);
+      // Type annotations are gone and the specifier a browser resolves is untouched.
+      assert.ok(!/^(import type|export type)/m.test(module.code), `${module.output} kept types`);
+      assert.ok(!/from "\.\/[a-z-]+";/.test(module.code), `${module.output} lost its .js`);
+    }
+  });
+
+  it("buildClient_MissingDirectory_IsEmptyRatherThanAThrow", async () => {
+    // Arrange — negative case: fixture roots have no client modules.
+    // Act & Assert
+    assert.deepEqual(await buildClient(path.join(ROOT, "docs")), []);
+  });
+
   it("clientEntry_ShippedFile_RegistersTheWorkerAndReportsFailure", async () => {
     // Arrange — a registration that fails silently removes offline support and storage
     // durability (0008) with no signal at all.
@@ -141,7 +187,7 @@ describe("shipped client scripts", () => {
     // error in a classic function body — and it is no longer needed: these files are in
     // tsconfig.client.json, so `npm run typecheck` parses AND type-checks them, which is
     // strictly stronger than parsing alone.
-    const source = await readFile(path.join(ROOT, "assets", "js", "app.js"), "utf8");
+    const source = await client("app.js");
 
     // Act & Assert
     assert.ok(source.includes('.register("/sw.js")'));
@@ -195,7 +241,7 @@ describe("update feedback", () => {
     // Arrange — dismissing made a successful update and a silent failure look identical:
     // the strip vanished either way, and the page reloads into the same content, so
     // there was nothing to see. Confirmed on a device before this was changed.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+    const source = await client("sw-update.js");
 
     // Act & Assert
     assert.ok(source.includes("Updating"));
@@ -205,7 +251,7 @@ describe("update feedback", () => {
   it("swUpdate_ReloadListener_IsAttachedOnlyAfterTheReaderAccepts", async () => {
     // Arrange — controllerchange also fires on a first install, so a listener attached
     // at startup would reload a page nobody asked to reload.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+    const source = await client("sw-update.js");
     const beforeAccept = source.slice(0, source.indexOf("function accept"));
 
     // Act & Assert
@@ -219,7 +265,7 @@ describe("update confirmation", () => {
     // Arrange — activation often completes in tens of milliseconds, so a progress
     // message may never paint, and the page carrying it is destroyed by the reload
     // regardless. The only honest moment to confirm is on the other side.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+    const source = await client("sw-update.js");
 
     // Act & Assert
     assert.ok(source.includes("sessionStorage.getItem"));
@@ -238,7 +284,7 @@ describe("update confirmation", () => {
   it("swUpdate_Confirmation_ClearsItsMarkerSoItShowsOnce", async () => {
     // Arrange — negative case: a marker left behind would announce an update on every
     // subsequent load, which is noise rather than information.
-    const source = await readFile(path.join(ROOT, "assets", "js", "sw-update.js"), "utf8");
+    const source = await client("sw-update.js");
 
     // Act & Assert
     assert.ok(source.includes("sessionStorage.removeItem"));
@@ -247,7 +293,7 @@ describe("update confirmation", () => {
   it("clientEntry_ConfirmsBeforeRegistering", async () => {
     // Arrange — the confirmation reports on the load that already happened, so it must
     // not wait on registration, which is deferred to the load event.
-    const source = await readFile(path.join(ROOT, "assets", "js", "app.js"), "utf8");
+    const source = await client("app.js");
 
     // Act & Assert
     // `.register(` rather than `serviceWorker.register`: the call is chained across
@@ -276,7 +322,7 @@ describe("banner surface", () => {
   it("banner_ShippedFile_DoesNotCreateTheRegionItself", async () => {
     // Arrange — negative case: recreating it on demand would silently restore the
     // announcement bug the static markup exists to prevent.
-    const source = await readFile(path.join(ROOT, "assets", "js", "banner.js"), "utf8");
+    const source = await client("banner.js");
 
     // Act & Assert
     assert.ok(!source.includes("document.body.appendChild"));
@@ -286,7 +332,7 @@ describe("banner surface", () => {
   it("banner_ShippedFile_UsesOnePendingSlotAndOneListener", async () => {
     // Arrange — a listener per deferred message leaked one for every message a reader
     // typed through, and let two scheduled timeouts both render.
-    const source = await readFile(path.join(ROOT, "assets", "js", "banner.js"), "utf8");
+    const source = await client("banner.js");
 
     // Act & Assert
     assert.equal(source.match(/addEventListener\("focusout"/g)?.length, 1);

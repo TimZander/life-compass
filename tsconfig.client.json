@@ -1,12 +1,11 @@
 {
-  // Client code is checked, not compiled.
+  // Client code is checked here and emitted by build/client.ts.
   //
-  // docs/decisions/0002 chose real TypeScript for the build because a build already
-  // existed, and said plainly that JSDoc earns its syntax exactly when there is no
-  // compile step. Client code is that case: browsers load these modules as written, so
-  // annotating them buys type safety for no toolchain at all. When there is enough
-  // client code to justify emitting — 0003 · C1a expects that at the storage work — this
-  // is the file that decision replaces.
+  // docs/decisions/0002 chose JSDoc for this tier while browsers loaded the modules as
+  // written, and named the storage work as the moment that arrangement ends. 0012 is
+  // that decision. Checking still happens here and only here — the emit strips types and
+  // never looks at them — so this file remains the only thing standing between a type
+  // error and production.
   "compilerOptions": {
     "target": "es2023",
     "lib": ["es2023", "dom", "dom.iterable"],
@@ -19,9 +18,11 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
 
-    "allowJs": true,
-    "checkJs": true,
     "noEmit": true,
+    // The emit is erasure and nothing else, so nothing may need more than erasure.
+    // Without this an enum would typecheck here and emit as a runtime object that
+    // build/client.ts does not produce, and the module would break in the browser.
+    "erasableSyntaxOnly": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -32,5 +33,5 @@
 
     "skipLibCheck": true
   },
-  "include": ["assets/js/**/*.js"]
+  "include": ["src/client/**/*.ts"]
 }

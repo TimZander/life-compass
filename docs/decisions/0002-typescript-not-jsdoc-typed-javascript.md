@@ -58,3 +58,6 @@ toolchain. When there is enough client code to justify emitting — expected at 
 work, per [0003 · C1a](0003-multi-page-static-rendering-no-framework.md) — that is the
 decision which replaces this arrangement, and it should be recorded rather than drifted
 into.
+
+*Superseded 2026-08-02 by [0012](0012-client-typescript-stripped-at-build-time.md), at
+the moment this paragraph named. The condition held for 347 lines.*
