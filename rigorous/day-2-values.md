@@ -94,7 +94,8 @@ what betraying it looks like — and the Day 1 evidence it rests on (◆; no evi
 *aspiration*, move it to the list at the bottom).
 
 <!-- questions: rday2.operationalised -->
-> **Aspirations** (wanted, but not yet evidenced — honestly labeled):
+
+**Aspirations** (wanted, but not yet evidenced — honestly labeled):
 
 <!-- questions: rday2.aspirations -->
 
