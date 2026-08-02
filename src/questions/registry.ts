@@ -267,4 +267,121 @@ export const REGISTRY: readonly RegistryEntry[] = [
 
   { id: "rday2.ranked", status: "active" },
   { id: "rday2.ranked.value", status: "active" },
+
+  // ---- rigorous/day-3-passions ----
+
+  { id: "rday3.energy", status: "active" },
+  { id: "rday3.energy.activity", status: "active" },
+  { id: "rday3.energy.context", status: "active" },
+  { id: "rday3.energy.fuel", status: "active" },
+
+  { id: "rday3.calendar", status: "active" },
+  { id: "rday3.calendar.shows", status: "active" },
+  { id: "rday3.calendar.matched", status: "active" },
+
+  { id: "rday3.history", status: "active" },
+  { id: "rday3.history.shows", status: "active" },
+  { id: "rday3.history.matched", status: "active" },
+
+  { id: "rday3.spending", status: "active" },
+  { id: "rday3.spending.shows", status: "active" },
+  { id: "rday3.spending.matched", status: "active" },
+
+  { id: "rday3.flow", status: "active" },
+
+  { id: "rday3.attention", status: "active" },
+
+  { id: "rday3.hypothetical", status: "active" },
+
+  { id: "rday3.reconciling", status: "active" },
+  { id: "rday3.reconciling.hypothetical", status: "active" },
+  { id: "rday3.reconciling.data", status: "active" },
+  { id: "rday3.reconciling.reconciling", status: "active" },
+
+  { id: "rday3.themes", status: "active" },
+  { id: "rday3.themes.name", status: "active" },
+  { id: "rday3.themes.data_example", status: "active" },
+  { id: "rday3.themes.other_example", status: "active" },
+
+  // ---- rigorous/day-4-purpose ----
+
+  { id: "rday4.advantages", status: "active" },
+  { id: "rday4.advantages.skills", status: "active" },
+  { id: "rday4.advantages.experiences", status: "active" },
+  { id: "rday4.advantages.networks", status: "active" },
+  { id: "rday4.advantages.thinking", status: "active" },
+
+  { id: "rday4.outside_input", status: "active" },
+
+  { id: "rday4.who", status: "active" },
+
+  { id: "rday4.problem", status: "active" },
+
+  { id: "rday4.changes", status: "active" },
+
+  { id: "rday4.enough_and_more", status: "active" },
+  { id: "rday4.enough_and_more.excess", status: "active" },
+  { id: "rday4.enough_and_more.lack", status: "active" },
+
+  { id: "rday4.harder_to", status: "active" },
+  { id: "rday4.harder_to.harder", status: "active" },
+
+  { id: "rday4.combination", status: "active" },
+  { id: "rday4.combination.first", status: "active" },
+  { id: "rday4.combination.second", status: "active" },
+  { id: "rday4.combination.third", status: "active" },
+
+  { id: "rday4.good_at", status: "active" },
+
+  { id: "rday4.energizes", status: "active" },
+
+  { id: "rday4.world_needs", status: "active" },
+
+  { id: "rday4.intersection", status: "active" },
+
+  { id: "rday4.statements", status: "active" },
+  { id: "rday4.statements.statement", status: "active" },
+
+  { id: "rday4.eulogy", status: "active" },
+
+  { id: "rday4.chosen_draft", status: "active" },
+  { id: "rday4.chosen_draft.draft", status: "active" },
+  { id: "rday4.chosen_draft.reason", status: "active" },
+
+  { id: "rday4.revised", status: "active" },
+
+  // ---- rigorous/day-5-synthesis ----
+
+  { id: "rday5.career", status: "active" },
+
+  { id: "rday5.money", status: "active" },
+
+  { id: "rday5.place", status: "active" },
+
+  { id: "rday5.people", status: "active" },
+
+  { id: "rday5.time", status: "active" },
+
+  { id: "rday5.definition", status: "active" },
+
+  { id: "rday5.time_baseline", status: "active" },
+  { id: "rday5.time_baseline.aligned", status: "active" },
+  { id: "rday5.time_baseline.total", status: "active" },
+  { id: "rday5.time_baseline.percent", status: "active" },
+
+  { id: "rday5.money_baseline", status: "active" },
+  { id: "rday5.money_baseline.percent", status: "active" },
+
+  { id: "rday5.targets", status: "active" },
+  { id: "rday5.targets.time", status: "active" },
+  { id: "rday5.targets.money", status: "active" },
+
+  { id: "rday5.versioning", status: "active" },
+
+  { id: "rday5.realignment", status: "active" },
+  { id: "rday5.realignment.move", status: "active" },
+
+  { id: "rday5.review_quarterly", status: "active" },
+
+  { id: "rday5.review_annual", status: "active" },
 ];

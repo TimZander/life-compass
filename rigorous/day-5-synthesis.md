@@ -55,19 +55,29 @@ Next annual review: _______
 For each: **Is my current setup aligned with the compass? Where's the gap?**
 
 **Career** — Does my work let me live my values daily, or suppress them? Use my passions, or
-just my skills? Serve my purpose, or unrelated? · **One change:** <span class="fill">______</span>
+just my skills? Serve my purpose, or unrelated? · **One change:**
+
+<!-- questions: rday5.career -->
 
 **Money** — Am I earning/spending for what I value, or for habits/expectations? Overspending on
-what that doesn't serve the compass? Underspending on what would? · **One change:** <span class="fill">______</span>
+what that doesn't serve the compass? Underspending on what would? · **One change:**
+
+<!-- questions: rday5.money -->
 
 **Place** — Does where I live support my values, passions, purpose? What would make it a full
-yes? · **One change:** <span class="fill">______</span>
+yes? · **One change:**
+
+<!-- questions: rday5.place -->
 
 **People** — Who amplifies the compass? Who pulls against it? Who do I need more of? Less of? ·
-**One change:** <span class="fill">______</span>
+**One change:**
+
+<!-- questions: rday5.people -->
 
 **Time** — From last week's calendar, what % of waking hours served the compass? Which recurring
-commitments don't? · **One change:** <span class="fill">______</span>
+commitments don't? · **One change:**
+
+<!-- questions: rday5.time -->
 
 ---
 
@@ -77,11 +87,19 @@ commitments don't? · **One change:** <span class="fill">______</span>
 
 1. **Define "served the compass"** before measuring, so you can't grade on a curve:
    > A block counts as aligned if it advances a top-3 value, a passion theme, or the purpose.
-   > My definition: <span class="fill">______</span>
-2. **Measure from the Day 0 calendar**, not memory → aligned hours: <span class="fill-sm">____</span> / <span class="fill-sm">____</span> = **<span class="fill-sm">___</span>%**.
-3. **Repeat for money** → discretionary spend that served the compass: **<span class="fill-sm">___</span>%**.
-4. **Set a target** for next quarter so the review has a number, not a feeling →
-   Time target: <span class="fill-sm">___</span>% · Money target: <span class="fill-sm">___</span>%.
+
+   **My definition:**
+
+   <!-- questions: rday5.definition -->
+2. **Measure from the Day 0 calendar**, not memory:
+
+   <!-- questions: rday5.time_baseline -->
+3. **Repeat for money:**
+
+   <!-- questions: rday5.money_baseline -->
+4. **Set a target** for next quarter so the review has a number, not a feeling:
+
+   <!-- questions: rday5.targets -->
 
 ---
 
@@ -91,7 +109,9 @@ You saved a dated file in step 1. **Never overwrite it.** Each annual redo becom
 file, and you **diff against the prior one**, asking the key question:
 
 > Each thing that changed — is it driven by **new evidence**, or by **new rationalization**
-> (talking myself into where I've already drifted)? Name the cause for each change: <span class="fill">______</span>
+> (talking myself into where I've already drifted)? Name the cause for each change.
+
+<!-- questions: rday5.versioning -->
 
 This is the difference between a compass that tracks your growth and one that just ratifies
 your drift.
@@ -103,17 +123,21 @@ your drift.
 From the five "one change" answers, pick the **1–2** you'll actually do in the next 90 days. Be
 ruthless — the compass is useless if it doesn't change what you do.
 
-1. <span class="fill">______</span>
-2. <span class="fill">______</span>
+<!-- questions: rday5.realignment -->
 
 ---
 
 ## 6. Set your review cadence (5 min)
 
-- **Next quarterly review (15 min):** <span class="fill-sm">______</span> — re-read, adjust what no longer fits, **re-measure
+- **Next quarterly review (15 min)** — re-read, adjust what no longer fits, **re-measure
   the baseline numbers against target**, pick the next 90-day moves.
-- **Next annual review (90 min):** <span class="fill-sm">______</span> — redo Day 5 in full (and any earlier day that feels
+
+  <!-- questions: rday5.review_quarterly -->
+
+- **Next annual review (90 min)** — redo Day 5 in full (and any earlier day that feels
   off), then diff against this version per step 4.
+
+  <!-- questions: rday5.review_annual -->
 - **Before any major decision:** re-read first.
 
 ---
