@@ -161,10 +161,16 @@ describe("shipped client scripts", () => {
     const modules = await buildClient(ROOT);
 
     // Assert
-    assert.deepEqual(
-      modules.map((module) => module.output).sort(),
-      ["assets/js/app.js", "assets/js/banner.js", "assets/js/sw-update.js"],
-    );
+    // answers.js and store.js are emitted and precached before anything imports them —
+    // app.js wires them up in the next slice. Listing them rather than allowing "at
+    // least these" keeps the check able to notice a module that should not be shipping.
+    assert.deepEqual(modules.map((module) => module.output).sort(), [
+      "assets/js/answers.js",
+      "assets/js/app.js",
+      "assets/js/banner.js",
+      "assets/js/store.js",
+      "assets/js/sw-update.js",
+    ]);
     for (const module of modules) {
       assert.ok(module.code.length > 0, `${module.output} emitted nothing`);
       // Type annotations are gone and the specifier a browser resolves is untouched.
