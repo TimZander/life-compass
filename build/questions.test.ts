@@ -504,7 +504,7 @@ describe("field labels", () => {
 
     // Assert
     assert.ok(!html.includes("Value"));
-    assert.equal(html.match(/<li>/g)?.length, 3);
+    assert.equal(html.match(/<li data-instance="\d+">/g)?.length, 3);
   });
 });
 
@@ -549,7 +549,7 @@ describe("repeat instance weight", () => {
 
     // Assert — two rows, both fields on each, and the label matching the group's collapses
     // exactly as it does for a single-field row.
-    assert.equal(html.match(/<li>/g)?.length, 2);
+    assert.equal(html.match(/<li data-instance="\d+">/g)?.length, 2);
     assert.ok(!html.includes("<ul"));
     assert.ok(html.includes(" — <strong>Evidence:</strong> "));
     assert.ok(!html.includes("<strong>Value:</strong>"));

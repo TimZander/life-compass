@@ -28,6 +28,7 @@ every citation already written down.
 | [0010](0010-printing-is-a-supported-output.md) | Printing stays a supported output, not an accident | Proposed |
 | [0011](0011-question-identifiers-are-frozen-and-registered.md) | Question identifiers are frozen, registered, and never derived | Proposed |
 | [0012](0012-client-typescript-stripped-at-build-time.md) | Client code becomes TypeScript, stripped at build time | Accepted |
+| [0013](0013-instance-identity-for-rendered-slots.md) | Instance identity for slots the build renders | Accepted |
 
 ## Still open
 

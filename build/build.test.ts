@@ -37,6 +37,7 @@ const EXPECTED_PAGES: readonly string[] = [
   "docs/decisions/0010-printing-is-a-supported-output.html",
   "docs/decisions/0011-question-identifiers-are-frozen-and-registered.html",
   "docs/decisions/0012-client-typescript-stripped-at-build-time.html",
+  "docs/decisions/0013-instance-identity-for-rendered-slots.html",
   "docs/decisions/index.html",
   "index.html",
   "one-page-anchor.html",
@@ -473,6 +474,34 @@ describe("heading ids", () => {
       assert.ok(!/id="[^"]*span-class/.test(page.html), `${page.output} has tag text in an id`);
       for (const id of page.headingIds) {
         assert.ok(!id.includes("<") && !id.includes(">"), `${page.output} id "${id}" has markup`);
+      }
+    }
+  });
+
+  it("buildPages_EveryBlankInsideARepeat_IsAddressableByInstanceAndField", async () => {
+    // Arrange — before 0013 every slot of a group carried the same data-field, so 264 of
+    // the site's blanks shared a key with another blank and would have overwritten each
+    // other in storage. The pair (data-instance, data-field) is what makes them distinct.
+    const result = await site();
+
+    // Act & Assert
+    for (const page of result.pages) {
+      for (const repeat of page.html.matchAll(/<(ol|div) class="q-repeat"[\s\S]*?<\/\1>/g)) {
+        const block = repeat[0];
+        const blanks = block.match(/class="fill(?:-sm)?" data-field=/g)?.length ?? 0;
+        if (blanks === 0) {
+          continue;
+        }
+        const slots = new Set(
+          [...block.matchAll(/data-instance="(\d+)"/g)].map((one) => one[1]),
+        );
+        assert.ok(slots.size > 0, `${page.output}: a repeat with no instance markers`);
+        // Every slot index appears exactly once per instance, and they are 0..n-1.
+        assert.deepEqual(
+          [...slots].map(Number).sort((a, b) => a - b),
+          Array.from({ length: slots.size }, (_, index) => index),
+          `${page.output}: instance markers are not a contiguous run from zero`,
+        );
       }
     }
   });

@@ -365,7 +365,9 @@ export function renderQuestion(question: Question): string {
       const fields = rest
         .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
         .join("\n");
-      sections.push(`${heading}\n<ul>\n${fields}\n</ul>`);
+      sections.push(
+        `<div class="q-instance" data-instance="${index}">\n${heading}\n<ul>\n${fields}\n</ul>\n</div>`,
+      );
     }
     return (
       `<div class="q-repeat" data-question="${escape(question.id)}"` +
@@ -393,7 +395,7 @@ export function renderQuestion(question: Question): string {
     if (question.instances === "line") {
       // Every field on the one line. The em dash is the separator the worksheets already
       // used for this shape, and it survives a line wrap better than a comma.
-      items.push(`<li>${question.fields.map(cell).join(" — ")}</li>`);
+      items.push(`<li data-instance="${index}">${question.fields.map(cell).join(" — ")}</li>`);
       continue;
     }
     if (question.fields.length === 1) {
@@ -401,7 +403,7 @@ export function renderQuestion(question: Question): string {
       if (field === undefined) {
         continue;
       }
-      items.push(`<li>${cell(field)}</li>`);
+      items.push(`<li data-instance="${index}">${cell(field)}</li>`);
       continue;
     }
     // The first field sits inline with the list number and the rest nest beneath it.
@@ -413,7 +415,7 @@ export function renderQuestion(question: Question): string {
     }
     const head = cell(first);
     const nested = rest.map((field) => `<li>${cell(field)}</li>`).join("\n");
-    items.push(`<li>${head}\n<ul>\n${nested}\n</ul>\n</li>`);
+    items.push(`<li data-instance="${index}">${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }
 
   // The permitted range is carried as data, not printed. Rendering "(5–8)" advertises
