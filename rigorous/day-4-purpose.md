@@ -14,10 +14,7 @@ against the evidence of your real life so it's a compass, not a costume.
 What can you do, or see, that most people can't or don't? Don't be modest — this is inventory,
 not bragging.
 
-- **Skills (technical and otherwise):** <span class="fill">______</span>
-- **Experiences that gave you unusual perspective:** <span class="fill">______</span>
-- **Networks or access:** <span class="fill">______</span>
-- **Ways of thinking that feel natural to you but aren't to others:** <span class="fill">______</span>
+<!-- questions: rday4.advantages -->
 
 ---
 
@@ -27,16 +24,26 @@ If you gathered outside input (Day 0), compare it against the list above. Where 
 a strength you *didn't* — take it seriously. A strength so native you've stopped seeing it is
 often exactly where purpose lives.
 
-> Strengths others named that I'd missed: <span class="fill">______</span>
+**Strengths others named that I’d missed:**
+
+<!-- questions: rday4.outside_input -->
 
 ---
 
 ## 3. Who and what (20 min)
 
 - **Who do you want to be useful to?** Be specific — not "people" but a particular kind of
-  person or group. → <span class="fill">______</span>
-- **What problem of theirs do you want to help with?** → <span class="fill">______</span>
-- **What would change in their world if you did your work well?** → <span class="fill">______</span>
+  person or group.
+
+  <!-- questions: rday4.who -->
+
+- **What problem of theirs do you want to help with?**
+
+  <!-- questions: rday4.problem -->
+
+- **What would change in their world if you did your work well?**
+
+  <!-- questions: rday4.changes -->
 
 ---
 
@@ -44,9 +51,11 @@ often exactly where purpose lives.
 
 Finish these (multiple times if it helps):
 
-- "The world has enough <span class="fill-sm">______</span>. It needs more <span class="fill-sm">______</span>."
-- "When I'm gone, I want it to be harder for people to <span class="fill-sm">______</span> because of work I did."
-- "The unique combination I bring is <span class="fill-sm">______</span> + <span class="fill-sm">______</span> + <span class="fill-sm">______</span>."
+<!-- questions: rday4.enough_and_more -->
+
+<!-- questions: rday4.harder_to -->
+
+<!-- questions: rday4.combination -->
 
 ---
 
@@ -55,15 +64,21 @@ Finish these (multiple times if it helps):
 Don't jump to a statement yet. Fill in all three below from your work so far, then write only
 what lands in the **overlap of all three** — that overlap is your purpose's raw ore.
 
-**Good at** (my step-1 unfair advantages): <span class="fill">______</span>
+**Good at** (my step-1 unfair advantages):
 
-**Energizes me** (my Day 3 themes): <span class="fill">______</span>
+<!-- questions: rday4.good_at -->
 
-**The world needs / who I'd serve** (from step 3): <span class="fill">______</span>
+**Energizes me** (my Day 3 themes):
+
+<!-- questions: rday4.energizes -->
+
+**The world needs / who I’d serve** (from step 3):
+
+<!-- questions: rday4.world_needs -->
 
 **In all three (the intersection):**
 
-> *intersection:* <span class="fill">______________________</span>
+<!-- questions: rday4.intersection -->
 
 ---
 
@@ -76,9 +91,7 @@ them from the intersection above.
 > Examples: "To help the people I love feel genuinely known, so no one close to me carries
 > things alone." · "To make the backcountry more accessible to people who weren't raised in it."
 
-1. To <span class="fill">______________________________</span>
-2. To <span class="fill">______________________________</span>
-3. To <span class="fill">______________________________</span>
+<!-- questions: rday4.statements -->
 
 ---
 
@@ -87,9 +100,11 @@ them from the intersection above.
 Imagine someone who knows you well speaking at your funeral. What would you want them to be
 able to say **honestly** about what you spent your life on?
 
-> *eulogy:* <span class="fill">______________________</span>
+<!-- questions: rday4.eulogy -->
 
-**Which of your three drafts rings truest against that?** → Draft # <span class="fill-sm">______</span> , because <span class="fill-sm">______</span>
+**Which of your three drafts rings truest against that?**
+
+<!-- questions: rday4.chosen_draft -->
 
 ---
 
@@ -100,7 +115,9 @@ genuinely my purpose — and do I see it?** If the purpose predicts behavior tha
 from your last five years, it's a costume, not a compass. Revise toward what the evidence
 already supports.
 
-> Revised purpose statement: <span class="fill">______</span>
+**Revised purpose statement:**
+
+<!-- questions: rday4.revised -->
 
 ---
 
