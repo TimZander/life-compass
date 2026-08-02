@@ -17,6 +17,4 @@ Stability · Stewardship · Strength · Tradition · Truth · Vitality · Wisdom
 
 **My own additions:**
 
-- *value:* <span class="fill">______________________</span>
-- *value:* <span class="fill">______________________</span>
-- *value:* <span class="fill">______________________</span>
+<!-- questions: values.additions -->

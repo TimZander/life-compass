@@ -18,6 +18,9 @@ import { RIGOROUS_DAY2 } from "./rigorous-day2.ts";
 import { RIGOROUS_DAY3 } from "./rigorous-day3.ts";
 import { RIGOROUS_DAY4 } from "./rigorous-day4.ts";
 import { RIGOROUS_DAY5 } from "./rigorous-day5.ts";
+import { ANCHOR_PAGE } from "./anchor.ts";
+import { ADD_ONS } from "./add-ons.ts";
+import { VALUES_LIST } from "./values-list.ts";
 
 export type Worksheet = {
   /** Repo-relative POSIX path of the Markdown this belongs to. */
@@ -37,4 +40,7 @@ export const WORKSHEETS: readonly Worksheet[] = [
   { source: "rigorous/day-3-passions.md", questions: RIGOROUS_DAY3 },
   { source: "rigorous/day-4-purpose.md", questions: RIGOROUS_DAY4 },
   { source: "rigorous/day-5-synthesis.md", questions: RIGOROUS_DAY5 },
+  { source: "one-page-anchor.md", questions: ANCHOR_PAGE },
+  { source: "optional-add-ons.md", questions: ADD_ONS },
+  { source: "reference/values-list.md", questions: VALUES_LIST },
 ];
