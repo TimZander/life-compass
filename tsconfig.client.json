@@ -30,6 +30,13 @@
     // module, so that one line takes the banner, update prompting and worker
     // registration down together. Requiring `import type` is what keeps them in step.
     "verbatimModuleSyntax": true,
+    // Test files import `./answers.ts` because Node runs them from source, while the
+    // modules themselves must import `./answers.js` or the browser 404s. Allowing the
+    // extension here would let a shipping module do the same and typecheck — so the
+    // guard is downstream: buildClient_RealRoot_EmitsEveryModuleAsBrowserReadyJavaScript
+    // rejects any relative specifier in emitted output that does not end in `.js`, and
+    // `.test.ts` is excluded from the emit entirely.
+    "allowImportingTsExtensions": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
