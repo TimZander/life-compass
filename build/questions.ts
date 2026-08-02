@@ -14,6 +14,7 @@ import {
   GAP,
   gapsOf,
   identifiersOf,
+  type Field,
   type Question,
   type RepeatQuestion,
   type SentenceQuestion,
@@ -185,7 +186,7 @@ function checkParts(question: Question): readonly string[] {
   return problems;
 }
 
-/** `max` is what the sheet prints, so a range that runs backwards prints nothing. */
+/** `min` is what the sheet prints, so a range that runs backwards prints too little. */
 function checkRange(question: RepeatQuestion): readonly string[] {
   const problems: string[] = [];
   if (question.min < 1) {
@@ -360,21 +361,28 @@ export function renderQuestion(question: Question): string {
   // No per-instance heading is printed in this shape. Repeating the group's label above
   // its first field produced "Moment / Moment: ____" and "Hard moment / Hard moment:
   // ____"; the list number is identity enough.
+  // A field whose label just restates the group's is the same stutter the comment above
+  // describes, one line lower down: ten rows reading "Value: ____" under a heading that
+  // already says "Narrow to 10". The list number is identity enough.
+  const cell = (field: Field): string =>
+    field.label === question.label
+      ? blank(`${question.id}.${field.id}`, field.size)
+      : labelled(field.label, `${question.id}.${field.id}`, field.size);
+
   const items: string[] = [];
   for (let index = 0; index < question.min; index += 1) {
+    if (question.instances === "line") {
+      // Every field on the one line. The em dash is the separator the worksheets already
+      // used for this shape, and it survives a line wrap better than a comma.
+      items.push(`<li>${question.fields.map(cell).join(" — ")}</li>`);
+      continue;
+    }
     if (question.fields.length === 1) {
       const field = question.fields[0];
       if (field === undefined) {
         continue;
       }
-      // A lone field whose label just restates the group's is the same stutter the
-      // comment above describes, one line lower down: ten rows reading "Value: ____"
-      // under a heading that already says "Narrow to 10". The list number is enough.
-      items.push(
-        field.label === question.label
-          ? `<li>${blank(`${question.id}.${field.id}`, field.size)}</li>`
-          : `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`,
-      );
+      items.push(`<li>${cell(field)}</li>`);
       continue;
     }
     // The first field sits inline with the list number and the rest nest beneath it.
@@ -384,10 +392,8 @@ export function renderQuestion(question: Question): string {
     if (first === undefined) {
       continue;
     }
-    const head = labelled(first.label, `${question.id}.${first.id}`, first.size);
-    const nested = rest
-      .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
-      .join("\n");
+    const head = cell(first);
+    const nested = rest.map((field) => `<li>${cell(field)}</li>`).join("\n");
     items.push(`<li>${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }
 

@@ -56,18 +56,22 @@ export type RepeatQuestion = {
   /**
    * How much weight one instance carries.
    *
-   * `"row"` renders instances as numbered list items — right for short notes, like Day
-   * 1's chapters. `"section"` gives each instance a heading composed from the label, its
-   * number, and its first field: "Value 1 — ______". Right where an instance is a unit
-   * of work in its own right, like Day 2's values, which take four fields each and are
-   * referred back to for the rest of the workbook.
+   * `"line"` puts every field on one numbered line, separated by em dashes — right where
+   * an instance is a single short thought, like the rigorous Day 2's ten candidate values
+   * and the evidence for each. `"row"` gives the first field the line and stacks the rest
+   * beneath it, which is right when the fields are sentences rather than words.
+   * `"section"` gives each instance a heading composed from the label, its number, and
+   * its first field: "Value 1 — ______" — right where an instance is a unit of work in
+   * its own right and gets referred back to for the rest of the workbook.
    *
    * This is semantic weight rather than decoration, in the same way the size hint is.
    * Headings are also navigation: a screen reader moves by them, so rendering five
    * sections as five list rows removes five landmarks from the page — which
-   * docs/decisions/0001 makes a real cost rather than a stylistic one.
+   * docs/decisions/0001 makes a real cost rather than a stylistic one. `"line"` earns its
+   * place lower down the same scale: ten brainstormed words stacked two-deep is twenty
+   * lines of a page for ten words, and the list stops reading as a list.
    */
-  readonly instances: "row" | "section";
+  readonly instances: "line" | "row" | "section";
   /**
    * Fewest instances the worksheet asks for, and how many slots the sheet prints.
    *

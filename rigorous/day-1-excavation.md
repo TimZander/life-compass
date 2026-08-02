@@ -40,21 +40,7 @@ sentence on what you learned.
 
 > Example title: "The garage-band years," "First job that mattered."
 
-- **Chapter —** _title:_ <span class="fill">______</span>
-  - Defined by: <span class="fill">______</span>
-  - Learned: <span class="fill">______</span>
-- **Chapter —** _title:_ <span class="fill">______</span>
-  - Defined by: <span class="fill">______</span>
-  - Learned: <span class="fill">______</span>
-- **Chapter —** _title:_ <span class="fill">______</span>
-  - Defined by: <span class="fill">______</span>
-  - Learned: <span class="fill">______</span>
-- **Chapter —** _title:_ <span class="fill">______</span>
-  - Defined by: <span class="fill">______</span>
-  - Learned: <span class="fill">______</span>
-- **Chapter —** _title:_ <span class="fill">______</span>
-  - Defined by: <span class="fill">______</span>
-  - Learned: <span class="fill">______</span>
+<!-- questions: rday1.chapters -->
 
 ---
 
@@ -66,26 +52,7 @@ it** — the one-word underlying quality.
 
 <p class="eg">e.g. the afternoon I taught my niece to ride a bike — patience, delight.</p>
 
-1. **Moment:** <span class="fill">______________________</span>
-   - *Doing:* <span class="fill">______________________</span>
-   - *With, or alone:* <span class="fill">______________________</span>
-   - *Quality tag:* <span class="fill-sm">____________</span>
-2. **Moment:** <span class="fill">______________________</span>
-   - *Doing:* <span class="fill">______________________</span>
-   - *With, or alone:* <span class="fill">______________________</span>
-   - *Quality tag:* <span class="fill-sm">____________</span>
-3. **Moment:** <span class="fill">______________________</span>
-   - *Doing:* <span class="fill">______________________</span>
-   - *With, or alone:* <span class="fill">______________________</span>
-   - *Quality tag:* <span class="fill-sm">____________</span>
-4. **Moment:** <span class="fill">______________________</span>
-   - *Doing:* <span class="fill">______________________</span>
-   - *With, or alone:* <span class="fill">______________________</span>
-   - *Quality tag:* <span class="fill-sm">____________</span>
-5. **Moment:** <span class="fill">______________________</span>
-   - *Doing:* <span class="fill">______________________</span>
-   - *With, or alone:* <span class="fill">______________________</span>
-   - *Quality tag:* <span class="fill-sm">____________</span>
+<!-- questions: rday1.peaks -->
 
 ---
 
@@ -95,18 +62,7 @@ List 3 hard chapters or moments. A violated value is often the *clearest* signal
 one — so for each, name what was being violated or missing, and **◆ tag** the value it points
 to.
 
-1. **Hard moment:** <span class="fill">______________________</span>
-   - *What was violated or missing:* <span class="fill">______________________</span>
-   - *Value it points to (tag):* <span class="fill-sm">____________</span>
-   - *What it taught me I need / won't accept:* <span class="fill">______________________</span>
-2. **Hard moment:** <span class="fill">______________________</span>
-   - *What was violated or missing:* <span class="fill">______________________</span>
-   - *Value it points to (tag):* <span class="fill-sm">____________</span>
-   - *What it taught me I need / won't accept:* <span class="fill">______________________</span>
-3. **Hard moment:** <span class="fill">______________________</span>
-   - *What was violated or missing:* <span class="fill">______________________</span>
-   - *Value it points to (tag):* <span class="fill-sm">____________</span>
-   - *What it taught me I need / won't accept:* <span class="fill">______________________</span>
+<!-- questions: rday1.low_points -->
 
 ---
 
@@ -123,51 +79,25 @@ quality it carried.
 
 *Energized me:*
 
-1. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-2. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-3. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-4. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-5. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
+<!-- questions: rday1.month_energized -->
 
 *Drained me:*
 
-1. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-2. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-3. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-4. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
-5. **What it was:** <span class="fill">______________________</span>
-   - *quality it carried:* <span class="fill-sm">____________</span>
+<!-- questions: rday1.month_drained -->
 
 **◆ Past year — five energizing, five draining moments that stand out across the whole year:**
 
 *Energizing:*
 
-1. *moment:* <span class="fill">______________________</span>
-2. *moment:* <span class="fill">______________________</span>
-3. *moment:* <span class="fill">______________________</span>
-4. *moment:* <span class="fill">______________________</span>
-5. *moment:* <span class="fill">______________________</span>
+<!-- questions: rday1.year_energizing -->
 
 *Draining:*
 
-1. *moment:* <span class="fill">______________________</span>
-2. *moment:* <span class="fill">______________________</span>
-3. *moment:* <span class="fill">______________________</span>
-4. *moment:* <span class="fill">______________________</span>
-5. *moment:* <span class="fill">______________________</span>
+<!-- questions: rday1.year_draining -->
 
 **Patterns** — what kind of work, people, and environments recur?
 
-> *patterns:* <span class="fill">______________________</span>
+<!-- questions: rday1.patterns -->
 
 ---
 
@@ -176,7 +106,7 @@ quality it carried.
 What did you love doing at age 10 that you no longer do? What were you naturally drawn to
 before anyone told you what you *should* be?
 
-> *threads:* <span class="fill">______________________</span>
+<!-- questions: rday1.threads -->
 
 ---
 
@@ -190,7 +120,9 @@ For each item, ask:
   outside observations of when you're at your best are often more reliable than your own
   narration. Where it contradicts what you wrote, don't dismiss it; sit with the gap.
 
-> External observations to carry forward: <span class="fill">______</span>
+**External observations to carry forward:**
+
+<!-- questions: rday1.external -->
 
 ---
 
