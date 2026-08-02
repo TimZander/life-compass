@@ -384,4 +384,41 @@ export const REGISTRY: readonly RegistryEntry[] = [
   { id: "rday5.review_quarterly", status: "active" },
 
   { id: "rday5.review_annual", status: "active" },
+
+  // ---- one-page-anchor ----
+
+  { id: "anchor.alive", status: "active" },
+
+  { id: "anchor.angry", status: "active" },
+
+  { id: "anchor.costly", status: "active" },
+
+  { id: "anchor.ranked", status: "active" },
+  { id: "anchor.ranked.value", status: "active" },
+
+  { id: "anchor.theme", status: "active" },
+  { id: "anchor.theme.focus", status: "active" },
+  { id: "anchor.theme.tradeoff", status: "active" },
+
+  { id: "anchor.decision_rule", status: "active" },
+  { id: "anchor.decision_rule.rule", status: "active" },
+
+  { id: "anchor.review_date", status: "active" },
+  { id: "anchor.review_date.date", status: "active" },
+
+  // ---- optional-add-ons ----
+
+  { id: "addons.come_to_you_for", status: "active" },
+
+  { id: "addons.brushed_off", status: "active" },
+
+  { id: "addons.experiment", status: "active" },
+  { id: "addons.experiment.step", status: "active" },
+  { id: "addons.experiment.by_when", status: "active" },
+  { id: "addons.experiment.done", status: "active" },
+
+  // ---- reference/values-list ----
+
+  { id: "values.additions", status: "active" },
+  { id: "values.additions.value", status: "active" },
 ];

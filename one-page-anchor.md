@@ -15,34 +15,40 @@ Copy this to `answers/anchor.md` (gitignored) and fill in the blanks. Don't poli
 
 Don't use a list. Instead, recall two things:
 
-- The last time you felt genuinely **alive / right**. What value was being honored? → <span class="fill">______</span>
-- The last time you felt **angry or wronged**. What value was being violated? (Anger is a
-  reliable pointer to a held value.) → <span class="fill">______</span>
+- The last time you felt genuinely **alive / right**. What value was being honored?
 
-Add one more that you'd defend even when it's costly → <span class="fill">______</span>
+  <!-- questions: anchor.alive -->
+
+- The last time you felt **angry or wronged**. What value was being violated? (Anger is a
+  reliable pointer to a held value.)
+
+  <!-- questions: anchor.angry -->
+
+Add one more that you'd defend even when it's costly:
+
+<!-- questions: anchor.costly -->
 
 **Now rank them 1–2–3.** When two of your choices collide, #1 wins. That ranking is the
 whole point — it's what does the work in a hard decision.
 
-1. <span class="fill">______</span>
-2. <span class="fill">______</span>
-3. <span class="fill">______</span>
+<!-- questions: anchor.ranked -->
 
 ### 2. A theme for this season (5 min)
 
 Not a five-year plan — one sentence for the **next 90 days**. Themes flex where goals snap.
 
-> "For the next 90 days I'm optimizing for <span class="fill-sm">______</span> over <span class="fill-sm">______</span>."
+> <!-- questions: anchor.theme -->
 
 ### 3. One decision rule (3 min)
 
 A single if-then you can apply on a Tuesday without re-reading anything.
 
-> "When I'm stuck between options, I default to the one that <span class="fill-sm">______</span>."
+> <!-- questions: anchor.decision_rule -->
 
 ### 4. One review date (2 min)
 
-> Re-read this on **<span class="fill-sm">______</span>** (≈90 days out) and ask two questions:
+> <!-- questions: anchor.review_date -->
+>
 > 1. Do my three values still rank in that order?
 > 2. Does my theme still fit, or does the next season need a new one?
 
