@@ -14,9 +14,10 @@
  * The line is whether a form UI could ignore it without harming anyone.
  *
  * `min`/`max` come from the worksheet's own wording. Day 1 asks for "5–8 chapters" but
- * exactly five peak moments and three low points, so only the first is a genuine range —
- * and the sheet prints eight chapter slots, because until #24 a slot the reader was
- * invited to use and did not get is a lost answer.
+ * exactly five peak moments and three low points, so only the first is a genuine range.
+ * Five chapter slots are printed, not eight: eight blocks of three fields is a wall of
+ * ruled lines, and the reader who has eight chapters is the one who will notice the
+ * range and ask for more room.
  */
 
 import type { Question } from "./types.ts";

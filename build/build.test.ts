@@ -69,13 +69,11 @@ const NAV_HREFS: readonly string[] = [
  * still using raw `<span>` markup that means HTML passthrough, and for the migrated ones
  * it means the schema still produces what it produced.
  *
- * 454, up from 443. Two changes, both deliberate. Day 3's themes 4 and 5 carried two
- * example slots where the first three carried three; the repeat gives all five the same
- * three. And a repeat now prints the ceiling of its range rather than the floor, so Day
- * 1 offers the eight chapters its prose invites instead of five — until #24 nothing can
- * add a slot, and a slot the reader was invited to use and did not get is a lost answer.
+ * 445, up from 443: Day 3's themes 4 and 5 carried two example slots where the first
+ * three carried three. The repeat gives all five the same three, which adds two blanks
+ * and removes an inconsistency that read as arbitrary rather than deliberate.
  */
-const EXPECTED_FILL_MARKERS = 454;
+const EXPECTED_FILL_MARKERS = 445;
 
 /** Built once and shared: rendering 29 pages per test is pure waste. */
 let cached: Promise<BuildResult> | undefined;
