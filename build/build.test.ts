@@ -387,34 +387,60 @@ describe("build", () => {
 });
 
 describe("task lists", () => {
-  it("buildPages_CheckboxSyntax_RendersADisabledCheckboxLikeKramdown", async () => {
-    // Arrange — a fixture, not a real page. This asserts a markdown-it rule rather than a
-    // property of any worksheet, and pointing it at real content made it fail twice as #22
-    // migrated first Day 5 and then rigorous/day-0 out from under it. No worksheet writes
-    // `- [ ]` by hand any more; the rule stays because the Markdown still supports it, and
-    // a fixture is what keeps that supported rather than merely present.
+  it("buildPages_HandWrittenTaskMarker_IsReported", async () => {
+    // Arrange — markdown-it does not do task lists and the rule that added them is gone,
+    // so a hand-written one renders as the literal text "[ ] Values filled in". That is
+    // what it did the day it was first noticed; now the build refuses instead.
     const root = await fixture({ "README.md": "# Home\n\n- [ ] Values filled in\n" });
-    const expected =
-      '<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" ' +
-      'disabled="disabled" />Values filled in</li>';
 
     // Act
     const result = await buildPages(root, undefined, []);
 
     // Assert
-    assert.ok(result.pages[0]?.html.includes('<ul class="task-list">'));
-    assert.ok(result.pages[0]?.html.includes(expected));
+    assert.ok(result.problems.some((problem) => problem.kind === "task-list"));
+    assert.ok(result.problems.some((problem) => problem.detail.includes("checklist question")));
+  });
+
+  it("buildPages_TaskSyntaxInsideAFence_IsNotReported", async () => {
+    // Arrange — negative case, and the reason this is checked on the token stream rather
+    // than the raw source: a fenced block showing the syntax did not mean it.
+    const root = await fixture({ "README.md": "# Home\n\n```\n- [ ] not a real tick\n```\n" });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.deepEqual(result.problems, []);
   });
 
   it("buildPages_OrdinaryBulletStartingWithABracket_IsNotTreatedAsATask", async () => {
-    // Arrange — negative case: only `[ ]` and `[x]` are markers.
+    // Arrange — negative case: only `[ ]` and `[x]` are markers, not any bracket.
     const root = await fixture({ "README.md": "# Home\n\n- [a link](README.md) here\n" });
 
     // Act
     const result = await buildPages(root, undefined, []);
 
     // Assert
+    assert.deepEqual(result.problems, []);
     assert.ok(!result.pages[0]?.html.includes("task-list"));
+  });
+
+  it("buildPages_ChecklistQuestion_StillRendersTheCheckboxMarkup", async () => {
+    // Arrange — the capability did not leave with the rule: `checklist` emits it directly,
+    // which is the whole reason the rule could go.
+    const source = "days/day-5-synthesis.md";
+    const expected =
+      '<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox"' +
+      ' disabled="disabled" data-field="day5.ready.values" />Values filled in</li>';
+
+    // Act
+    const result = await site();
+    const page = result.pages.find((candidate) => candidate.source === source);
+
+    // Assert
+    assert.ok(page !== undefined);
+    assert.ok(page.html.includes('<ul class="task-list q-checklist"'));
+    assert.ok(page.html.includes(expected));
   });
 });
 
