@@ -1,6 +1,6 @@
 # 0013 — Instance identity for slots the build renders
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-02
 
 ## Context
@@ -79,36 +79,42 @@ back.
 today rather than a property of the future format: the identifier is the storage key, so
 it is two questions writing over each other, and nothing else catches it.
 
-## What is built, and what is not
+## What is built
 
-This record is **Proposed**, not Accepted, because only the first half exists.
+This landed in two pull requests, which is why the record sat **Proposed** through the
+first of them.
 
-**Built:** the slot markers, the `q-instance` wrapper, a check that two questions cannot
-produce one identifier, `checkSchema`'s refusal of an identifier containing an empty
-segment, and tests at two grains: every repeat in the schema is checked for its slot
-numbering — each slot marked exactly once, counting from zero — while containment, that
-every blank sits inside the element carrying its slot, is asserted against a fixture for
-each repeat shape, including a multi-slot instance and the row holding a single field.
+**The markup half** came first: the slot markers, the `q-instance` wrapper, a check that
+two questions cannot produce one identifier, `checkSchema`'s refusal of an identifier
+containing an empty segment, and tests at two grains — every repeat in the schema checked
+for its slot numbering, each slot marked exactly once counting from zero, while
+containment, that every blank sits inside the element carrying its slot, is asserted
+against a fixture for each repeat shape, including a multi-slot instance and the row
+holding a single field.
 
-**Not built:** the key encoding, minting, materialisation, and order-to-slot
-reconciliation. Those land with the DOM binding rather than before it. A first attempt
-wrote the encoder alone, and review found that nearly every defect in it — a missing
-decoder, two functions disagreeing about a valid identifier, and a `data-field` that
-carries the full identifier where the encoder wanted a bare segment — existed because
-nothing consumed it. A format that cannot be changed later should not be frozen by a
-pull request containing nothing that exercises it.
+**The client half** followed with the DOM binding: the key encoding and its decoder
+(`src/client/keys.ts`), minting, materialisation, and order-to-slot reconciliation
+(`src/client/fields.ts`). Holding the encoding back until something consumed it was the
+right call and is worth recording as a practice. A first attempt wrote the encoder alone,
+and review found that nearly every defect in it — a missing decoder, two functions
+disagreeing about a valid identifier, and a `data-field` that carries the full identifier
+where the encoder wanted a bare segment — existed because nothing consumed it. A format
+that cannot be changed later should not be frozen by a pull request containing nothing
+that exercises it.
 
-## Open questions the binding forces
+## Questions the binding forced
 
-Each of these is raised by the binding, but not every answer lands in it: Q1 needs the
-`Store` interface to grow an operation, and Q6 needs a change to what 0011's registry
-records. They are collected here because the binding is what makes them unavoidable.
+Each of these was raised by the binding. Q1 and Q3 are answered below because the binding
+could not ship without them; the rest are still open, and 0011's registry has to change
+before Q6 can be.
 
-**Q1. Atomicity.** "All-or-nothing per group" means writing the order and the first
-answer together, and `Store` exposes only single-key `write`. IndexedDB can do this — one
-`readwrite` transaction can read the order and conditionally write both — but the
-interface has to grow an operation, and that also settles the two-tab race where both
-materialise the same group and the loser's answers are stranded.
+**Q1. Atomicity.** *Answered.* `Store` grew one operation: `claim(guard, entries)` reads
+the guard and writes every entry inside a single `readwrite` transaction, returning false
+if the guard is already set. Reading in one transaction and writing in the next leaves a
+gap, and that gap is exactly where a second tab lands — both would read "absent" and both
+would write. The loser does not retry with its own identifiers; it re-reads the order and
+adopts the winner's, because whichever order landed second would otherwise strand the
+other tab's answers under identifiers nothing references.
 
 **Q2. `min` in both directions.** Shrinking leaves stored answers with no slot to show
 them in, and 0011's orphan surface will not catch them because their identifiers are
@@ -116,10 +122,15 @@ still active. Growing leaves a rendered slot with no instance and no rule for wh
 write to it does. Both are reachable by an ordinary worksheet edit against readers who
 have already answered.
 
-**Q3. Corrupt or partial orders.** An order that cannot be read must be distinguishable
-from a group that was never materialised, or materialise-on-first-write will mint fresh
-identifiers over it and orphan everything beneath. Dropping unreadable entries also
-shifts every later instance one slot, which is the positional drift O1 was rejected for.
+**Q3. Corrupt or partial orders.** *Answered.* `readOrder` returns three things rather
+than two — `absent`, `unreadable`, and an order — and only `absent` may materialise, so a
+corrupt order is never minted over. Anything unusable makes the **whole** order
+unreadable rather than being filtered out: dropping entries shortens the list, every later
+instance moves up a slot, and the next write persists the shortened list, permanently
+orphaning the answers beneath what was dropped. A duplicate identifier counts as
+unreadable too, because two slots resolving to one identifier is the collision this whole
+scheme exists to prevent. An unreadable group keeps its stored bytes untouched, refuses
+further writes, and tells the reader.
 
 **Q4. Migration reach.** 0011 rewrites stored identifiers matching a retired entry.
 `day1.chapters.<uuid>.title` splices the instance into the middle of

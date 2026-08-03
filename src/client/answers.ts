@@ -12,7 +12,7 @@
  * rather than merely discouraged.
  */
 
-import type { Store } from "./store.js";
+import type { Store } from "./store.ts";
 
 /**
  * How long typing has to pause before a write.

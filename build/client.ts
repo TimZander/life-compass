@@ -35,10 +35,16 @@ export type ClientModule = {
 const OPTIONS: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES2023,
   module: ts.ModuleKind.ESNext,
-  // The source's import specifiers are already what the browser needs. Anything that
-  // rewrites them would have to know how the site is served, which is the coupling
-  // 0003 avoided by not having a bundler at all.
   verbatimModuleSyntax: true,
+  // The one rewrite this does: `./keys.ts` becomes `./keys.js`. Nothing else about a
+  // specifier is touched — no resolution, no bundling, no knowledge of how the site is
+  // served, which is the coupling 0003 avoided by not having a bundler.
+  //
+  // The sources say `.ts` so that Node can run them, which is what makes this tier
+  // testable at all: a client module importing another client module as `./keys.js` is a
+  // path Node cannot resolve from source. Before fields.ts nothing here had a runtime
+  // import of a sibling, so the question had not come up.
+  rewriteRelativeImportExtensions: true,
 };
 
 /**

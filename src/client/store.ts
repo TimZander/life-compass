@@ -35,6 +35,21 @@ export type Store = {
   readAll(): Promise<ReadonlyMap<string, string>>;
   /** One field. Writing an empty string removes it rather than storing blankness. */
   write(field: string, value: string): Promise<void>;
+  /**
+   * Write several keys together, but only if `guard` is still absent.
+   *
+   * This exists for one job: materialising a repeat group mints identifiers for every slot
+   * and stores the order alongside the first answer, and 0013 makes that all-or-nothing.
+   * Two tabs both first-writing the same group would otherwise each mint a full set, and
+   * whichever order landed second would strand the other tab's answers under identifiers
+   * nothing references.
+   *
+   * The guard is read and the writes are made inside ONE IndexedDB transaction, which is
+   * what makes it a real check-and-set rather than a hopeful one. Resolves `true` if the
+   * writes landed, `false` if `guard` already had a value — in which case nothing was
+   * written and the caller should re-read rather than assume its own identifiers won.
+   */
+  claim(guard: string, entries: ReadonlyMap<string, string>): Promise<boolean>;
 };
 
 const DATABASE = "life-compass";
@@ -161,6 +176,29 @@ export function fromDatabase(database: IDBDatabase): Store {
           console.warn("life-compass: stored answers this version cannot read", unreadable);
         }
         return answers;
+      });
+    },
+
+    async claim(guard, entries) {
+      return transact("readwrite", async (store) => {
+        // Read inside the transaction. Reading first and writing after would be two
+        // transactions with a gap between them, which is exactly the window another tab
+        // materialises in.
+        const existing = await settled(store.get(guard));
+        if (existing !== undefined) {
+          return false;
+        }
+        for (const [key, value] of entries) {
+          // Requests are issued without awaiting between them, so they all belong to this
+          // transaction — see the note on `transact`. An empty value is still an absent
+          // answer, so it deletes rather than storing blankness.
+          if (value === "") {
+            store.delete(key);
+          } else {
+            store.put(value, key);
+          }
+        }
+        return true;
       });
     },
 
