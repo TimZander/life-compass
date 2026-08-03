@@ -16,6 +16,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
+import { renderQuestion } from "./questions.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -37,6 +38,7 @@ const EXPECTED_PAGES: readonly string[] = [
   "docs/decisions/0010-printing-is-a-supported-output.html",
   "docs/decisions/0011-question-identifiers-are-frozen-and-registered.html",
   "docs/decisions/0012-client-typescript-stripped-at-build-time.html",
+  "docs/decisions/0013-instance-identity-for-rendered-slots.html",
   "docs/decisions/index.html",
   "index.html",
   "one-page-anchor.html",
@@ -445,6 +447,108 @@ describe("task lists", () => {
   });
 });
 
+describe("hand-written blanks", () => {
+  it("buildPages_FillSpanWithSpacesAroundEquals_IsRefused", async () => {
+    // Arrange — the spelling that slipped every canonical-regex check: a browser
+    // resolves `class = "fill"` as class="fill", so a page once carried a blank with a
+    // copied data-field — two blanks sharing one storage address — while the suite
+    // stayed green and the build succeeded.
+    const EXPECTED_PROBLEMS = 1;
+    const root = await fixture({
+      "README.md": '# Home\n\n<span class = "fill" data-field="day1.patterns">______</span>\n',
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    const reported = result.problems.filter((problem) => problem.kind === "hand-written-fill");
+    assert.equal(reported.length, EXPECTED_PROBLEMS);
+    assert.ok(
+      reported[0]?.detail.includes('class = "fill"'),
+      "the offending text is not in the report",
+    );
+  });
+
+  it("buildPages_FillClassInEverySpellingABrowserAccepts_IsRefused", async () => {
+    // Arrange — one fixture per spelling: attribute-name case, single quotes, no
+    // quotes, the narrow variant, and fill as one class token among several. Each is
+    // markup a browser resolves to a drawn blank, so each must refuse to build.
+    const spellings = [
+      'CLASS="fill"',
+      "class='fill'",
+      "class=fill",
+      'class="fill-sm"',
+      'class="fill extra"',
+    ];
+
+    for (const spelling of spellings) {
+      const root = await fixture({ "README.md": `# Home\n\n<span ${spelling}>______</span>\n` });
+
+      // Act
+      const result = await buildPages(root, undefined, []);
+
+      // Assert
+      assert.ok(
+        result.problems.some((problem) => problem.kind === "hand-written-fill"),
+        `${spelling} was not refused`,
+      );
+    }
+  });
+
+  it("buildPages_FillSpanInlineInProse_IsRefused", async () => {
+    // Arrange — mid-sentence markup arrives as html_inline rather than html_block,
+    // which is the shape every hand-written blank actually had. Both paths must report.
+    const root = await fixture({
+      "README.md": '# Home\n\nAnswer <span class="fill">______</span> here.\n',
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.ok(result.problems.some((problem) => problem.kind === "hand-written-fill"));
+  });
+
+  it("buildPages_FillMarkupInsideCodeSpansAndFences_IsNotRefused", async () => {
+    // Arrange — negative case, and the reason the check reads the token stream rather
+    // than the raw source: docs/decisions/0004 and 0013 discuss this markup inside
+    // backticks and fences, where it is escaped text, not a blank.
+    const root = await fixture({
+      "README.md": [
+        "# Home",
+        "",
+        'A record may quote `<span class="fill">______</span>` in prose,',
+        "",
+        "```html",
+        '<span class = "fill" data-field="day1.patterns">______</span>',
+        "```",
+        "",
+      ].join("\n"),
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+  });
+
+  it("buildPages_ClassValueMerelyContainingTheWordFill_IsNotRefused", async () => {
+    // Arrange — negative case: class matching is token-wise, the way a browser matches
+    // selectors, so a class that merely starts with "fill" draws no blank.
+    const root = await fixture({
+      "README.md": '# Home\n\n<span class="filler">not a blank</span>\n',
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+  });
+});
+
 describe("heading ids", () => {
   it("buildPages_HeadingContainingRawHtml_KeepsTheMarkupOutOfTheId", async () => {
     // Arrange — a fixture for the same reason as the checkbox test above: this asserts how
@@ -494,6 +598,291 @@ describe("heading ids", () => {
   });
 });
 
+/**
+ * A blank's storage address (docs/decisions/0013): its own data-field, and the
+ * data-instance carried by the nearest enclosing marked element — undefined when no
+ * marked element encloses the blank. `field` is undefined only for a blank carrying no
+ * data-field at all; that is a defect for the caller to surface, not an address.
+ */
+type BlankAddress = {
+  readonly field: string | undefined;
+  readonly instance: string | undefined;
+};
+
+/**
+ * Walk a page's tags in document order and resolve every blank to its address.
+ *
+ * A walk, not a regex over instance blocks, because the block shapes defeat patterns:
+ * `data-instance` sits on `<li>` for row and line repeats and on a `<div>` for section
+ * repeats, and a multi-field row nests plain `<li>` rows inside the marked one — so a
+ * non-greedy match to the next closing tag ends an instance at its first nested row.
+ * An earlier version of the slot test in this suite was exactly that regex, terminated
+ * at `</div>`, and it passed while reading one instance per section repeat. Tracking
+ * which elements are open is the only way "nearest enclosing" means what it says.
+ *
+ * This is not an HTML parser; it reads what this build emits — double-quoted
+ * attributes — and no more. The emitted pages include tags that never close: `<meta>`
+ * and `<link>` in every head, `<hr>` between worksheet sections, and the checklist
+ * `<input>`s, which are written self-closing. All of them are pushed like any other
+ * open tag, and the one rule that handles them is the pop: a close tag pops to its
+ * matching open tag BY NAME, abandoning whatever sits unclosed above it. No emitted
+ * void or self-closing element carries `data-instance`, so an abandoned frame is never
+ * the one a lookup reads. Comments are cut before walking because ordinary HTML
+ * comments pass through the renderer to the built page, and markup quoted inside one
+ * must not be mistaken for structure. Both mechanisms are pinned by fixtures below.
+ */
+function blankAddresses(html: string): BlankAddress[] {
+  const blanks: BlankAddress[] = [];
+  // Open elements, innermost last. The tag name is kept to pop the matching frame;
+  // the instance value is what "which marked element is currently open" reads from.
+  const open: { readonly tag: string; readonly instance: string | undefined }[] = [];
+  const source = html.replace(/<!--[\s\S]*?-->/g, "");
+  for (const token of source.matchAll(/<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|[^">])*)>/g)) {
+    const tag = (token[2] ?? "").toLowerCase();
+    const attributes = token[3] ?? "";
+    if (token[1] === "/") {
+      // Pop to the matching open tag; anything left unclosed above it is abandoned
+      // with it rather than allowed to hold the stack open forever.
+      const depth = open.map((element) => element.tag).lastIndexOf(tag);
+      if (depth !== -1) {
+        open.length = depth;
+      }
+      continue;
+    }
+    const cls = /class="([^"]*)"/.exec(attributes)?.[1];
+    if (cls === "fill" || cls === "fill-sm") {
+      blanks.push({
+        field: /data-field="([^"]*)"/.exec(attributes)?.[1],
+        instance: open.findLast((element) => element.instance !== undefined)?.instance,
+      });
+    }
+    open.push({ tag, instance: /data-instance="([^"]*)"/.exec(attributes)?.[1] });
+  }
+  return blanks;
+}
+
+describe("repeat instances", () => {
+  it("renderQuestion_EveryRepeatInTheSchema_MarksEachSlotOnceFromZero", () => {
+    // Arrange — before this, every slot of a group carried the same data-field, so 264 of
+    // the site's blanks shared a key with another blank and would have overwritten each
+    // other in storage. The pair (data-instance, data-field) is what makes them distinct.
+    //
+    // Asserted against the schema rather than by matching the rendered block. The first
+    // version of this scraped the page with a non-greedy regex terminated by </div>,
+    // which the new q-instance wrapper cut short: it inspected one instance of every
+    // section repeat and passed while all five claimed slot zero.
+    // Act & Assert
+    for (const worksheet of WORKSHEETS) {
+      for (const question of worksheet.questions) {
+        if (question.kind !== "repeat") {
+          continue;
+        }
+        const rendered = renderQuestion(question);
+        // Split on the marker itself, so the shape of the element carrying it does not
+        // matter — a <li> and a wrapping <div> are read the same way.
+        const [preamble, ...slots] = rendered.split('data-instance="');
+        // Only the text before the FIRST marker is checked here — a blank between or
+        // after instances lands inside some slot's split segment and is caught by the
+        // per-slot field count below, not by this assertion. `split` always returns at
+        // least one element, so the fallback is for the type checker, not for a case
+        // that can happen.
+        assert.equal(
+          (preamble ?? "").includes("data-field"),
+          false,
+          `${question.id}: a blank sits before the first instance marker`,
+        );
+        assert.deepEqual(
+          slots.map((slot) => Number(slot.slice(0, slot.indexOf('"')))),
+          Array.from({ length: question.min }, (_, index) => index),
+          `${question.id}: slots are not one marker each, numbered 0 upward`,
+        );
+        for (const [index, slot] of slots.entries()) {
+          assert.equal(
+            slot.match(/data-field=/g)?.length ?? 0,
+            question.fields.length,
+            `${question.id} slot ${index}: wrong number of blanks`,
+          );
+        }
+      }
+    }
+  });
+
+  it("buildPages_SiteWide_MarksAsManySlotsAsTheSchemaDeclares", async () => {
+    // Arrange — the per-question check above runs the renderer directly, so this is what
+    // proves the same NUMBER of markers actually reached the pages. Only the number:
+    // what the markers say once there is the address test below.
+    const expected = WORKSHEETS.flatMap((worksheet) => worksheet.questions)
+      .filter((question) => question.kind === "repeat")
+      .reduce((total, question) => total + question.min, 0);
+
+    // Act
+    const result = await site();
+    const marked = result.pages.reduce(
+      (total, page) => total + (page.html.match(/data-instance="/g)?.length ?? 0),
+      0,
+    );
+
+    // Assert
+    assert.equal(
+      marked,
+      expected,
+      "slot markers on the built pages do not match the schema's total",
+    );
+  });
+
+  it("buildPages_SiteWide_GivesEveryBlankADistinctInstanceFieldAddress", async () => {
+    // Arrange — the count above cannot tell 163 distinct markers from 163 copies of
+    // `data-instance="0"`, and the latter restores every collision this migration
+    // removed: inside a repeat, data-field alone is shared by design (0011 freezes it),
+    // so the pair (nearest enclosing data-instance, own data-field) is the whole of a
+    // blank's identity in storage (0013). That pair being distinct site-wide is the
+    // property asserted here, over the built pages rather than the renderer.
+    //
+    // The counts pin the split so the walker cannot pass by not seeing blanks: 334
+    // blanks sit inside repeat instances, and 113 sit outside every marker — those
+    // belong to single-valued questions, whose data-field is unique by itself, so "no
+    // enclosing marker" is a valid address component there rather than a defect.
+    const EXPECTED_INSIDE_INSTANCES = 334;
+    const EXPECTED_OUTSIDE_INSTANCES = 113;
+
+    // Act
+    const result = await site();
+    const blanks = result.pages.flatMap((page) =>
+      blankAddresses(page.html).map((blank) => ({ page: page.output, ...blank })),
+    );
+
+    // Assert
+    assert.equal(
+      blanks.length,
+      EXPECTED_FILL_MARKERS,
+      "the walker did not resolve every blank the marker count sees",
+    );
+    assert.deepEqual(
+      blanks.filter((blank) => blank.field === undefined).map((blank) => blank.page),
+      [],
+      "a blank with no data-field has no address at all",
+    );
+    assert.equal(
+      blanks.filter((blank) => blank.instance !== undefined).length,
+      EXPECTED_INSIDE_INSTANCES,
+      "wrong number of blanks inside repeat instances",
+    );
+    assert.equal(
+      blanks.filter((blank) => blank.instance === undefined).length,
+      EXPECTED_OUTSIDE_INSTANCES,
+      "wrong number of blanks outside every instance",
+    );
+    const byAddress = new Map<string, string[]>();
+    for (const blank of blanks) {
+      const address = JSON.stringify([blank.instance ?? null, blank.field]);
+      const occurrences = byAddress.get(address) ?? [];
+      occurrences.push(blank.page);
+      byAddress.set(address, occurrences);
+    }
+    const collisions = [...byAddress]
+      .filter(([, pages]) => pages.length > 1)
+      .map(([address, pages]) => `${address} on ${pages.join(", ")}`);
+    assert.deepEqual(collisions, [], "blanks sharing one (instance, field) address");
+  });
+
+  it("blankAddresses_MarkedRowsNestingUnmarkedRows_KeepEachBlankInItsOwnInstance", () => {
+    // Arrange — the shape that defeats pattern matching: a multi-field row is a marked
+    // <li> holding a nested <ul> of plain <li>, so ending an instance at the next
+    // closing tag hands the nested blanks to the wrong slot. This pins the walker
+    // against the exact mistake a previous regex version of the slot test made.
+    const html = [
+      '<ol data-question="q">',
+      '<li data-instance="0">a<ul><li><span class="fill" data-field="q.f">______</span></li></ul></li>',
+      '<li data-instance="1">b<ul><li><span class="fill" data-field="q.f">______</span></li></ul></li>',
+      "</ol>",
+    ].join("\n");
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [
+      { field: "q.f", instance: "0" },
+      { field: "q.f", instance: "1" },
+    ]);
+  });
+
+  it("blankAddresses_BlankAfterItsMarkerHasClosed_IsNotClaimedByThatMarker", () => {
+    // Arrange — negative case: an empty marked <li> followed by an unmarked <li>
+    // holding the blank satisfies every marker count, and only document order shows
+    // the truth — the marked element closed before the blank opened, so the blank has
+    // no enclosing instance.
+    const html =
+      '<ol><li data-instance="0"></li>' +
+      '<li><span class="fill" data-field="q.f">______</span></li></ol>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [{ field: "q.f", instance: undefined }]);
+  });
+
+  it("blankAddresses_MarkerNestedInsideAnotherMarker_ResolvesTheNearestOne", () => {
+    // Arrange — 0013 says a blank's address pairs its data-field with the NEAREST
+    // enclosing marker. No shape the build emits today nests one marker inside another,
+    // so without this fixture "nearest" is a claim nothing constrains: reading the
+    // OUTERMOST marker instead resolves every current page identically. The inner
+    // blank is the discriminating one; the outer blank pins that leaving the inner
+    // marker restores the outer one rather than losing both.
+    const html =
+      '<div data-instance="0"><ul><li data-instance="1">' +
+      '<span class="fill" data-field="q.inner">______</span></li></ul>' +
+      '<span class="fill" data-field="q.outer">______</span></div>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [
+      { field: "q.inner", instance: "1" },
+      { field: "q.outer", instance: "0" },
+    ]);
+  });
+
+  it("blankAddresses_UnclosedVoidInsideAMarker_DoesNotHoldTheMarkerOpen", () => {
+    // Arrange — the built pages carry tags that never close: <hr> between sections,
+    // <meta> and <link> in every head. The walker pushes them like any other tag, so
+    // only popping BY NAME keeps </li> closing the marked <li> rather than the
+    // abandoned <hr>; a blind pop of the top frame leaves the marker open, and the
+    // next blank inherits an instance it does not sit inside.
+    const html =
+      '<li data-instance="0"><hr><span class="fill" data-field="q.f">______</span></li>' +
+      '<li><span class="fill" data-field="q.g">______</span></li>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [
+      { field: "q.f", instance: "0" },
+      { field: "q.g", instance: undefined },
+    ]);
+  });
+
+  it("blankAddresses_MarkupQuotedInsideAComment_IsNotReadAsStructure", () => {
+    // Arrange — negative case: ordinary HTML comments pass through the renderer to the
+    // built page (pinned under "question anchors"), so a comment quoting instance
+    // markup can genuinely reach the walker. Without comment stripping the quoted tag
+    // is pushed, nothing inside the comment ever closes it, and every later blank on
+    // the page resolves to an instance that exists only as quoted text.
+    const html =
+      '<!-- an example: <li data-instance="9"> -->' +
+      '<li><span class="fill" data-field="q.f">______</span></li>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [{ field: "q.f", instance: undefined }]);
+  });
+});
+
 describe("question anchors", () => {
   it("buildPages_Day1_RendersItsQuestionsFromTheSchema", async () => {
     // Arrange — the pilot worksheet's blanks are now generated, not hand-written.
@@ -534,16 +923,6 @@ describe("question anchors", () => {
           `${worksheet.source} never rendered ${question.id}`,
         );
       }
-    }
-  });
-
-  it("buildPages_EveryMigratedWorksheet_HasNoHandWrittenBlanksLeft", async () => {
-    // Arrange — negative case: a blank the migration missed still renders and still
-    // looks right, and is invisible to storage. The generated ones all carry data-field.
-    // Act & Assert
-    for (const worksheet of WORKSHEETS) {
-      const source = await readFile(path.join(ROOT, worksheet.source), "utf8");
-      assert.ok(!source.includes('<span class="fill'), `${worksheet.source} still writes blanks`);
     }
   });
 

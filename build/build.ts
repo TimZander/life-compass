@@ -40,6 +40,7 @@ export type ProblemKind =
   | "registry"
   | "schema"
   | "task-list"
+  | "hand-written-fill"
   | "headers";
 
 export type BuildProblem = {
@@ -197,6 +198,19 @@ export async function buildPages(
         kind: "task-list",
         source: page.source,
         detail: `${marker} renders as literal text — a tick is a checklist question, not Markdown`,
+      });
+    }
+    // Refused here, with the other page checks, because the build is the one gate every
+    // page passes through: a hand-written blank renders correctly, draws its underline,
+    // and is invisible to storage — or worse, copies an existing data-field and shares
+    // its address — so nothing after the build would ever notice it. The render reports
+    // it from the token stream so the decision records can keep discussing the markup
+    // inside code spans and fences without tripping this.
+    for (const markup of rendered.fillMarkup) {
+      problems.push({
+        kind: "hand-written-fill",
+        source: page.source,
+        detail: `${markup} — a hand-written blank; every blank is generated from a question definition (docs/decisions/0004)`,
       });
     }
   }

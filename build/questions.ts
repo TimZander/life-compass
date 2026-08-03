@@ -102,6 +102,7 @@ export function checkRegistry(schema: Schema): readonly string[] {
  */
 export function checkSchema(schema: Schema): readonly string[] {
   const problems: string[] = [];
+  problems.push(...checkIdentifiers(schema));
   for (const question of schema.byId.values()) {
     problems.push(...checkText(question));
     problems.push(...checkParts(question));
@@ -110,6 +111,58 @@ export function checkSchema(schema: Schema): readonly string[] {
     }
     if (question.kind === "sentence") {
       problems.push(...checkGaps(question));
+    }
+  }
+  return problems;
+}
+
+/**
+ * The identifiers themselves, checked across every question at once. Two rules.
+ *
+ * No identifier may contain a blank segment — the inline comment below says what a
+ * blank segment can come from and why it is fatal.
+ *
+ * And two questions must not produce the same identifier. Each question is checked
+ * internally by `checkParts`, and `loadSchema` refuses two questions with the same id,
+ * but neither sees a collision BETWEEN questions: a repeat `day1.chapters` and a group
+ * `day1` with a field `chapters` both produce `day1.chapters`, and `checkRegistry` then
+ * collapses the two into one `used` entry. The identifier is the storage key, so that
+ * is two questions writing over each other.
+ *
+ * This does not check the other property a stored key will need — that no identifier is
+ * a dotted prefix of one belonging to a DIFFERENT question, which is what makes a key
+ * with an instance spliced into the middle readable again. Enforcing that needs to see
+ * retired entries too, since 0011 · C2 keeps them forever and answers written under them
+ * survive; and the registry does not record which question an entry came from, so it
+ * cannot tell a group legitimately prefixing its own fields from a real collision. That
+ * is one of 0013's open questions, and it lands with the format it protects.
+ */
+function checkIdentifiers(schema: Schema): readonly string[] {
+  const problems: string[] = [];
+  const owner = new Map<string, string>();
+
+  for (const question of schema.byId.values()) {
+    for (const id of identifiersOf(question)) {
+      // A blank segment — empty, or nothing but whitespace — makes the identifier
+      // unaddressable: `day1.` and `day1..title` name nothing a reader could be given,
+      // and a whitespace segment differs from an empty one only in characters nobody
+      // can see. It has more sources than a blank part id: `day1..title` comes from a
+      // question id of `day1.`, or from a part id of `.title` — a dot at either edge of
+      // either id lands here. Trimming is as far as this vets a segment; one with an
+      // interior space or an interior dot passes through unremarked.
+      if (id.split(".").some((segment) => segment.trim() === "")) {
+        problems.push(`${question.id} produces ${JSON.stringify(id)}, which has a blank segment`);
+      }
+      const already = owner.get(id);
+      // `already` equal to this question's own id is a duplicate part id WITHIN the
+      // question. That is a real defect, but `checkParts` already reports it as
+      // `declares "f" twice`; repeating it here would read `t.g.f is produced by both
+      // t.g and t.g` — one question named twice, which sounds like a second problem
+      // and is the same one.
+      if (already !== undefined && already !== question.id) {
+        problems.push(`${id} is produced by both ${already} and ${question.id}`);
+      }
+      owner.set(id, question.id);
     }
   }
   return problems;
@@ -275,9 +328,14 @@ function labelled(label: string, fieldId: string, size: "short" | "long"): strin
 /**
  * Render one question.
  *
- * `data-question` and `data-field` are the seam the storage layer binds to (#24). They
- * are the reason to generate this markup at all — hand-written spans could look the
- * same, but nothing could find them.
+ * `data-question`, `data-instance` and `data-field` are the seam the storage layer binds
+ * to (#24). They are the reason to generate this markup at all — hand-written spans could
+ * look the same, but nothing could find them.
+ *
+ * Inside a repeat, `data-field` alone is NOT unique: every instance of a group renders
+ * the same field identifier, by design, because that identifier is frozen (0011). A
+ * blank's address is the pair — the `data-instance` on its nearest ancestor, and its
+ * own `data-field` (0013).
  */
 export function renderQuestion(question: Question): string {
   // A single question renders as a bare answer line. Its label is NOT printed: the
@@ -343,8 +401,10 @@ export function renderQuestion(question: Question): string {
   // reader moves by them, so rendering five sections as five list rows silently removes
   // five landmarks from the page (docs/decisions/0001).
   //
-  // The number is display only. Nothing derives identity from it; instances carry their
-  // own identifiers once the reader can add and remove them (0011).
+  // The printed number is display only — nothing stores it. The slot index emitted as
+  // `data-instance` is a different thing and IS load-bearing: it is how a blank is told
+  // apart from the same field in another instance, and what the client maps to a real
+  // instance identifier (docs/decisions/0013).
   if (question.instances === "section") {
     const [name, ...rest] = question.fields;
     // checkSchema refuses a repeat with no fields, so this is unreachable rather than
@@ -365,7 +425,9 @@ export function renderQuestion(question: Question): string {
       const fields = rest
         .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
         .join("\n");
-      sections.push(`${heading}\n<ul>\n${fields}\n</ul>`);
+      sections.push(
+        `<div class="q-instance" data-instance="${index}">\n${heading}\n<ul>\n${fields}\n</ul>\n</div>`,
+      );
     }
     return (
       `<div class="q-repeat" data-question="${escape(question.id)}"` +
@@ -393,7 +455,7 @@ export function renderQuestion(question: Question): string {
     if (question.instances === "line") {
       // Every field on the one line. The em dash is the separator the worksheets already
       // used for this shape, and it survives a line wrap better than a comma.
-      items.push(`<li>${question.fields.map(cell).join(" — ")}</li>`);
+      items.push(`<li data-instance="${index}">${question.fields.map(cell).join(" — ")}</li>`);
       continue;
     }
     if (question.fields.length === 1) {
@@ -401,7 +463,7 @@ export function renderQuestion(question: Question): string {
       if (field === undefined) {
         continue;
       }
-      items.push(`<li>${cell(field)}</li>`);
+      items.push(`<li data-instance="${index}">${cell(field)}</li>`);
       continue;
     }
     // The first field sits inline with the list number and the rest nest beneath it.
@@ -413,7 +475,7 @@ export function renderQuestion(question: Question): string {
     }
     const head = cell(first);
     const nested = rest.map((field) => `<li>${cell(field)}</li>`).join("\n");
-    items.push(`<li>${head}\n<ul>\n${nested}\n</ul>\n</li>`);
+    items.push(`<li data-instance="${index}">${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }
 
   // The permitted range is carried as data, not printed. Rendering "(5–8)" advertises
