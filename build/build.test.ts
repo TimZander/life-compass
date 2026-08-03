@@ -496,6 +496,75 @@ describe("heading ids", () => {
   });
 });
 
+/**
+ * Elements HTML defines as never having a closing tag. The walker below must not push
+ * these onto its open-element stack, or every checklist `<input>` would open a phantom
+ * subtree swallowing the rest of its page, and the nearest-marker lookup would answer
+ * from an element the blank does not sit inside.
+ */
+const VOID_ELEMENTS: ReadonlySet<string> = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "param", "source", "track", "wbr",
+]);
+
+/**
+ * A blank's storage address (docs/decisions/0013): its own data-field, and the
+ * data-instance carried by the nearest enclosing marked element — undefined when no
+ * marked element encloses the blank. `field` is undefined only for a blank carrying no
+ * data-field at all; that is a defect for the caller to surface, not an address.
+ */
+type BlankAddress = {
+  readonly field: string | undefined;
+  readonly instance: string | undefined;
+};
+
+/**
+ * Walk a page's tags in document order and resolve every blank to its address.
+ *
+ * A walk, not a regex over instance blocks, because the block shapes defeat patterns:
+ * `data-instance` sits on `<li>` for row and line repeats and on a `<div>` for section
+ * repeats, and a multi-field row nests plain `<li>` rows inside the marked one — so a
+ * non-greedy match to the next closing tag ends an instance at its first nested row.
+ * An earlier version of the slot test in this suite was exactly that regex, terminated
+ * at `</div>`, and it passed while reading one instance per section repeat. Tracking
+ * which elements are open is the only way "nearest enclosing" means what it says.
+ *
+ * This is not an HTML parser; it reads what this build emits — double-quoted
+ * attributes, explicitly closed non-void elements — and no more. Comments are cut
+ * before walking so markup quoted inside one is never mistaken for structure.
+ */
+function blankAddresses(html: string): BlankAddress[] {
+  const blanks: BlankAddress[] = [];
+  // Open elements, innermost last. The tag name is kept to pop the matching frame;
+  // the instance value is what "which marked element is currently open" reads from.
+  const open: { readonly tag: string; readonly instance: string | undefined }[] = [];
+  const source = html.replace(/<!--[\s\S]*?-->/g, "");
+  for (const token of source.matchAll(/<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|[^">])*)>/g)) {
+    const tag = (token[2] ?? "").toLowerCase();
+    const attributes = token[3] ?? "";
+    if (token[1] === "/") {
+      // Pop to the matching open tag; anything left unclosed above it is abandoned
+      // with it rather than allowed to hold the stack open forever.
+      const depth = open.map((element) => element.tag).lastIndexOf(tag);
+      if (depth !== -1) {
+        open.length = depth;
+      }
+      continue;
+    }
+    const cls = /class="([^"]*)"/.exec(attributes)?.[1];
+    if (cls === "fill" || cls === "fill-sm") {
+      blanks.push({
+        field: /data-field="([^"]*)"/.exec(attributes)?.[1],
+        instance: open.findLast((element) => element.instance !== undefined)?.instance,
+      });
+    }
+    if (!VOID_ELEMENTS.has(tag) && !attributes.trimEnd().endsWith("/")) {
+      open.push({ tag, instance: /data-instance="([^"]*)"/.exec(attributes)?.[1] });
+    }
+  }
+  return blanks;
+}
+
 describe("repeat instances", () => {
   it("renderQuestion_EveryRepeatInTheSchema_MarksEachSlotOnceFromZero", () => {
     // Arrange — before this, every slot of a group carried the same data-field, so 264 of
@@ -516,10 +585,15 @@ describe("repeat instances", () => {
         // Split on the marker itself, so the shape of the element carrying it does not
         // matter — a <li> and a wrapping <div> are read the same way.
         const [preamble, ...slots] = rendered.split('data-instance="');
+        // Only the text before the FIRST marker is checked here — a blank between or
+        // after instances lands inside some slot's split segment and is caught by the
+        // per-slot field count below, not by this assertion. `split` always returns at
+        // least one element, so the fallback is for the type checker, not for a case
+        // that can happen.
         assert.equal(
-          preamble?.includes("data-field"),
+          (preamble ?? "").includes("data-field"),
           false,
-          `${question.id}: a blank sits outside every instance`,
+          `${question.id}: a blank sits before the first instance marker`,
         );
         assert.deepEqual(
           slots.map((slot) => Number(slot.slice(0, slot.indexOf('"')))),
@@ -539,7 +613,8 @@ describe("repeat instances", () => {
 
   it("buildPages_SiteWide_MarksAsManySlotsAsTheSchemaDeclares", async () => {
     // Arrange — the per-question check above runs the renderer directly, so this is what
-    // proves the same markup actually reached the pages.
+    // proves the same NUMBER of markers actually reached the pages. Only the number:
+    // what the markers say once there is the address test below.
     const expected = WORKSHEETS.flatMap((worksheet) => worksheet.questions)
       .filter((question) => question.kind === "repeat")
       .reduce((total, question) => total + question.min, 0);
@@ -559,6 +634,98 @@ describe("repeat instances", () => {
     );
   });
 
+  it("buildPages_SiteWide_GivesEveryBlankADistinctInstanceFieldAddress", async () => {
+    // Arrange — the count above cannot tell 163 distinct markers from 163 copies of
+    // `data-instance="0"`, and the latter restores every collision this migration
+    // removed: inside a repeat, data-field alone is shared by design (0011 freezes it),
+    // so the pair (nearest enclosing data-instance, own data-field) is the whole of a
+    // blank's identity in storage (0013). That pair being distinct site-wide is the
+    // property asserted here, over the built pages rather than the renderer.
+    //
+    // The counts pin the split so the walker cannot pass by not seeing blanks: 334
+    // blanks sit inside repeat instances, and 113 sit outside every marker — those
+    // belong to single-valued questions, whose data-field is unique by itself, so "no
+    // enclosing marker" is a valid address component there rather than a defect.
+    const EXPECTED_INSIDE_INSTANCES = 334;
+    const EXPECTED_OUTSIDE_INSTANCES = 113;
+
+    // Act
+    const result = await site();
+    const blanks = result.pages.flatMap((page) =>
+      blankAddresses(page.html).map((blank) => ({ page: page.output, ...blank })),
+    );
+
+    // Assert
+    assert.equal(
+      blanks.length,
+      EXPECTED_FILL_MARKERS,
+      "the walker did not resolve every blank the marker count sees",
+    );
+    assert.deepEqual(
+      blanks.filter((blank) => blank.field === undefined).map((blank) => blank.page),
+      [],
+      "a blank with no data-field has no address at all",
+    );
+    assert.equal(
+      blanks.filter((blank) => blank.instance !== undefined).length,
+      EXPECTED_INSIDE_INSTANCES,
+      "wrong number of blanks inside repeat instances",
+    );
+    assert.equal(
+      blanks.filter((blank) => blank.instance === undefined).length,
+      EXPECTED_OUTSIDE_INSTANCES,
+      "wrong number of blanks outside every instance",
+    );
+    const byAddress = new Map<string, string[]>();
+    for (const blank of blanks) {
+      const address = JSON.stringify([blank.instance ?? null, blank.field]);
+      const occurrences = byAddress.get(address) ?? [];
+      occurrences.push(blank.page);
+      byAddress.set(address, occurrences);
+    }
+    const collisions = [...byAddress]
+      .filter(([, pages]) => pages.length > 1)
+      .map(([address, pages]) => `${address} on ${pages.join(", ")}`);
+    assert.deepEqual(collisions, [], "blanks sharing one (instance, field) address");
+  });
+
+  it("blankAddresses_MarkedRowsNestingUnmarkedRows_KeepEachBlankInItsOwnInstance", () => {
+    // Arrange — the shape that defeats pattern matching: a multi-field row is a marked
+    // <li> holding a nested <ul> of plain <li>, so ending an instance at the next
+    // closing tag hands the nested blanks to the wrong slot. This pins the walker
+    // against the exact mistake a previous regex version of the slot test made.
+    const html = [
+      '<ol data-question="q">',
+      '<li data-instance="0">a<ul><li><span class="fill" data-field="q.f">______</span></li></ul></li>',
+      '<li data-instance="1">b<ul><li><span class="fill" data-field="q.f">______</span></li></ul></li>',
+      "</ol>",
+    ].join("\n");
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [
+      { field: "q.f", instance: "0" },
+      { field: "q.f", instance: "1" },
+    ]);
+  });
+
+  it("blankAddresses_BlankAfterItsMarkerHasClosed_IsNotClaimedByThatMarker", () => {
+    // Arrange — negative case: an empty marked <li> followed by an unmarked <li>
+    // holding the blank satisfies every marker count, and only document order shows
+    // the truth — the marked element closed before the blank opened, so the blank has
+    // no enclosing instance.
+    const html =
+      '<ol><li data-instance="0"></li>' +
+      '<li><span class="fill" data-field="q.f">______</span></li></ol>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [{ field: "q.f", instance: undefined }]);
+  });
 });
 
 describe("question anchors", () => {

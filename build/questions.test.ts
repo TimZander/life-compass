@@ -280,81 +280,6 @@ describe("sentence questions", () => {
     assert.ok(problems.some((problem) => problem.includes("names the same gap more than once")));
   });
 
-  it("checkSchema_TwoQuestionsProducingOneIdentifier_IsReported", () => {
-    // Arrange — negative case, and one nothing else catches: checkParts looks inside a
-    // single question, loadSchema compares question ids, and checkRegistry collapses both
-    // into one `used` entry. The identifier is the storage key, so this is two questions
-    // writing over each other.
-    const repeat: Question = {
-      kind: "repeat", id: "day1.chapters", instances: "row", label: "Chapter",
-      min: 1, max: 1, fields: [{ id: "title", label: "Title", size: "long" }],
-    };
-    const group: Question = {
-      kind: "group",
-      id: "day1",
-      fields: [{ id: "chapters", label: "Chapters", size: "long" }],
-    };
-
-    // Act
-    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [repeat, group] }]));
-
-    // Assert
-    assert.ok(problems.some((problem) => problem.includes("is produced by both")));
-  });
-
-  it("checkSchema_QuestionsDeclaredInEitherOrder_AreBothReported", () => {
-    // Arrange — the collision is symmetric; catching it only when the repeat is declared
-    // first would make the check depend on file order.
-    const repeat: Question = {
-      kind: "repeat", id: "day1.chapters", instances: "row", label: "Chapter",
-      min: 1, max: 1, fields: [{ id: "title", label: "Title", size: "long" }],
-    };
-    const group: Question = {
-      kind: "group",
-      id: "day1",
-      fields: [{ id: "chapters", label: "Chapters", size: "long" }],
-    };
-
-    // Act & Assert
-    for (const questions of [[repeat, group], [group, repeat]]) {
-      const problems = checkSchema(loadSchema([{ source: "t.md", questions }]));
-      assert.ok(problems.some((problem) => problem.includes("is produced by both")));
-    }
-  });
-
-  it("checkSchema_EmptyPartId_IsReported", () => {
-    // Arrange — negative case: an empty segment makes the identifier unaddressable.
-    // `day1.chapters.` names nothing a reader could ever be shown or given back.
-    const question: Question = {
-      kind: "group",
-      id: "day1.chapters",
-      fields: [{ id: "", label: "Nameless", size: "long" }],
-    };
-
-    // Act
-    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
-
-    // Assert
-    assert.ok(problems.some((problem) => problem.includes("empty segment")));
-  });
-
-  it("checkSchema_GroupPrefixingItsOwnFields_IsAccepted", () => {
-    // Arrange — the positive counterpart. Every group identifier is a dotted prefix of
-    // its own field identifiers; that IS the structure, and 141 such pairs exist in the
-    // shipped schema. A check that flagged them would flag the whole workbook.
-    const question: Question = {
-      kind: "repeat", id: "day1.chapters", instances: "row", label: "Chapter",
-      min: 1, max: 1,
-      fields: [
-        { id: "title", label: "Title", size: "long" },
-        { id: "learned", label: "Learned", size: "long" },
-      ],
-    };
-
-    // Act & Assert
-    assert.deepEqual(checkSchema(loadSchema([{ source: "t.md", questions: [question] }])), []);
-  });
-
   it("checkSchema_RealSchema_IsClean", () => {
     // Act & Assert — the shipped sentences and their fields must agree.
     assert.deepEqual(checkSchema(loadSchema()), []);
@@ -459,6 +384,130 @@ describe("checkSchema", () => {
 
     // Assert
     assert.ok(problems.some((problem) => problem.includes('declares "f" twice')));
+  });
+
+  it("checkSchema_DuplicateFieldId_IsNotAlsoReportedAsACollision", () => {
+    // Arrange — the identifier check sees the duplicate too, as an id already owned by
+    // the question that owns it. Reporting it there would read `t.g.f is produced by
+    // both t.g and t.g` — one question named twice, which sounds like a second problem
+    // and is the same one. checkParts' message must be the only one.
+    const question: Question = {
+      kind: "group",
+      id: "t.g",
+      fields: [
+        { id: "f", label: "First", size: "long" },
+        { id: "f", label: "Second", size: "long" },
+      ],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert — exact equality, so a second message of any wording fails here.
+    assert.deepEqual(problems, ['t.g declares "f" twice']);
+  });
+
+  it("checkSchema_QuestionsDeclaredInEitherOrder_AreBothReported", () => {
+    // Arrange — negative case, and one nothing else catches: checkParts looks inside a
+    // single question, loadSchema compares question ids, and checkRegistry collapses
+    // both into one `used` entry. The identifier is the storage key, so this is two
+    // questions writing over each other. The collision is also symmetric — catching it
+    // only when the repeat is declared first would make the check depend on file order.
+    const repeat: Question = {
+      kind: "repeat", id: "day1.chapters", instances: "row", label: "Chapter",
+      min: 1, max: 1, fields: [{ id: "title", label: "Title", size: "long" }],
+    };
+    const group: Question = {
+      kind: "group",
+      id: "day1",
+      fields: [{ id: "chapters", label: "Chapters", size: "long" }],
+    };
+
+    // Act & Assert
+    for (const questions of [[repeat, group], [group, repeat]]) {
+      const problems = checkSchema(loadSchema([{ source: "t.md", questions }]));
+      assert.ok(problems.some((problem) => problem.includes("is produced by both")));
+    }
+  });
+
+  it("checkSchema_EmptyPartId_IsReported", () => {
+    // Arrange — negative case: a blank segment makes the identifier unaddressable.
+    // `day1.chapters.` names nothing a reader could ever be shown or given back. This
+    // is the TRAILING position; the two tests below cover the middle and the front.
+    const question: Question = {
+      kind: "group",
+      id: "day1.chapters",
+      fields: [{ id: "", label: "Nameless", size: "long" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("blank segment")));
+  });
+
+  it("checkSchema_PartIdStartingWithADot_IsReported", () => {
+    // Arrange — negative case with the blank segment MID-identifier: `day1..title`
+    // splits into "day1", "", "title". A rule that looked only at the identifier's
+    // ends — `id.endsWith(".")`, say — would pass this.
+    const question: Question = {
+      kind: "group",
+      id: "day1",
+      fields: [{ id: ".title", label: "Title", size: "long" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("blank segment")));
+  });
+
+  it("checkSchema_QuestionIdStartingWithADot_IsReported", () => {
+    // Arrange — negative case with the blank segment LEADING: `.day1` splits into
+    // "", "day1". A single question, so the id under test is the only identifier.
+    const question: Question = { kind: "single", id: ".day1", label: "Note", size: "long" };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("blank segment")));
+  });
+
+  it("checkSchema_WhitespaceOnlyPartId_IsReported", () => {
+    // Arrange — negative case an empty-string rule alone missed: `{ id: "  " }` passed
+    // and shipped `data-field="t.g.  "`, an address that differs from a truly empty one
+    // only in characters nobody can see.
+    const question: Question = {
+      kind: "group",
+      id: "t.g",
+      fields: [{ id: "  ", label: "Blank", size: "long" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("blank segment")));
+  });
+
+  it("checkSchema_GroupPrefixingItsOwnFields_IsAccepted", () => {
+    // Arrange — the positive counterpart. Every group identifier is a dotted prefix of
+    // its own field identifiers; that IS the structure, and 141 such pairs exist in the
+    // shipped schema. A check that flagged them would flag the whole workbook.
+    const question: Question = {
+      kind: "group",
+      id: "day1.chapters",
+      fields: [
+        { id: "title", label: "Title", size: "long" },
+        { id: "learned", label: "Learned", size: "long" },
+      ],
+    };
+
+    // Act & Assert
+    assert.deepEqual(checkSchema(loadSchema([{ source: "t.md", questions: [question] }])), []);
   });
 
   it("checkSchema_QuestionWithNoFields_IsReported", () => {
@@ -664,17 +713,62 @@ describe("repeat instance weight", () => {
 });
 
 describe("instance containment", () => {
-  // Golden output rather than a scan. Asserting "every blank sits inside the element
-  // carrying its slot" needs to know where elements end, and the tests that tried to
-  // work that out by splitting strings could not tell a blank INSIDE an instance from
-  // one merely following it — markup with an empty marked element and every blank
-  // outside it passed. Against a small fixture the whole shape can just be stated.
+  // What these tests pin, and only this: every blank an instance owns sits inside the
+  // element carrying its slot marker, once, in declared order — and counting proves no
+  // blank sits outside every instance and no marker repeats. They deliberately do NOT
+  // pin the blank glyph, class names, separators or newlines: the golden strings that
+  // used to live here failed on a seven-underscore blank and on an attribute reorder,
+  // neither of which is a containment bug. Splitting on the marker alone cannot prove
+  // containment — a render with an empty marked element followed by the blanks passes
+  // any substring check. Knowing where the marked element ENDS can, which is what
+  // `elementAt` does by balancing the element's own tag.
+  //
+  // Every fixture asks for at least two instances, because no shipped repeat has a min
+  // below two: a one-slot fixture pins slot 0 only, and a renderer broken for every
+  // later slot would pass it.
 
-  it("renderQuestion_RowInstance_WrapsEveryFieldInTheMarkedListItem", () => {
+  /** The complete element carrying `marker`, sliced out by balancing its tag. */
+  function elementAt(html: string, marker: string): string {
+    const at = html.indexOf(marker);
+    assert.notEqual(at, -1, `no element carries ${marker}`);
+    const open = html.lastIndexOf("<", at);
+    const name = /^<([a-z0-9]+)/.exec(html.slice(open))?.[1];
+    assert.ok(name !== undefined, `no tag opens before ${marker}`);
+    const tags = new RegExp(`<${name}[\\s>]|</${name}>`, "g");
+    tags.lastIndex = open;
+    let depth = 0;
+    for (let match = tags.exec(html); match !== null; match = tags.exec(html)) {
+      depth += match[0].startsWith("</") ? -1 : 1;
+      if (depth === 0) {
+        return html.slice(open, match.index + match[0].length);
+      }
+    }
+    assert.fail(`the <${name}> carrying ${marker} is never closed`);
+  }
+
+  /** Every `data-field` in a fragment, in document order. */
+  function fieldsIn(fragment: string): readonly string[] {
+    return [...fragment.matchAll(/data-field="([^"]*)"/g)].map((match) => match[1] ?? "");
+  }
+
+  /** Each of `min` slots holds exactly `fields`, and no blank or marker escapes them. */
+  function assertContainment(html: string, min: number, fields: readonly string[]): void {
+    for (let index = 0; index < min; index += 1) {
+      const instance = elementAt(html, `data-instance="${index}"`);
+      assert.deepEqual(fieldsIn(instance), fields, `blanks inside instance ${index}`);
+    }
+    // Marked elements are siblings, so if each holds its own blanks and the totals
+    // match, nothing sits outside every instance and no marker appears twice.
+    assert.equal(html.match(/data-instance="/g)?.length, min, "one marker per slot");
+    assert.equal(fieldsIn(html).length, min * fields.length, "no blank outside a slot");
+  }
+
+  it("renderQuestion_RowInstances_WrapEveryFieldInTheirMarkedListItem", () => {
     // Arrange
+    const MIN = 3;
     const question: Question = {
       kind: "repeat", id: "t.chapters", instances: "row", label: "Chapter",
-      min: 1, max: 1,
+      min: MIN, max: MIN,
       fields: [
         { id: "title", label: "Title", size: "long" },
         { id: "learned", label: "Learned", size: "long" },
@@ -684,25 +778,36 @@ describe("instance containment", () => {
     // Act
     const html = renderQuestion(question);
 
-    // Assert — both blanks are inside the one element that carries the slot.
-    assert.equal(
-      html,
-      '<ol class="q-repeat" data-question="t.chapters" data-min="1" data-max="1">\n' +
-        '<li data-instance="0"><strong>Title:</strong> ' +
-        '<span class="fill" data-field="t.chapters.title">______</span>\n' +
-        "<ul>\n" +
-        '<li><strong>Learned:</strong> ' +
-        '<span class="fill" data-field="t.chapters.learned">______</span></li>\n' +
-        "</ul>\n</li>\n</ol>",
-    );
+    // Assert — the nested list holding the second field is inside the marked item too.
+    assertContainment(html, MIN, ["t.chapters.title", "t.chapters.learned"]);
   });
 
-  it("renderQuestion_SectionInstance_WrapsItsHeadingAndFieldsTogether", () => {
-    // Arrange — the shape that needed a new element: before it, the heading and the field
-    // list were siblings with nothing to belong to.
+  it("renderQuestion_LoneFieldRowInstances_KeepTheBlankInsideTheirMarkedListItem", () => {
+    // Arrange — the shape the other three do not touch, and the commonest one shipped:
+    // 17 of the schema's 34 repeats are a row of exactly one field. The renderer takes
+    // a separate branch for it — no nested list — so containment for the two-field row
+    // says nothing about this one.
+    const MIN = 2;
+    const question: Question = {
+      kind: "repeat", id: "t.ten", instances: "row", label: "Value",
+      min: MIN, max: MIN,
+      fields: [{ id: "value", label: "Value", size: "long" }],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assertContainment(html, MIN, ["t.ten.value"]);
+  });
+
+  it("renderQuestion_SectionInstances_WrapEachHeadingAndItsFieldsTogether", () => {
+    // Arrange — the shape that needed a new element: before it, the heading and the
+    // field list were siblings with nothing to belong to.
+    const MIN = 3;
     const question: Question = {
       kind: "repeat", id: "t.values", instances: "section", label: "Value",
-      min: 1, max: 1,
+      min: MIN, max: MIN,
       fields: [
         { id: "name", label: "Value", size: "long" },
         { id: "definition", label: "My definition", size: "long" },
@@ -712,25 +817,16 @@ describe("instance containment", () => {
     // Act
     const html = renderQuestion(question);
 
-    // Assert — the heading's blank is inside the wrapper too, not before it.
-    assert.equal(
-      html,
-      '<div class="q-repeat" data-question="t.values" data-min="1" data-max="1">\n' +
-        '<div class="q-instance" data-instance="0">\n' +
-        '<h3 id="t-values-1">Value 1 — ' +
-        '<span class="fill" data-field="t.values.name">______</span></h3>\n' +
-        "<ul>\n" +
-        '<li><strong>My definition:</strong> ' +
-        '<span class="fill" data-field="t.values.definition">______</span></li>\n' +
-        "</ul>\n</div>\n</div>",
-    );
+    // Assert — the heading's blank counts as inside its wrapper, not before it.
+    assertContainment(html, MIN, ["t.values.name", "t.values.definition"]);
   });
 
-  it("renderQuestion_LineInstance_KeepsEveryFieldOnTheMarkedRow", () => {
+  it("renderQuestion_LineInstances_KeepEveryFieldOnTheirMarkedRow", () => {
     // Arrange
+    const MIN = 2;
     const question: Question = {
       kind: "repeat", id: "t.generated", instances: "line", label: "Value",
-      min: 1, max: 1,
+      min: MIN, max: MIN,
       fields: [
         { id: "value", label: "Value", size: "short" },
         { id: "evidence", label: "Evidence", size: "short" },
@@ -741,15 +837,7 @@ describe("instance containment", () => {
     const html = renderQuestion(question);
 
     // Assert
-    assert.equal(
-      html,
-      '<ol class="q-repeat" data-question="t.generated" data-min="1" data-max="1">\n' +
-        '<li data-instance="0">' +
-        '<span class="fill-sm" data-field="t.generated.value">______</span> — ' +
-        '<strong>Evidence:</strong> ' +
-        '<span class="fill-sm" data-field="t.generated.evidence">______</span></li>\n' +
-        "</ol>",
-    );
+    assertContainment(html, MIN, ["t.generated.value", "t.generated.evidence"]);
   });
 });
 

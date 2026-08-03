@@ -6,7 +6,13 @@ decision costs.
 
 Records are numbered and immutable in intent: when a decision changes, a new record
 supersedes the old one rather than editing history. Status starts at **Proposed** and
-becomes **Accepted** in the pull request that implements it.
+becomes **Accepted** in the pull request that implements it. Implementation is sometimes
+staged: when a record's substance lands across more than one pull request, it stays
+**Proposed** until the last of them, and the record itself says what remains unbuilt.
+This clause was written down after the fact and regularises exactly two records that had
+already shipped code while **Proposed** — [0006](0006-no-in-app-speech-recognition.md)
+and [0011](0011-question-identifiers-are-frozen-and-registered.md) — plus
+[0013](0013-instance-identity-for-rendered-slots.md), which documents its own split.
 
 Options and consequences are labelled (`O1`, `C1`, …) so they can be cited precisely
 from issues, pull requests, and other records — `0004 · C3` is the third consequence
@@ -32,12 +38,14 @@ every citation already written down.
 
 ## Still open
 
-[0013](0013-instance-identity-for-rendered-slots.md) lists six questions the DOM binding
-has to answer before repeat answers can be stored: write atomicity against a single-key
+[0013](0013-instance-identity-for-rendered-slots.md) collects six questions the DOM
+binding forces before repeat answers can be stored: write atomicity against a single-key
 store, `min` changing in either direction after a reader has materialised instances,
 telling a corrupt instance order from an absent one, whether `0011`'s rename-on-read can
 reach a key with an instance spliced into the middle, how an orphaned instance is
-surfaced, and what the registry must record for a stored key to be readable back.
+surfaced — and with it a retired group's stored order, which is JSON the orphan surface
+would otherwise present to the reader as their own prose — and what the registry must
+record for a stored key to be readable back.
 
 `0004 · C4` raised question-identifier versioning as the one decision deliberately left
 unmade; [0011](0011-question-identifiers-are-frozen-and-registered.md) settles it.

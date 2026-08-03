@@ -102,7 +102,7 @@ export function checkRegistry(schema: Schema): readonly string[] {
  */
 export function checkSchema(schema: Schema): readonly string[] {
   const problems: string[] = [];
-  problems.push(...checkIdentifierSet(schema));
+  problems.push(...checkIdentifiers(schema));
   for (const question of schema.byId.values()) {
     problems.push(...checkText(question));
     problems.push(...checkParts(question));
@@ -117,13 +117,17 @@ export function checkSchema(schema: Schema): readonly string[] {
 }
 
 /**
- * Two questions must not produce the same identifier.
+ * The identifiers themselves, checked across every question at once. Two rules.
  *
- * Each question is checked internally by `checkParts`, and `loadSchema` refuses two
- * questions with the same id, but neither sees a collision BETWEEN questions: a repeat
- * `day1.chapters` and a group `day1` with a field `chapters` both produce
- * `day1.chapters`, and `checkRegistry` then collapses the two into one `used` entry. The
- * identifier is the storage key, so that is two questions writing over each other.
+ * No identifier may contain a blank segment — the inline comment below says what a
+ * blank segment can come from and why it is fatal.
+ *
+ * And two questions must not produce the same identifier. Each question is checked
+ * internally by `checkParts`, and `loadSchema` refuses two questions with the same id,
+ * but neither sees a collision BETWEEN questions: a repeat `day1.chapters` and a group
+ * `day1` with a field `chapters` both produce `day1.chapters`, and `checkRegistry` then
+ * collapses the two into one `used` entry. The identifier is the storage key, so that
+ * is two questions writing over each other.
  *
  * This does not check the other property a stored key will need — that no identifier is
  * a dotted prefix of one belonging to a DIFFERENT question, which is what makes a key
@@ -133,18 +137,28 @@ export function checkSchema(schema: Schema): readonly string[] {
  * cannot tell a group legitimately prefixing its own fields from a real collision. That
  * is one of 0013's open questions, and it lands with the format it protects.
  */
-function checkIdentifierSet(schema: Schema): readonly string[] {
+function checkIdentifiers(schema: Schema): readonly string[] {
   const problems: string[] = [];
   const owner = new Map<string, string>();
 
   for (const question of schema.byId.values()) {
     for (const id of identifiersOf(question)) {
-      // An empty segment means an empty part id somewhere, which makes the identifier
-      // unaddressable: `day1.` and `day1..title` name nothing a reader could be given.
-      if (id.split(".").some((segment) => segment === "")) {
-        problems.push(`${question.id} produces ${JSON.stringify(id)}, which has an empty segment`);
+      // A blank segment — empty, or nothing but whitespace — makes the identifier
+      // unaddressable: `day1.` and `day1..title` name nothing a reader could be given,
+      // and a whitespace segment differs from an empty one only in characters nobody
+      // can see. It has more sources than a blank part id: `day1..title` comes from a
+      // question id of `day1.`, or from a part id of `.title` — a dot at either edge of
+      // either id lands here. Trimming is as far as this vets a segment; one with an
+      // interior space or an interior dot passes through unremarked.
+      if (id.split(".").some((segment) => segment.trim() === "")) {
+        problems.push(`${question.id} produces ${JSON.stringify(id)}, which has a blank segment`);
       }
       const already = owner.get(id);
+      // `already` equal to this question's own id is a duplicate part id WITHIN the
+      // question. That is a real defect, but `checkParts` already reports it as
+      // `declares "f" twice`; repeating it here would read `t.g.f is produced by both
+      // t.g and t.g` — one question named twice, which sounds like a second problem
+      // and is the same one.
       if (already !== undefined && already !== question.id) {
         problems.push(`${id} is produced by both ${already} and ${question.id}`);
       }

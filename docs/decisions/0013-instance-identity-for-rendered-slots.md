@@ -84,8 +84,11 @@ it is two questions writing over each other, and nothing else catches it.
 This record is **Proposed**, not Accepted, because only the first half exists.
 
 **Built:** the slot markers, the `q-instance` wrapper, a check that two questions cannot
-produce one identifier, and tests asserting every repeat marks each slot exactly once,
-numbered from zero, with every blank inside the element that carries its slot.
+produce one identifier, `checkSchema`'s refusal of an identifier containing an empty
+segment, and tests at two grains: every repeat in the schema is checked for its slot
+numbering — each slot marked exactly once, counting from zero — while containment, that
+every blank sits inside the element carrying its slot, is asserted against a fixture for
+each repeat shape, including a multi-slot instance and the row holding a single field.
 
 **Not built:** the key encoding, minting, materialisation, and order-to-slot
 reconciliation. Those land with the DOM binding rather than before it. A first attempt
@@ -95,7 +98,11 @@ carries the full identifier where the encoder wanted a bare segment — existed 
 nothing consumed it. A format that cannot be changed later should not be frozen by a
 pull request containing nothing that exercises it.
 
-## Open questions the binding has to answer
+## Open questions the binding forces
+
+Each of these is raised by the binding, but not every answer lands in it: Q1 needs the
+`Store` interface to grow an operation, and Q6 needs a change to what 0011's registry
+records. They are collected here because the binding is what makes them unavoidable.
 
 **Q1. Atomicity.** "All-or-nothing per group" means writing the order and the first
 answer together, and `Store` exposes only single-key `write`. IndexedDB can do this — one
@@ -129,11 +136,14 @@ own prose.
 
 **Q6. What makes a key readable back.** Splitting `day1.chapters.<uuid>.title` into its
 parts means knowing where the group identifier ends, which requires that no identifier is
-a dotted prefix of one belonging to a *different* question, and that no single segment
-contains a dot. Both hold across today's 254 identifiers and neither is enforced.
-Enforcing the first properly needs to see retired entries — 0011 · C2 keeps them forever
-and answers written under them survive — and a registry entry records only an id and a
-status, not which question produced it, so it cannot tell a group legitimately prefixing
+a dotted prefix of one belonging to a *different* question, and that no field or item id
+contains a dot. A question identifier is dotted by construction, so a dot-free rule can
+only be asked of the pieces joined onto it — the field and item ids — where a stray dot
+would move the boundary a decoder finds. Both hold across today's 254 identifiers and
+neither is enforced. Enforcing the first properly needs to see retired entries —
+0011 · C2 keeps them forever and answers written under them survive — and a registry entry records an
+identifier's own lifecycle (its id, status, retirement date, replacement, and a note),
+not which question produced it, so it cannot tell a group legitimately prefixing
 its own fields (141 such pairs today, by design) from a real collision. Freezing this
 means deciding what the registry stores, which is a change to 0011 rather than to this
 record.
@@ -160,11 +170,11 @@ reads any answer.
 materialises — alongside "how many slots to print". #24 already noted it doing two jobs;
 Q2 is where that gets resolved rather than noted again.
 
-**C6.** This record changes 0011's storage shape rather than keeping it: 0011 stores each
+**C5.** This record changes 0011's storage shape rather than keeping it: 0011 stores each
 instance's values inside one array per group, and this stores the order under the group
 identifier with every answer under its own key. #24 requires saving at field granularity
 so an interrupted dictation resumes without re-speaking anything, and a single JSON value
-per group rewrites every chapter on every keystroke. Recorded on 0011 as C1b.
+per group rewrites every chapter on every keystroke. Recorded on 0011 as C8.
 
-**C7.** This is still not the add-another control. It makes one possible without a
+**C6.** This is still not the add-another control. It makes one possible without a
 migration, which is the point of doing it before answers exist rather than after.
