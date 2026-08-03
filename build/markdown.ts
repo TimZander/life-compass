@@ -3,12 +3,12 @@
  * do on its own: heading `id` attributes, links rewritten to real URLs, and enough
  * reporting for the build to verify both.
  *
- * `html: true` is required, not stylistic. The worksheets carry 443 inline
- * `<span class="fill">` markers that draw the answer blanks, plus a handful of `<p>`
- * and `<em>`. Turning HTML off would render those as literal text across every page.
- * Note that this does NOT make code spans unsafe: markdown-it escapes code content
- * regardless, which matters here because the decision records discuss that very markup
- * inside backticks.
+ * `html: true` is required, not stylistic. Question anchors arrive as html_block
+ * tokens — the injection point for every generated blank — and the prose still carries
+ * a handful of raw `<p>` and `<em>`. Turning HTML off would render all of that as
+ * literal text across every page. Note that this does NOT make code spans unsafe:
+ * markdown-it escapes code content regardless, which matters here because the decision
+ * records discuss blank markup inside backticks.
  */
 
 import MarkdownIt from "markdown-it";
@@ -37,6 +37,18 @@ export type RenderResult = {
    * filled in" — which is what it did on the day this was first noticed.
    */
   readonly taskMarkers: readonly string[];
+  /**
+   * Hand-written fill markup found in the source's raw HTML, for the build to refuse.
+   *
+   * Every blank is generated from a question definition (docs/decisions/0004), which is
+   * what gives it a data-field and a storage address. A hand-written one still renders,
+   * still draws its underline, and is invisible to storage — and if it copies an
+   * existing data-field it silently shares that field's address. Collected from the
+   * token stream, not the raw source, because the decision records legitimately discuss
+   * this markup inside code spans and fences; only html_block and html_inline tokens are
+   * markup the page will actually pass through to a browser.
+   */
+  readonly fillMarkup: readonly string[];
 };
 
 const md: MarkdownIt = new MarkdownIt({
@@ -86,6 +98,33 @@ export type RenderContext = LinkContext & {
 /** `- [ ]` or `- [x]` at the head of a list item, which markdown-it leaves as text. */
 const TASK_MARKER = /^\[[ xX]\]\s/;
 
+/**
+ * A `class` attribute in raw HTML, in every spelling a browser accepts: any whitespace
+ * around `=`, a double-quoted, single-quoted or unquoted value, any case. The canonical
+ * spelling alone is not enough — `class = "fill"` resolves to class="fill" in a browser
+ * while slipping past every check that assumed no whitespace, which is exactly how an
+ * unaddressed blank once reached a built page with the suite green.
+ */
+const CLASS_ATTRIBUTE = /class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+
+/**
+ * Fill markup inside one raw-HTML token's text, reported as the attribute as written.
+ *
+ * The value is split on whitespace and compared token-wise, the way a browser matches
+ * class selectors — so `class="fill extra"` is caught and `class="filler"` is not.
+ */
+function fillMarkupIn(rawHtml: string): string[] {
+  const found: string[] = [];
+  for (const match of rawHtml.matchAll(CLASS_ATTRIBUTE)) {
+    const value = match[1] ?? match[2] ?? match[3] ?? "";
+    const classes = value.trim().split(/\s+/).map((name) => name.toLowerCase());
+    if (classes.includes("fill") || classes.includes("fill-sm")) {
+      found.push(match[0]);
+    }
+  }
+  return found;
+}
+
 export function render(markdown: string, source: string, context: RenderContext): RenderResult {
   const tokens = md.parse(markdown, {});
   const slug = createSlugger();
@@ -93,6 +132,7 @@ export function render(markdown: string, source: string, context: RenderContext)
   const headingIds: string[] = [];
   const anchors: string[] = [];
   const taskMarkers: string[] = [];
+  const fillMarkup: string[] = [];
   let title: string | null = null;
 
   for (let i = 0; i < tokens.length; i += 1) {
@@ -105,6 +145,9 @@ export function render(markdown: string, source: string, context: RenderContext)
     // an html_block emitted verbatim — so replacing its content is enough to inject
     // the generated markup without a second pass over the rendered string.
     if (token.type === "html_block") {
+      // Scanned before the anchor branch can replace the content: what is checked here
+      // must be what the author wrote, never the generated markup injected below.
+      fillMarkup.push(...fillMarkupIn(token.content));
       const match = ANCHOR.exec(token.content.trim());
       if (match !== null) {
         const id = match[1] ?? "";
@@ -147,6 +190,11 @@ export function render(markdown: string, source: string, context: RenderContext)
 
     if (token.type === "inline" && token.children !== null) {
       for (const child of token.children) {
+        // Raw HTML mixed into a line of prose — the shape every hand-written blank
+        // actually had. Code spans are code_inline tokens, so they never land here.
+        if (child.type === "html_inline") {
+          fillMarkup.push(...fillMarkupIn(child.content));
+        }
         // Images carry their target in `src`, links in `href`. Both need rewriting and
         // both need checking; handling only links would leave a silent hole in the
         // integrity guarantee for the first image anyone adds.
@@ -172,5 +220,6 @@ export function render(markdown: string, source: string, context: RenderContext)
     headingIds,
     anchors,
     taskMarkers,
+    fillMarkup,
   };
 }

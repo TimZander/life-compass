@@ -447,6 +447,108 @@ describe("task lists", () => {
   });
 });
 
+describe("hand-written blanks", () => {
+  it("buildPages_FillSpanWithSpacesAroundEquals_IsRefused", async () => {
+    // Arrange — the spelling that slipped every canonical-regex check: a browser
+    // resolves `class = "fill"` as class="fill", so a page once carried a blank with a
+    // copied data-field — two blanks sharing one storage address — while the suite
+    // stayed green and the build succeeded.
+    const EXPECTED_PROBLEMS = 1;
+    const root = await fixture({
+      "README.md": '# Home\n\n<span class = "fill" data-field="day1.patterns">______</span>\n',
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    const reported = result.problems.filter((problem) => problem.kind === "hand-written-fill");
+    assert.equal(reported.length, EXPECTED_PROBLEMS);
+    assert.ok(
+      reported[0]?.detail.includes('class = "fill"'),
+      "the offending text is not in the report",
+    );
+  });
+
+  it("buildPages_FillClassInEverySpellingABrowserAccepts_IsRefused", async () => {
+    // Arrange — one fixture per spelling: attribute-name case, single quotes, no
+    // quotes, the narrow variant, and fill as one class token among several. Each is
+    // markup a browser resolves to a drawn blank, so each must refuse to build.
+    const spellings = [
+      'CLASS="fill"',
+      "class='fill'",
+      "class=fill",
+      'class="fill-sm"',
+      'class="fill extra"',
+    ];
+
+    for (const spelling of spellings) {
+      const root = await fixture({ "README.md": `# Home\n\n<span ${spelling}>______</span>\n` });
+
+      // Act
+      const result = await buildPages(root, undefined, []);
+
+      // Assert
+      assert.ok(
+        result.problems.some((problem) => problem.kind === "hand-written-fill"),
+        `${spelling} was not refused`,
+      );
+    }
+  });
+
+  it("buildPages_FillSpanInlineInProse_IsRefused", async () => {
+    // Arrange — mid-sentence markup arrives as html_inline rather than html_block,
+    // which is the shape every hand-written blank actually had. Both paths must report.
+    const root = await fixture({
+      "README.md": '# Home\n\nAnswer <span class="fill">______</span> here.\n',
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.ok(result.problems.some((problem) => problem.kind === "hand-written-fill"));
+  });
+
+  it("buildPages_FillMarkupInsideCodeSpansAndFences_IsNotRefused", async () => {
+    // Arrange — negative case, and the reason the check reads the token stream rather
+    // than the raw source: docs/decisions/0004 and 0013 discuss this markup inside
+    // backticks and fences, where it is escaped text, not a blank.
+    const root = await fixture({
+      "README.md": [
+        "# Home",
+        "",
+        'A record may quote `<span class="fill">______</span>` in prose,',
+        "",
+        "```html",
+        '<span class = "fill" data-field="day1.patterns">______</span>',
+        "```",
+        "",
+      ].join("\n"),
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+  });
+
+  it("buildPages_ClassValueMerelyContainingTheWordFill_IsNotRefused", async () => {
+    // Arrange — negative case: class matching is token-wise, the way a browser matches
+    // selectors, so a class that merely starts with "fill" draws no blank.
+    const root = await fixture({
+      "README.md": '# Home\n\n<span class="filler">not a blank</span>\n',
+    });
+
+    // Act
+    const result = await buildPages(root, undefined, []);
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+  });
+});
+
 describe("heading ids", () => {
   it("buildPages_HeadingContainingRawHtml_KeepsTheMarkupOutOfTheId", async () => {
     // Arrange — a fixture for the same reason as the checkbox test above: this asserts how
@@ -497,17 +599,6 @@ describe("heading ids", () => {
 });
 
 /**
- * Elements HTML defines as never having a closing tag. The walker below must not push
- * these onto its open-element stack, or every checklist `<input>` would open a phantom
- * subtree swallowing the rest of its page, and the nearest-marker lookup would answer
- * from an element the blank does not sit inside.
- */
-const VOID_ELEMENTS: ReadonlySet<string> = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
-]);
-
-/**
  * A blank's storage address (docs/decisions/0013): its own data-field, and the
  * data-instance carried by the nearest enclosing marked element — undefined when no
  * marked element encloses the blank. `field` is undefined only for a blank carrying no
@@ -530,8 +621,15 @@ type BlankAddress = {
  * which elements are open is the only way "nearest enclosing" means what it says.
  *
  * This is not an HTML parser; it reads what this build emits — double-quoted
- * attributes, explicitly closed non-void elements — and no more. Comments are cut
- * before walking so markup quoted inside one is never mistaken for structure.
+ * attributes — and no more. The emitted pages include tags that never close: `<meta>`
+ * and `<link>` in every head, `<hr>` between worksheet sections, and the checklist
+ * `<input>`s, which are written self-closing. All of them are pushed like any other
+ * open tag, and the one rule that handles them is the pop: a close tag pops to its
+ * matching open tag BY NAME, abandoning whatever sits unclosed above it. No emitted
+ * void or self-closing element carries `data-instance`, so an abandoned frame is never
+ * the one a lookup reads. Comments are cut before walking because ordinary HTML
+ * comments pass through the renderer to the built page, and markup quoted inside one
+ * must not be mistaken for structure. Both mechanisms are pinned by fixtures below.
  */
 function blankAddresses(html: string): BlankAddress[] {
   const blanks: BlankAddress[] = [];
@@ -558,9 +656,7 @@ function blankAddresses(html: string): BlankAddress[] {
         instance: open.findLast((element) => element.instance !== undefined)?.instance,
       });
     }
-    if (!VOID_ELEMENTS.has(tag) && !attributes.trimEnd().endsWith("/")) {
-      open.push({ tag, instance: /data-instance="([^"]*)"/.exec(attributes)?.[1] });
-    }
+    open.push({ tag, instance: /data-instance="([^"]*)"/.exec(attributes)?.[1] });
   }
   return blanks;
 }
@@ -726,6 +822,65 @@ describe("repeat instances", () => {
     // Assert
     assert.deepEqual(addresses, [{ field: "q.f", instance: undefined }]);
   });
+
+  it("blankAddresses_MarkerNestedInsideAnotherMarker_ResolvesTheNearestOne", () => {
+    // Arrange — 0013 says a blank's address pairs its data-field with the NEAREST
+    // enclosing marker. No shape the build emits today nests one marker inside another,
+    // so without this fixture "nearest" is a claim nothing constrains: reading the
+    // OUTERMOST marker instead resolves every current page identically. The inner
+    // blank is the discriminating one; the outer blank pins that leaving the inner
+    // marker restores the outer one rather than losing both.
+    const html =
+      '<div data-instance="0"><ul><li data-instance="1">' +
+      '<span class="fill" data-field="q.inner">______</span></li></ul>' +
+      '<span class="fill" data-field="q.outer">______</span></div>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [
+      { field: "q.inner", instance: "1" },
+      { field: "q.outer", instance: "0" },
+    ]);
+  });
+
+  it("blankAddresses_UnclosedVoidInsideAMarker_DoesNotHoldTheMarkerOpen", () => {
+    // Arrange — the built pages carry tags that never close: <hr> between sections,
+    // <meta> and <link> in every head. The walker pushes them like any other tag, so
+    // only popping BY NAME keeps </li> closing the marked <li> rather than the
+    // abandoned <hr>; a blind pop of the top frame leaves the marker open, and the
+    // next blank inherits an instance it does not sit inside.
+    const html =
+      '<li data-instance="0"><hr><span class="fill" data-field="q.f">______</span></li>' +
+      '<li><span class="fill" data-field="q.g">______</span></li>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [
+      { field: "q.f", instance: "0" },
+      { field: "q.g", instance: undefined },
+    ]);
+  });
+
+  it("blankAddresses_MarkupQuotedInsideAComment_IsNotReadAsStructure", () => {
+    // Arrange — negative case: ordinary HTML comments pass through the renderer to the
+    // built page (pinned under "question anchors"), so a comment quoting instance
+    // markup can genuinely reach the walker. Without comment stripping the quoted tag
+    // is pushed, nothing inside the comment ever closes it, and every later blank on
+    // the page resolves to an instance that exists only as quoted text.
+    const html =
+      '<!-- an example: <li data-instance="9"> -->' +
+      '<li><span class="fill" data-field="q.f">______</span></li>';
+
+    // Act
+    const addresses = blankAddresses(html);
+
+    // Assert
+    assert.deepEqual(addresses, [{ field: "q.f", instance: undefined }]);
+  });
 });
 
 describe("question anchors", () => {
@@ -768,16 +923,6 @@ describe("question anchors", () => {
           `${worksheet.source} never rendered ${question.id}`,
         );
       }
-    }
-  });
-
-  it("buildPages_EveryMigratedWorksheet_HasNoHandWrittenBlanksLeft", async () => {
-    // Arrange — negative case: a blank the migration missed still renders and still
-    // looks right, and is invisible to storage. The generated ones all carry data-field.
-    // Act & Assert
-    for (const worksheet of WORKSHEETS) {
-      const source = await readFile(path.join(ROOT, worksheet.source), "utf8");
-      assert.ok(!source.includes('<span class="fill'), `${worksheet.source} still writes blanks`);
     }
   });
 
