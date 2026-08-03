@@ -332,10 +332,11 @@ describe("repeat instances", () => {
 });
 
 describe("turning a blank into a control", () => {
-  it("upgrade_LongAndShortBlanks_BecomeATextareaAndAnInlineInput", async () => {
-    // Arrange — the choice the module's docstring argues for at length and nothing checked.
-    // A long blank holds a dictated paragraph and needs to wrap; all 31 short ones sit
-    // inside a sentence, where a block element would break the sentence in half.
+  it("upgrade_EveryBlankLongOrShort_BecomesATextareaThatCanWrap", async () => {
+    // Arrange — short blanks were `<input>` first, to keep a sentence from breaking across
+    // a block element. It kept the sentence and lost the answer: an input cannot wrap, so
+    // anything longer than the 6rem gap scrolled out of sight mid-dictation. Both sizes are
+    // textareas now and differ only in how style.css lays them out.
     const document = render();
     const store = recorder();
     const answers = createAnswers(store, { quietMs: QUIET_MS });
@@ -345,8 +346,7 @@ describe("turning a blank into a control", () => {
 
     // Assert
     assert.equal(fieldFor("day1.patterns").tagName, "TEXTAREA");
-    assert.equal(fieldFor("day4.enough.excess").tagName, "INPUT");
-    assert.equal(fieldFor("day4.enough.excess").getAttribute("type"), "text");
+    assert.equal(fieldFor("day4.enough.excess").tagName, "TEXTAREA");
     answers.stop();
   });
 
@@ -388,7 +388,7 @@ describe("turning a blank into a control", () => {
 
     // Assert — all four are still spans, so nothing can be typed into them and lost.
     assert.equal(window.document.querySelectorAll("span.fill").length, 4);
-    assert.equal(window.document.querySelectorAll("textarea, input").length, 0);
+    assert.equal(window.document.querySelectorAll("textarea").length, 0);
     answers.stop();
   });
 });

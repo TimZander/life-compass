@@ -40,7 +40,7 @@ type Repeat = {
 
 /** A blank, once it is a real form control. */
 type Field = {
-  readonly element: HTMLInputElement | HTMLTextAreaElement;
+  readonly element: HTMLTextAreaElement;
   /** Absent for a single-valued question, whose identifier is already the whole key. */
   readonly repeat?: Repeat;
   /** `title` — the part after the group, for a repeat; the whole identifier otherwise. */
@@ -64,39 +64,86 @@ export type BindOptions = {
 /** The selector for every blank the build emits. Shared so a caller cannot drift from it. */
 export const BLANK_SELECTOR = "span.fill, span.fill-sm";
 
-/** A textarea tall enough for everything in it, so dictation is never hidden by its box. */
-function fit(control: HTMLInputElement | HTMLTextAreaElement): void {
-  if (control instanceof HTMLTextAreaElement) {
-    // Collapse first, or the box can only ever grow: scrollHeight of an already-tall
-    // textarea includes the empty space, so deleting a paragraph would leave the height.
-    control.style.height = "auto";
-    control.style.height = `${control.scrollHeight}px`;
+/**
+ * Whether the browser sizes a control to its content by itself.
+ *
+ * Where it does, `fit` stays out of the way entirely: an inline `style.width` would
+ * override `field-sizing` and take the sizing back off the browser, which does it better.
+ */
+const SIZES_ITSELF =
+  typeof CSS !== "undefined" &&
+  typeof CSS.supports === "function" &&
+  CSS.supports("field-sizing", "content");
+
+/** Measures a string in a control's own font, off-screen, with one reused element. */
+let ruler: HTMLSpanElement | undefined;
+
+function widthOf(control: HTMLTextAreaElement): number {
+  const owner = control.ownerDocument;
+  if (ruler === undefined || ruler.ownerDocument !== owner) {
+    ruler = owner.createElement("span");
+    ruler.setAttribute("aria-hidden", "true");
+    ruler.style.cssText =
+      "position:absolute;top:-9999px;left:-9999px;white-space:pre;visibility:hidden";
+    owner.body.appendChild(ruler);
   }
+  const style = owner.defaultView?.getComputedStyle(control);
+  if (style !== undefined) {
+    ruler.style.font = style.font;
+    ruler.style.letterSpacing = style.letterSpacing;
+  }
+  // The longest line, not the whole value: a wrapped answer is as wide as its widest line.
+  ruler.textContent = control.value.split("\n").reduce((a, b) => (a.length >= b.length ? a : b), "");
+  return ruler.offsetWidth;
+}
+
+/**
+ * Size a control to what is in it, so nothing said is hidden by its box.
+ *
+ * Both directions, and the width matters as much as the height. A short blank sits inside
+ * a sentence and was given a fixed 6rem, which any real answer overruns — the text then
+ * scrolls out of sight while the reader is still talking, which is the failure this module
+ * exists to prevent, not a cosmetic one. It grows along the line until the line runs out
+ * (CSS caps it), and wraps after that.
+ */
+function fit(control: HTMLTextAreaElement): void {
+  if (SIZES_ITSELF) {
+    return;
+  }
+  if (control.classList.contains("fill-sm")) {
+    const width = widthOf(control);
+    // Zero means nothing has been laid out — no layout engine, or the control is not on
+    // screen yet. Writing 0 would collapse it to nothing; the CSS minimum stands instead.
+    if (width > 0) {
+      control.style.width = `${width}px`;
+    }
+  }
+  // Collapse first, or the box can only ever grow: scrollHeight of an already-tall
+  // textarea includes the empty space, so deleting a paragraph would leave the height.
+  control.style.height = "auto";
+  control.style.height = `${control.scrollHeight}px`;
 }
 
 /**
  * Replace one blank with a control that looks the same and can be typed into.
  *
- * `short` blanks stay `<input>` because all 31 of them sit inside a sentence — "The world
- * has enough ___" — and a block element there would break the sentence in half. `long`
- * blanks become a `<textarea>`: they hold dictated paragraphs, and a single line that
- * scrolls sideways hides what was just said, which for a voice-first workbook is the
- * failure mode rather than a cosmetic one.
+ * Always a `<textarea>`, short blanks included. An `<input>` was tried for the 31 that sit
+ * inside a sentence — "The world has enough ___" — on the grounds that a block element
+ * there would break the sentence in half. It kept the sentence and lost the answer: an
+ * input cannot wrap, so anything longer than the gap scrolls out of sight while the reader
+ * is still speaking. An inline-block textarea keeps the sentence AND grows, which is what
+ * the size difference should have meant all along. `fill-sm` and `fill` now differ only in
+ * how style.css lays them out.
  *
  * The class comes across so the control keeps the ruled-line look, and style.css has a
- * matching `input.fill`/`textarea.fill` rule that undoes the parts of `.fill` which exist
- * only to hide the printed underscores. Without that rule this line renders every answer
- * 9999px off-screen — it shipped that way once, past a green suite, because nothing here
- * had been opened in a browser.
+ * matching `textarea.fill` rule that undoes the parts of `.fill` which exist only to hide
+ * the printed underscores. Without that rule this line renders every answer 9999px
+ * off-screen — it shipped that way once, past a green suite, because nothing here had been
+ * opened in a browser.
  */
-function upgrade(span: HTMLElement): HTMLInputElement | HTMLTextAreaElement {
-  const short = span.classList.contains("fill-sm");
-  const control = document.createElement(short ? "input" : "textarea");
-  if (control instanceof HTMLInputElement) {
-    control.type = "text";
-  } else {
-    control.rows = 1;
-  }
+function upgrade(span: HTMLElement): HTMLTextAreaElement {
+  const control = document.createElement("textarea");
+  control.rows = 1;
   control.className = span.className;
   const field = span.dataset["field"];
   if (field !== undefined) {
