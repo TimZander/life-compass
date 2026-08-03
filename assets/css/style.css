@@ -46,6 +46,9 @@ input.fill,input.fill-sm{overflow:visible;text-overflow:clip}
    (fields.ts sets the height) and never scrolls sideways. All 31 sentence gaps are
    short and stay inline; only these become block. */
 textarea.fill,textarea.fill-sm{display:block;width:100%;max-width:34rem;white-space:pre-wrap;overflow:hidden;resize:none;line-height:inherit;margin:.15em 0 .35em}
+/* Except in a heading — Day 2 puts four of them in an h3 ("Value 1 — ____"), where a
+   full-width block box breaks the heading in half. These hold a name, not a paragraph. */
+h3 textarea.fill,h3 textarea.fill-sm{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0;white-space:nowrap}
 input.fill:focus,input.fill-sm:focus,textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px;border-bottom-color:var(--accent-dark)}
 /* Printing a bound page prints what was written, not a form control (0010). */
 @media print{input.fill,input.fill-sm,textarea.fill,textarea.fill-sm{border-bottom:1px solid #b9b1a0}}
