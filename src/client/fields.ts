@@ -121,7 +121,13 @@ function fit(control: HTMLTextAreaElement): void {
     // reading back a width it set itself a keystroke ago.
     const needed = widthOf(control);
     const available = control.parentElement?.clientWidth ?? 0;
-    const grown = available > 0 && needed > available;
+    // A line break the reader typed counts as not fitting, as much as running past the
+    // margin does. Measuring the longest line alone missed this and it is the common case,
+    // not an edge one: these sentences are headed "Finish these sentences (multiple times
+    // if needed)", so several short answers stacked in one gap is the intended use. Three
+    // short lines measure narrow, stayed inline, and wrapped into the middle of the
+    // paragraph with the rest of the sentence stranded on the first line.
+    const grown = control.value.includes("\n") || (available > 0 && needed > available);
     control.classList.toggle(GROWN, grown);
     // Cleared rather than set when grown: the stylesheet takes the width from there, and an
     // inline width would pin a full-width box to whatever the text measured.

@@ -563,6 +563,34 @@ describe("a short blank whose answer outgrows its line", () => {
     answers.stop();
   });
 
+  it("fit_SeveralShortAnswersOnSeparateLines_TakesItsOwnLineToo", async () => {
+    // Arrange — the case measuring alone missed, and the common one rather than an edge.
+    // These sentences are headed "Finish these sentences (multiple times if needed)", so
+    // stacking answers in one gap is what the worksheet asks for. Each line is well short
+    // of the margin, so width says it fits; it does not, and inline it wrapped into the
+    // middle of the paragraph with the rest of the sentence stranded on the first line.
+    const STACKED = "noise\nhurry\nplastic";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await withFakeLayout(async () => {
+      await bindAnswers(document, answers, store);
+      dictate(fieldFor("day4.enough.excess"), STACKED);
+    });
+
+    // Assert — no single line here is anywhere near the 300 the container reports, so this
+    // can only pass by counting the line breaks rather than the width.
+    const field = fieldFor("day4.enough.excess");
+    assert.ok(
+      Math.max(...STACKED.split("\n").map((line) => line.length)) * 10 < 300,
+      "the fixture no longer isolates line breaks from width",
+    );
+    assert.equal(field.classList.contains("fill-grown"), true, "stacked answers stayed inline");
+    answers.stop();
+  });
+
   it("fit_AnswerCutBackDownToSize_ReturnsToTheSentence", async () => {
     // Arrange — negative case, and the one that would flicker if the width were read back
     // from the control's own layout rather than measured from its text.
