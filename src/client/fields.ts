@@ -15,23 +15,64 @@
  */
 
 import type { Answers } from "./answers.ts";
-import { answerKey, newInstanceId, orderKey, readOrder, writeOrder } from "./keys.ts";
+import {
+  answerKey,
+  newInstanceId,
+  orderKey,
+  readOrder,
+  writeOrder,
+  type StoredOrder,
+} from "./keys.ts";
 import type { Store } from "./store.ts";
+
+/**
+ * Where a blank belongs in a repeat.
+ *
+ * One object rather than two optional properties, because `group` without `slot` is not a
+ * state that means anything: it would be keyed onto slot 0's identifier and put two blanks
+ * on one key, which is the collision this whole scheme exists to prevent. Making it
+ * inexpressible is cheaper than checking for it.
+ */
+type Repeat = {
+  readonly group: string;
+  readonly slot: number;
+};
 
 /** A blank, once it is a real form control. */
 type Field = {
   readonly element: HTMLInputElement | HTMLTextAreaElement;
-  /** Storage key for a single-valued question; absent while a repeat is unmaterialised. */
-  readonly group?: string;
-  readonly slot?: number;
+  /** Absent for a single-valued question, whose identifier is already the whole key. */
+  readonly repeat?: Repeat;
   /** `title` — the part after the group, for a repeat; the whole identifier otherwise. */
   readonly field: string;
 };
 
 export type BindOptions = {
-  /** Told when a group's stored order cannot be read, so the reader can be warned. */
-  readonly onUnreadable?: (group: string) => void;
+  /**
+   * Told when a group cannot be written to, so the reader can be warned.
+   *
+   * Both reasons are silent otherwise, and both cost the reader words they have already
+   * spoken: a stored order that cannot be read (0013 · Q3), and one with fewer instances
+   * than the page has slots, which happens when a repeat's `min` is raised after somebody
+   * has answered (0013 · Q2).
+   */
+  readonly onUnwritable?: (group: string, reason: "unreadable" | "short") => void;
+  /** Told when materialising a group failed outright, so the reader is not left guessing. */
+  readonly onFailure?: (error: unknown) => void;
 };
+
+/** The selector for every blank the build emits. Shared so a caller cannot drift from it. */
+export const BLANK_SELECTOR = "span.fill, span.fill-sm";
+
+/** A textarea tall enough for everything in it, so dictation is never hidden by its box. */
+function fit(control: HTMLInputElement | HTMLTextAreaElement): void {
+  if (control instanceof HTMLTextAreaElement) {
+    // Collapse first, or the box can only ever grow: scrollHeight of an already-tall
+    // textarea includes the empty space, so deleting a paragraph would leave the height.
+    control.style.height = "auto";
+    control.style.height = `${control.scrollHeight}px`;
+  }
+}
 
 /**
  * Replace one blank with a control that looks the same and can be typed into.
@@ -41,6 +82,12 @@ export type BindOptions = {
  * blanks become a `<textarea>`: they hold dictated paragraphs, and a single line that
  * scrolls sideways hides what was just said, which for a voice-first workbook is the
  * failure mode rather than a cosmetic one.
+ *
+ * The class comes across so the control keeps the ruled-line look, and style.css has a
+ * matching `input.fill`/`textarea.fill` rule that undoes the parts of `.fill` which exist
+ * only to hide the printed underscores. Without that rule this line renders every answer
+ * 9999px off-screen — it shipped that way once, past a green suite, because nothing here
+ * had been opened in a browser.
  */
 function upgrade(span: HTMLElement): HTMLInputElement | HTMLTextAreaElement {
   const short = span.classList.contains("fill-sm");
@@ -55,37 +102,58 @@ function upgrade(span: HTMLElement): HTMLInputElement | HTMLTextAreaElement {
   if (field !== undefined) {
     control.dataset["field"] = field;
   }
-  // The label a screen reader reads is the prose around the blank, which is already on the
-  // page — 0004 keeps it there deliberately. Naming the control after its identifier would
-  // read out "day1 chapters title" instead.
-  control.setAttribute("aria-label", span.closest("li, p, h3")?.textContent?.trim() ?? "Answer");
+  // The name comes from the schema, via `data-label` on the blank. Deriving it from the
+  // surrounding prose was tried and was worse than useless: a `q-single` blank sits alone
+  // in its paragraph, so the name came out as the literal "______", and two blanks in one
+  // row got the same name — with the second corrupted by the sibling this function had
+  // already replaced, making it depend on iteration order.
+  control.setAttribute("aria-label", span.dataset["label"] ?? "Answer");
   span.replaceWith(control);
   return control;
 }
 
-/** Every blank on the page, upgraded, with its address resolved from the markup. */
+/**
+ * Every blank on the page, upgraded, with its address resolved from the markup.
+ *
+ * A blank whose address cannot be resolved is left as printed rather than upgraded. An
+ * unbound control looks identical to a bound one and silently swallows everything said
+ * into it, which is worse than a blank that visibly cannot be typed in.
+ */
 function collect(root: ParentNode): readonly Field[] {
   const fields: Field[] = [];
-  for (const span of [...root.querySelectorAll<HTMLElement>("span.fill, span.fill-sm")]) {
+  for (const span of [...root.querySelectorAll<HTMLElement>(BLANK_SELECTOR)]) {
     const identifier = span.dataset["field"];
     if (identifier === undefined) {
       continue;
     }
     const slotElement = span.closest<HTMLElement>("[data-instance]");
-    const element = upgrade(span);
     if (slotElement === null) {
       // No enclosing slot means a single-valued question, whose identifier is already the
       // whole key. 0013 · C1 says so explicitly, because "no marker" is otherwise easy to
       // read as a bug.
-      fields.push({ element, field: identifier });
+      fields.push({ element: upgrade(span), field: identifier });
       continue;
     }
     const group = slotElement.closest<HTMLElement>("[data-question]")?.dataset["question"];
-    const slot = Number(slotElement.dataset["instance"]);
-    if (group === undefined || !Number.isInteger(slot)) {
+    const marker = slotElement.dataset["instance"];
+    // Tested against the digits the build actually emits rather than handed to `Number`,
+    // which reads "" as 0, "01" and "1e0" as 1, and "0x2" as 2 — three ways for two slots
+    // to resolve to one storage key.
+    if (group === undefined || marker === undefined || !/^\d+$/.test(marker)) {
       continue;
     }
-    fields.push({ element, group, slot, field: identifier.slice(group.length + 1) });
+    // The blank's identifier is the group's plus a dot plus the field. Checked rather than
+    // assumed: slicing a prefix that is not there yields a truncated segment that would be
+    // written straight into permanent storage.
+    const prefix = `${group}.`;
+    if (!identifier.startsWith(prefix)) {
+      continue;
+    }
+    fields.push({
+      element: upgrade(span),
+      repeat: { group, slot: Number(marker) },
+      field: identifier.slice(prefix.length),
+    });
   }
   return fields;
 }
@@ -93,10 +161,12 @@ function collect(root: ParentNode): readonly Field[] {
 /**
  * Bind every blank on the page to storage.
  *
- * Returns once stored answers have been restored. Typing before that resolves is safe:
- * restoring skips any field that already holds something or currently has focus, so a
- * reader who starts dictating during load never has their words replaced by an older
- * answer.
+ * Returns once stored answers have been restored. Typing before that resolves is safe in
+ * both directions, and both took a defect to get right: listeners are attached BEFORE the
+ * stored answers are awaited, so a phrase dictated during load is queued rather than
+ * dropped, and restoring then skips any field that already holds something, so it is not
+ * overwritten either. An earlier version attached listeners afterwards and lost every word
+ * said in that window — silently, with the text still on screen.
  */
 export async function bindAnswers(
   root: ParentNode,
@@ -105,32 +175,158 @@ export async function bindAnswers(
   options: BindOptions = {},
 ): Promise<void> {
   const fields = collect(root);
-  const stored = await answers.load();
 
   /** Instance identifiers per group, once known. Absent means not yet materialised. */
   const instances = new Map<string, readonly string[]>();
-  const unreadable = new Set<string>();
+  /** Groups that must not be written to, and the reason, so it is only reported once. */
+  const unwritable = new Map<string, "unreadable" | "short">();
+  const materialising = new Map<string, Promise<void>>();
 
-  for (const group of new Set(fields.map((field) => field.group).filter((one) => one !== undefined))) {
-    const order = readOrder(stored.get(orderKey(group)));
-    if (order.kind === "order") {
-      instances.set(group, order.instances);
-    } else if (order.kind === "unreadable") {
-      // Never materialise over this. Minting a fresh set would write new identifiers on
-      // top of answers that are still there, and orphan every one of them (0013 · Q3).
-      unreadable.add(group);
-      options.onUnreadable?.(group);
+  /** How many slots the page is showing for a group — fixed by the markup, so computed once. */
+  const slotCount = new Map<string, number>();
+  for (const { repeat: x } of fields) {
+    if (x !== undefined) {
+      slotCount.set(x.group, Math.max(slotCount.get(x.group) ?? 0, x.slot + 1));
     }
   }
 
+  function refuse(group: string, reason: "unreadable" | "short"): void {
+    if (unwritable.has(group)) {
+      return;
+    }
+    unwritable.set(group, reason);
+    options.onUnwritable?.(group, reason);
+  }
+
+  /**
+   * Adopt a stored order, or refuse the group.
+   *
+   * A stored order with fewer instances than the page has slots is refused rather than
+   * used. Using it leaves the extra slots with no key at all, and every word dictated into
+   * them is discarded on every keystroke with nothing said — the failure 0013 · Q2 leaves
+   * open. Refusing loudly is not an answer to Q2; it is the difference between an open
+   * question and silent data loss.
+   */
+  function adopt(group: string, order: StoredOrder): void {
+    if (order.kind === "unreadable") {
+      // Never materialise over this. Minting a fresh set would write new identifiers on
+      // top of answers that are still there, and orphan every one of them (0013 · Q3).
+      refuse(group, "unreadable");
+      return;
+    }
+    if (order.kind === "absent") {
+      return;
+    }
+    if (order.instances.length < (slotCount.get(group) ?? 0)) {
+      refuse(group, "short");
+      return;
+    }
+    instances.set(group, order.instances);
+  }
+
   const keyFor = (field: Field): string | undefined => {
-    if (field.group === undefined) {
+    if (field.repeat === undefined) {
       return field.field;
     }
-    const known = instances.get(field.group);
-    const instance = known?.[field.slot ?? -1];
-    return instance === undefined ? undefined : answerKey(field.group, instance, field.field);
+    const instance = instances.get(field.repeat.group)?.[field.repeat.slot];
+    return instance === undefined
+      ? undefined
+      : answerKey(field.repeat.group, instance, field.field);
   };
+
+  /**
+   * Mint identifiers for every slot of a group and store the order with the first answer.
+   *
+   * All-or-nothing, in one transaction (0013). The triggering answer goes in the same
+   * claim because its key does not exist until the identifiers do — writing the order
+   * first and the answer after would leave a window where a crash loses the answer but
+   * keeps the order, and the slot would then look answered-and-empty forever.
+   *
+   * `claim` refuses if another tab got there first, and this tab then adopts the winner's
+   * identifiers rather than its own. Without that, whichever order landed second would
+   * strand the other tab's answers under identifiers nothing references.
+   */
+  async function materialise(group: string, trigger: Repeat, field: Field): Promise<void> {
+    const minted = Array.from({ length: slotCount.get(group) ?? 0 }, () => newInstanceId());
+    const instance = minted[trigger.slot];
+    if (instance === undefined) {
+      return;
+    }
+    const entries = new Map([
+      [orderKey(group), writeOrder(minted)],
+      [answerKey(group, instance, field.field), field.element.value],
+    ]);
+    if (await store.claim(orderKey(group), entries)) {
+      instances.set(group, minted);
+      return;
+    }
+    adopt(group, readOrder((await answers.load()).get(orderKey(group))));
+  }
+
+  /**
+   * Record a field's current value, materialising its group first if it has to.
+   *
+   * Every path out of here either reaches `answers.set` or tells the reader. Nothing may
+   * fail quietly: `newInstanceId` throws where `crypto.randomUUID` is unavailable, `claim`
+   * rejects on a quota abort, and an unhandled rejection here would leave the reader
+   * dictating into a group that stopped saving with no sign of it (0011 · C6).
+   */
+  function record(field: Field): void {
+    const repeat = field.repeat;
+    if (repeat === undefined) {
+      answers.set(field.field, field.element.value);
+      return;
+    }
+    if (unwritable.has(repeat.group)) {
+      return;
+    }
+    const key = keyFor(field);
+    if (key !== undefined) {
+      answers.set(key, field.element.value);
+      return;
+    }
+    // First keystroke in a group nobody has answered yet. The value is re-read from the
+    // element after materialising rather than captured here, so a burst of dictation
+    // arriving while the transaction is in flight is stored whole rather than truncated
+    // to whatever the first keystroke happened to be.
+    const group = repeat.group;
+    const pending = materialising.get(group) ?? materialise(group, repeat, field);
+    materialising.set(group, pending);
+    void pending
+      .then(() => {
+        const settled = keyFor(field);
+        if (settled !== undefined) {
+          answers.set(settled, field.element.value);
+          return;
+        }
+        // Materialising resolved and the field still has no key. `adopt` has already told
+        // the reader why; saying nothing here would drop the value in silence.
+        refuse(group, unwritable.get(group) ?? "short");
+      })
+      .catch((error: unknown) => {
+        options.onFailure?.(error);
+        refuse(group, "unreadable");
+      })
+      .finally(() => {
+        // In `finally`, not in `then`. Leaving a rejected promise memoised here made the
+        // group permanently dead: every later keystroke reused it, `then` never ran, and
+        // nothing was ever saved again.
+        materialising.delete(group);
+      });
+  }
+
+  // Attached before the await below, so nothing dictated during load is missed.
+  for (const field of fields) {
+    field.element.addEventListener("input", () => {
+      fit(field.element);
+      record(field);
+    });
+  }
+
+  const stored = await answers.load();
+  for (const group of slotCount.keys()) {
+    adopt(group, readOrder(stored.get(orderKey(group))));
+  }
 
   for (const field of fields) {
     const key = keyFor(field);
@@ -145,77 +341,13 @@ export async function bindAnswers(
     // holds nothing of theirs to protect.
     if (value !== undefined && field.element.value === "") {
       field.element.value = value;
+    } else if (field.element.value !== "") {
+      // Dictated while `load` was in flight. The `input` event for it has already fired
+      // and been recorded, but a group that materialised in between would have keyed it
+      // under nothing — recording again now that the order is known costs one redundant
+      // write and closes the window.
+      record(field);
     }
-  }
-
-  const materialising = new Map<string, Promise<void>>();
-
-  /**
-   * Mint identifiers for every slot of a group and store the order with the first answer.
-   *
-   * All-or-nothing, in one transaction (0013). The triggering answer goes in the same
-   * claim because its key does not exist until the identifiers do — writing the order
-   * first and the answer after would leave a window where a crash loses the answer but
-   * keeps the order, and the slot would then look answered-and-empty forever.
-   *
-   * `claim` refuses if another tab got there first, and this tab then adopts the winner's
-   * identifiers rather than its own. Without that, whichever order landed second would
-   * strand the other tab's answers under identifiers nothing references.
-   */
-  async function materialise(group: string, slots: number, trigger: Field): Promise<void> {
-    const minted = Array.from({ length: slots }, () => newInstanceId());
-    const instance = minted[trigger.slot ?? 0];
-    if (instance === undefined) {
-      return;
-    }
-    const entries = new Map([
-      [orderKey(group), writeOrder(minted)],
-      [answerKey(group, instance, trigger.field), trigger.element.value],
-    ]);
-    const won = await store.claim(orderKey(group), entries);
-    if (won) {
-      instances.set(group, minted);
-      return;
-    }
-    const order = readOrder((await answers.load()).get(orderKey(group)));
-    if (order.kind === "order") {
-      instances.set(group, order.instances);
-      return;
-    }
-    unreadable.add(group);
-    options.onUnreadable?.(group);
-  }
-
-  for (const field of fields) {
-    field.element.addEventListener("input", () => {
-      const value = field.element.value;
-      if (field.group === undefined) {
-        answers.set(field.field, value);
-        return;
-      }
-      if (unreadable.has(field.group)) {
-        return;
-      }
-      const key = keyFor(field);
-      if (key !== undefined) {
-        answers.set(key, value);
-        return;
-      }
-      // First keystroke in a group nobody has answered yet. The value is re-read from the
-      // element after materialising rather than captured here, so a burst of dictation
-      // arriving while the transaction is in flight is stored whole rather than truncated
-      // to whatever the first keystroke happened to be.
-      const group = field.group;
-      const slots = Math.max(...fields.filter((one) => one.group === group).map((one) => (one.slot ?? 0) + 1));
-      const pending = materialising.get(group) ?? materialise(group, slots, field);
-      materialising.set(group, pending);
-      void pending.then(() => {
-        materialising.delete(group);
-        const settled = keyFor(field);
-        if (settled !== undefined) {
-          answers.set(settled, field.element.value);
-        }
-      });
-    });
+    fit(field.element);
   }
 }

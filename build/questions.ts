@@ -303,9 +303,12 @@ function escape(value: string): string {
 }
 
 /** A drawn blank. The underscores are hidden by the stylesheet and drawn as a rule. */
-function blank(fieldId: string, size: "short" | "long"): string {
+function blank(fieldId: string, size: "short" | "long", label: string): string {
   const cls = size === "short" ? "fill-sm" : "fill";
-  return `<span class="${cls}" data-field="${escape(fieldId)}">______</span>`;
+  return (
+    `<span class="${cls}" data-field="${escape(fieldId)}"` +
+    ` data-label="${escape(label)}">______</span>`
+  );
 }
 
 /**
@@ -317,9 +320,19 @@ function blank(fieldId: string, size: "short" | "long"): string {
  * for it — "My definition", "One change" — and reads as a bold lead-in, which is how
  * every worksheet wrote them before the migration and why Day 5's "One specific change"
  * stood apart from the three questions above it.
+ *
+ * `spoken` is what a screen reader announces for the control once #24 binds it, and it
+ * differs from the printed label inside a repeat: five list items each printing "Title:"
+ * need five distinct names, or a reader tabbing through hears "Title" five times with
+ * nothing to say which chapter they are in.
  */
-function labelled(label: string, fieldId: string, size: "short" | "long"): string {
-  const filled = blank(fieldId, size);
+function labelled(
+  label: string,
+  fieldId: string,
+  size: "short" | "long",
+  spoken: string = label,
+): string {
+  const filled = blank(fieldId, size, spoken);
   return label.trimEnd().endsWith("?")
     ? `${escape(label)} ${filled}`
     : `<strong>${escape(label)}:</strong> ${filled}`;
@@ -345,7 +358,7 @@ export function renderQuestion(question: Question): string {
   if (question.kind === "single") {
     return (
       `<p class="q-single" data-question="${escape(question.id)}">` +
-      `${blank(question.id, question.size)}</p>`
+      `${blank(question.id, question.size, question.label)}</p>`
     );
   }
 
@@ -390,7 +403,12 @@ export function renderQuestion(question: Question): string {
       const field = byId.get(part);
       // A gap with no field is caught by checkSchema before this runs; rendering the
       // literal brace here would only hide it.
-      html += field === undefined ? "" : blank(`${question.id}.${part}`, field.size);
+      html += field === undefined
+        ? ""
+        : // A sentence has no label of its own — the template IS the prose — so the
+          // field's own label is the whole name. They read as sentence fragments
+          // ("Optimizing for", "Over") because that is what the gap is asking for.
+          blank(`${question.id}.${part}`, field.size, field.label);
     }
     return `<p class="q-sentence" data-question="${escape(question.id)}">${html}</p>`;
   }
@@ -421,9 +439,12 @@ export function renderQuestion(question: Question): string {
       const anchor = `${question.id.replace(/\./g, "-")}-${index + 1}`;
       const heading =
         `<h3 id="${escape(anchor)}">${escape(question.label)} ${index + 1} — ` +
-        `${blank(`${question.id}.${name.id}`, name.size)}</h3>`;
+        `${blank(`${question.id}.${name.id}`, name.size, `${question.label} ${index + 1} — ${name.label}`)}</h3>`;
       const fields = rest
-        .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
+        .map(
+          (x) =>
+            `<li>${labelled(x.label, `${question.id}.${x.id}`, x.size, `${question.label} ${index + 1} — ${x.label}`)}</li>`,
+        )
         .join("\n");
       sections.push(
         `<div class="q-instance" data-instance="${index}">\n${heading}\n<ul>\n${fields}\n</ul>\n</div>`,
@@ -445,17 +466,19 @@ export function renderQuestion(question: Question): string {
   // A field whose label just restates the group's is the same stutter the comment above
   // describes, one line lower down: ten rows reading "Value: ____" under a heading that
   // already says "Narrow to 10". The list number is identity enough.
-  const cell = (field: Field): string =>
-    field.label === question.label
-      ? blank(`${question.id}.${field.id}`, field.size)
-      : labelled(field.label, `${question.id}.${field.id}`, field.size);
+  const cell = (field: Field, index: number): string => {
+    const spoken = `${question.label} ${index + 1}`;
+    return field.label === question.label
+      ? blank(`${question.id}.${field.id}`, field.size, spoken)
+      : labelled(field.label, `${question.id}.${field.id}`, field.size, `${spoken} — ${field.label}`);
+  };
 
   const items: string[] = [];
   for (let index = 0; index < question.min; index += 1) {
     if (question.instances === "line") {
       // Every field on the one line. The em dash is the separator the worksheets already
       // used for this shape, and it survives a line wrap better than a comma.
-      items.push(`<li data-instance="${index}">${question.fields.map(cell).join(" — ")}</li>`);
+      items.push(`<li data-instance="${index}">${question.fields.map((x) => cell(x, index)).join(" — ")}</li>`);
       continue;
     }
     if (question.fields.length === 1) {
@@ -463,7 +486,7 @@ export function renderQuestion(question: Question): string {
       if (field === undefined) {
         continue;
       }
-      items.push(`<li data-instance="${index}">${cell(field)}</li>`);
+      items.push(`<li data-instance="${index}">${cell(field, index)}</li>`);
       continue;
     }
     // The first field sits inline with the list number and the rest nest beneath it.
@@ -473,8 +496,8 @@ export function renderQuestion(question: Question): string {
     if (first === undefined) {
       continue;
     }
-    const head = cell(first);
-    const nested = rest.map((field) => `<li>${cell(field)}</li>`).join("\n");
+    const head = cell(first, index);
+    const nested = rest.map((x) => `<li>${cell(x, index)}</li>`).join("\n");
     items.push(`<li data-instance="${index}">${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }
 

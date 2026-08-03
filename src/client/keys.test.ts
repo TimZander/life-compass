@@ -9,40 +9,9 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { answerKey, newInstanceId, orderKey, parseAnswerKey, readOrder, writeOrder } from "./keys.ts";
+import { answerKey, newInstanceId, orderKey, readOrder, writeOrder } from "./keys.ts";
 
-describe("answerKey and parseAnswerKey", () => {
-  it("answerKey_GroupInstanceAndField_JoinIntoAKeyThatParsesBack", () => {
-    // Arrange — the round trip is the whole contract. 0011's rename-on-read cannot reach
-    // an answer inside a repeat without it, and an orphan cannot be told from a live one.
-    const GROUP = "day1.chapters";
-    const INSTANCE = "5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55";
-    const FIELD = "title";
-
-    // Act
-    const key = answerKey(GROUP, INSTANCE, FIELD);
-
-    // Assert
-    assert.equal(key, `${GROUP}.${INSTANCE}.${FIELD}`);
-    assert.deepEqual(parseAnswerKey(key, [GROUP]), { group: GROUP, instance: INSTANCE, field: FIELD });
-  });
-
-  it("answerKey_GroupThatPrefixesAnother_ParsesAsTheGroupItWasWrittenFor", () => {
-    // Arrange — the ambiguity 0013 · Q6 names. `day1.chapters` and `day1.chapters.notes`
-    // could both be groups, and a decoder that took the first prefix match would read an
-    // answer under the wrong question.
-    const SHORT = "day1.chapters";
-    const LONG = "day1.chapters.notes";
-    const INSTANCE = "5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55";
-
-    // Act
-    const parsed = parseAnswerKey(answerKey(LONG, INSTANCE, "body"), [SHORT, LONG]);
-
-    // Assert — SHORT is offered first and still loses, because its remainder
-    // ("notes.<instance>.body") has too many segments to be an instance and a field.
-    assert.deepEqual(parsed, { group: LONG, instance: INSTANCE, field: "body" });
-  });
-
+describe("answerKey", () => {
   it("answerKey_DottedOrEmptyPart_ThrowsRatherThanWritingAnUnreadableKey", () => {
     // Arrange — negative case. A dot in any part moves the boundary a decoder finds, and
     // the damage is silent: the key stores fine and stops being readable years later.
@@ -54,27 +23,6 @@ describe("answerKey and parseAnswerKey", () => {
     assert.throws(() => answerKey("day1.chapters", "", "title"), /not usable/);
     assert.throws(() => answerKey("day1.chapters", INSTANCE, "sub.title"), /not usable/);
     assert.throws(() => answerKey("day1.chapters", INSTANCE, ""), /not usable/);
-  });
-
-  it("parseAnswerKey_KeyNamingNoKnownGroup_IsUndefinedRatherThanAnError", () => {
-    // Arrange — negative case. This is what an answer left behind by a retired question
-    // looks like, and 0011 · C3 makes that an orphan to surface rather than a failure.
-    const KEY = "day9.retired.5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55.title";
-
-    // Act & Assert
-    assert.equal(parseAnswerKey(KEY, ["day1.chapters"]), undefined);
-  });
-
-  it("parseAnswerKey_GroupIdentifierWithNothingAfterIt_IsNotAnAnswer", () => {
-    // Arrange — negative case. A bare group identifier is the ORDER key, and reading it
-    // as an answer would hand a reader their own instance list as prose.
-    const GROUP = "day1.chapters";
-
-    // Act & Assert
-    assert.equal(parseAnswerKey(GROUP, [GROUP]), undefined);
-    assert.equal(parseAnswerKey(`${GROUP}.`, [GROUP]), undefined);
-    assert.equal(parseAnswerKey(`${GROUP}.5f1c`, [GROUP]), undefined);
-    assert.equal(parseAnswerKey(`${GROUP}.5f1c.`, [GROUP]), undefined);
   });
 
   it("orderKey_Group_IsTheGroupIdentifierItself", () => {
@@ -103,6 +51,20 @@ describe("readOrder and writeOrder", () => {
     // materialise, so collapsing these two into one answer is what would let a corrupt
     // order be minted over.
     assert.deepEqual(readOrder(undefined), { kind: "absent" });
+  });
+
+  it("readOrder_ValidJsonThatIsNotAnArrayOfStrings_IsUnreadable", () => {
+    // Arrange — negative case. `"5f1c"` is a plausible corruption (an order double-encoded
+    // on the way in) and is the input that separates the `Array.isArray` check from the
+    // per-entry one, which `NOT_AN_ARRAY` below does not reach.
+    const A_STRING = '"5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55"';
+    const A_NUMBER = "7";
+    const NULL = "null";
+
+    // Act & Assert
+    for (const stored of [A_STRING, A_NUMBER, NULL]) {
+      assert.deepEqual(readOrder(stored), { kind: "unreadable", stored }, stored);
+    }
   });
 
   it("readOrder_AnythingItCannotTrust_IsUnreadableAndKeepsTheStoredBytes", () => {

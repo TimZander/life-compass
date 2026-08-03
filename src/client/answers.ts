@@ -33,7 +33,8 @@ export const QUIET_MS = 800;
  *
  * It does not eliminate it. Up to this much speech is still unwritten at any moment, and
  * the page-hide flush that would narrow it further is not wired to anything yet — that
- * comes with the DOM binding. Until then this is a smaller window, not a closed one.
+ * comes with the DOM binding, and app.ts now wires it. This bounds the window rather than
+ * closing it: a device that dies outright still loses whatever had not been written.
  */
 export const MAX_WAIT_MS = 5000;
 

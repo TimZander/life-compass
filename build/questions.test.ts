@@ -4,6 +4,17 @@ import { ANCHOR, checkRegistry, checkSchema, loadSchema, renderQuestion } from "
 import { gapsOf, identifiersOf, type Question } from "../src/questions/types.ts";
 import type { Worksheet } from "../src/questions/index.ts";
 
+/**
+ * The text a reader actually sees, with attributes stripped.
+ *
+ * A label can legitimately appear in `data-label` — that is how the bound control gets its
+ * accessible name — while being deliberately absent from the printed page. Asserting
+ * against the raw HTML conflates the two, and would pass or fail for the wrong reason.
+ */
+function printed(html: string): string {
+  return html.replace(/<[^>]*>/g, "");
+}
+
 const CHAPTERS: Question = {
   kind: "repeat",
   id: "t.chapters",
@@ -204,14 +215,17 @@ describe("renderQuestion", () => {
     assert.ok(!html.includes("<script>"));
   });
 
-  it("renderQuestion_SingleQuestion_DoesNotPrintItsLabel", () => {
+  it("renderQuestion_SingleQuestion_DoesNotPrintItsLabelButStillCarriesItForAScreenReader", () => {
     // Arrange — the prose immediately above already asks the question, so printing the
-    // label produced "Patterns — what kind of work…" followed by "Patterns: ____".
+    // label produced "Patterns — what kind of work…" followed by "Patterns: ____". The
+    // label is still the only thing that can name the control once #24 binds it: derived
+    // from the surrounding prose instead, the name came out as the literal "______".
     // Act
     const html = renderQuestion(NOTE);
 
     // Assert
-    assert.ok(!html.includes("Note"));
+    assert.ok(!printed(html).includes("Note"), "the label was printed");
+    assert.ok(html.includes('data-label="Note"'), "the label was not carried for a screen reader");
     assert.ok(html.includes('data-question="t.note"'));
   });
 });
@@ -626,8 +640,13 @@ describe("field labels", () => {
     // Act
     const html = renderQuestion(question);
 
-    // Assert
-    assert.ok(!html.includes("Value"));
+    // Assert — not printed, but each row is still named distinctly, or a reader tabbing
+    // through hears "Value" three times with nothing to say which row they are in.
+    assert.ok(!printed(html).includes("Value"), "the label was printed");
+    assert.deepEqual(
+      [...html.matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["Value 1", "Value 2", "Value 3"],
+    );
     assert.equal(html.match(/<li data-instance="\d+">/g)?.length, 3);
   });
 });

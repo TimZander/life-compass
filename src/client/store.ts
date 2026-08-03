@@ -5,17 +5,12 @@
  * blank as `data-field`. A flat key/value map is what survives a worksheet being
  * reordered, and reordering prose is expected while identifiers are not.
  *
- * IT DOES NOT YET COVER REPEAT GROUPS, and that is 334 of the 447 blanks. 0011 stored a
- * repeat as one ordered array of instances per group — a shape 0013 supersedes (0011 ·
- * C8): the order lives under the group identifier and each answer under its own key, so
- * one field can be saved without rewriting its neighbours. 0013 also works out where
- * those identifiers come from for slots the build renders rather than the reader adds,
- * and the markup now carries a `data-instance` slot marker so a blank can be told apart
- * from the same field in another instance. What is still missing is the storage half —
- * the key encoding, and a write that can set a group's instance order and its first
- * answer together, which this interface cannot express. Both land with the DOM binding,
- * against a consumer that can prove them. Until then this store is correct for
- * single-valued fields and silent about the rest, which is why nothing binds to it yet.
+ * Repeat groups are covered too, and that is 334 of the 447 blanks. 0011 stored a repeat
+ * as one ordered array of instances per group — a shape 0013 supersedes (0011 · C8): the
+ * order lives under the group identifier and each answer under its own key, so one field
+ * can be saved without rewriting its neighbours. That needs a write which can set a
+ * group's instance order and its first answer together, which is what `claim` is for;
+ * `src/client/keys.ts` holds the key format itself.
  *
  * IndexedDB rather than localStorage: localStorage is synchronous, so a write blocks the
  * main thread mid-keystroke, which is precisely what docs/decisions/0001 forbids. It also
@@ -31,7 +26,7 @@
  * ever needs replacing (an encrypted store is already anticipated — 0009).
  */
 export type Store = {
-  /** Every answer, for restoring a page. Single-valued fields only — see the note above. */
+  /** Every answer, for restoring a page — instance orders included. */
   readAll(): Promise<ReadonlyMap<string, string>>;
   /** One field. Writing an empty string removes it rather than storing blankness. */
   write(field: string, value: string): Promise<void>;

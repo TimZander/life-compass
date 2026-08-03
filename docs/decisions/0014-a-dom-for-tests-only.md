@@ -13,8 +13,8 @@ caret intact — and until the fields existed there was nothing to point it at.
 
 The fields exist now, and they are DOM code: `src/client/fields.ts` upgrades every blank
 to a control, reads a blank's address from `data-instance` and `data-field` on its
-ancestors, guards restore against `document.activeElement`, and listens for `input`. Node
-has no DOM, so none of that can be exercised by the suite as it stands.
+ancestors, restores stored answers into the ones still empty, and listens for `input`.
+Node has no DOM, so none of that can be exercised by the suite as it stands.
 
 [0003](0003-multi-page-static-rendering-no-framework.md) weighs every dependency against a
 project meant to sit untouched for years, and the count has been two since it was written.
@@ -37,32 +37,39 @@ end-to-end path, but it needs a driver, a browser download and a place to run th
 more machinery than one dev dependency, for the same question.
 
 **O3. A DOM implementation, dev-only.** *Chosen.* `happy-dom`, in `devDependencies`. It
-supports the three things this actually turns on — `focus()` and `document.activeElement`,
-`selectionStart`/`selectionEnd`, and ancestor traversal — which were verified before it
-was adopted rather than assumed.
+supports the things the tests turn on — element creation and replacement, ancestor
+traversal, `focus()` and `document.activeElement`, `selectionStart`/`selectionEnd`, and
+event dispatch — which were verified before it was adopted rather than assumed. C4 records
+where that verification was not enough.
 
 ## Decision
 
-The dependency count 0003 guards is a count of things **the shipped site depends on**, and
-by that measure it is unchanged: nothing in `dist/` gains a byte, no client module imports
-this, and a reader's browser never sees it. What grows is the toolchain, and 0003 · C1's
-actual objection — "how much of this project's own code is welded to it" — does not apply
-to a package that only ever appears inside a test file's `import`.
+The build-time dependency count goes from two to three. Nothing in `dist/` gains a byte and
+a reader's browser never sees it, but that is a smaller claim than "the count is unchanged"
+and the honest one: 0003 · C1 was already counting build-time dependencies.
 
-The trade is between a dependency that can be removed in an afternoon and a fake that
-would have to be trusted without any way to check it. This project has just spent four
-review rounds learning what an unverifiable check costs.
+What makes it worth paying is that 0003 · C1's actual objection — how much of this
+project's own code gets welded to a dependency — barely applies here. `happy-dom` appears
+in one `import` in one test file. The trade is between a dependency that can be removed in
+an afternoon and a fake that would have to be trusted with no way to check it, and this
+project has spent four review rounds learning what an unverifiable check costs.
 
 ## Consequences
 
-**C1.** 0003's "two dependencies" figure now means two *runtime* dependencies and three
-dev ones. The distinction was always implicit — `typescript` was never shipped either —
-and is worth stating rather than leaving to be re-derived.
+**C1.** 0003 · C1 counts two dependencies, TypeScript and a Markdown renderer, and says
+plainly that both are build-time only. This makes it three. Calling the first two "runtime"
+dependencies to keep the headline number flat would be bookkeeping rather than a fact: the
+site ships zero dependencies before this and zero after, and the build-time count is what
+actually grows. What separates `happy-dom` from the `@types/*` packages 0003 · C1 discounts
+is that it is a real implementation rather than declarations — which is the cost worth
+noticing, and the reason it earns a record.
 
-**C2.** The client tier becomes testable at all. Before this, `banner.ts`, `sw-update.ts`
-and `fields.ts` were verified by reading their emitted output for expected substrings,
-which is why three device-testing rounds found bugs the suite could not. Those modules can
-now be exercised rather than pattern-matched.
+**C2.** The DOM-touching client modules become testable. `answers.ts` and `store.ts` were
+already unit-tested — the `Store` interface exists so their decisions could be tested in
+Node without a DOM — but `banner.ts` and `sw-update.ts` were only ever verified by reading
+their emitted output for expected substrings, which is why three device-testing rounds
+found bugs the suite could not. Those two can now be exercised rather than pattern-matched;
+neither is in this change.
 
 **C3.** A DOM in tests is not a browser. It does not lay out, does not paint, and its
 event loop is not a real one, so it cannot answer whether a textarea grows correctly or
@@ -71,22 +78,27 @@ replaces none of it.
 
 **C4.** The suite gains a way to be wrong that it did not have: a test can now pass
 because `happy-dom` behaves differently from a browser rather than because the code is
-right. That is a smaller and better-understood risk than a fake written here, but it is
-not zero, and anything surprising is worth checking against a device before trusting.
+right. This is not hypothetical and it did not take long. Assigning to a control's `value`
+moves the caret to the end in every browser; `happy-dom` leaves it where it was. The first
+version of the caret test — the one 0001 and #24 exist for — therefore passed against an
+input handler that wrote back into the field on every save, which is the exact defect it
+was written to forbid. The test now counts assignments to `value` instead of watching the
+caret, because that does not depend on either behaviour. The lesson generalises: a DOM
+test should assert on something the code did, not on a side effect the DOM is supposed to
+produce.
 
 **C5.** Client modules now import each other as `./keys.ts`, and the emit rewrites the
 extension to `.js`. [0012](0012-client-typescript-stripped-at-build-time.md) had the
 sources say `.js` so the specifier a browser resolves is the one the source contains, and
 that held while no client module imported another at runtime — `fields.ts` is the first
 that does, and Node cannot resolve `./keys.js` from source, so the tier would have been
-untestable exactly where it matters most. `rewriteRelativeImportExtensions` is set in
-`tsconfig.client.json` and in `build/client.ts`'s transpile options, and it is the only
-rewrite: no resolution, no bundling, nothing that knows how the site is served. The two
-settings have to agree or the emit ships `.ts` specifiers that 404, so the guard checks
-the output rather than the source —
+untestable exactly where it matters most. `rewriteRelativeImportExtensions` is the only rewrite: no
+resolution, no bundling, nothing that knows how the site is served. Only
+`build/client.ts` drives the emit — `tsconfig.client.json` is `noEmit`, so its copy of the
+setting governs the typecheck and nothing else — and the guard is therefore on the emit:
 `buildClient_RealRoot_EmitsEveryModuleAsBrowserReadyJavaScript` rejects any emitted
-relative specifier not ending in `.js`, and now proves the rewrite ran rather than
-proving somebody typed the extension correctly.
+relative specifier not ending in `.js`, and now proves the rewrite ran rather than proving
+somebody typed the extension correctly.
 
 **C6.** `assert.equal` may not be used on a DOM node. It passes quietly, and on failure
 tries to render a diff of two nodes — walking parents, children and the document until

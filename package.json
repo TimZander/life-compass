@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node build/build.ts",
     "serve": "node build/build.ts && node build/serve.ts",
-    "//typecheck": "Two projects: the build is real TypeScript, the client is JSDoc-annotated JS checked in place. See tsconfig.client.json.",
+    "//typecheck": "Two projects, both real TypeScript. The build runs from source; the client is emitted by build/client.ts and checked only here. See tsconfig.client.json.",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json",
     "//test": "`ls` first so a zero-match glob fails the script. `node --test` exits 0 when its glob matches nothing, so a renamed or moved suite would report success having run no tests at all. Both globs are listed so a missing suite on either tier fails rather than shrinking the run silently.",
     "test": "ls build/*.test.ts src/client/*.test.ts > /dev/null && node --test \"build/*.test.ts\" \"src/client/*.test.ts\""

@@ -175,9 +175,18 @@ describe("shipped client scripts", () => {
     ]);
     for (const module of modules) {
       assert.ok(module.code.length > 0, `${module.output} emitted nothing`);
-      // Type annotations are gone and the specifier a browser resolves is untouched.
+      // Type annotations are gone, and every relative specifier a browser will resolve
+      // ends in `.js`. The sources say `.ts` and build/client.ts rewrites them (0012 ·
+      // C5a), so this is what proves the rewrite ran rather than that somebody typed the
+      // extension correctly — and it is the only thing that does.
       assert.ok(!/^(import type|export type)/m.test(module.code), `${module.output} kept types`);
-      assert.ok(!/from "\.[^"]*(?<!\.js)";/.test(module.code), `${module.output} lost its .js`);
+      // Every form that can carry one, not just `from "…";`: a bare side-effect import and
+      // a dynamic `import("./x.ts")` ship a 404 exactly as readily, and an earlier version
+      // of this check looked only at `from` clauses while claiming to cover all of them.
+      const specifiers = [...module.code.matchAll(/(?:from|import)\s*\(?\s*"(\.[^"]*)"/g)];
+      for (const [, specifier] of specifiers) {
+        assert.ok(specifier?.endsWith(".js"), `${module.output} ships ${specifier}, which will 404`);
+      }
     }
   });
 

@@ -8,8 +8,10 @@
  * this does.
  *
  * `transpileModule` and not a program: it strips types from one file at a time and emits
- * nothing else. No bundling, no downlevelling, no module rewriting — the `./banner.js`
- * specifier a browser resolves is the same specifier the source imports. Type CHECKING
+ * nothing else. No bundling and no downlevelling. The one thing it does rewrite is the
+ * extension on a relative import — the source says `./keys.ts` so Node can run it, the
+ * browser gets `./keys.js` — and nothing else about a specifier is touched (0012 · C5a).
+ * Type CHECKING
  * stays where it was, in `tsc -p tsconfig.client.json --noEmit`, so this step cannot
  * report an error and cannot silently pass one either: it never looks.
  *

@@ -22,18 +22,36 @@ function request(result: unknown): unknown {
 
 function database(entries: readonly (readonly [unknown, unknown])[] = []) {
   const calls: Call[] = [];
+  /**
+   * Whether the current transaction can still take requests.
+   *
+   * IndexedDB commits a transaction as soon as its microtask queue drains, and every
+   * request issued afterwards throws `TransactionInactiveError`. A fake without that rule
+   * accepts requests forever, so "these writes were atomic" and "these writes happened at
+   * some point" look identical — which is how the atomicity test below first came to pass
+   * against an implementation that awaited a macrotask in the middle.
+   */
+  let active = false;
+  const guard = (op: string): void => {
+    if (!active) {
+      throw new Error(`TransactionInactiveError: ${op} was issued after the transaction closed`);
+    }
+  };
   const store = {
     getAllKeys: () => request(entries.map(([key]) => key)),
     getAll: () => request(entries.map(([, value]) => value)),
     get: (key: unknown) => {
+      guard("get");
       calls.push({ op: "get", args: [key] });
       return request(entries.find(([stored]) => stored === key)?.[1]);
     },
     put: (value: unknown, key: unknown) => {
+      guard("put");
       calls.push({ op: "put", args: [key, value] });
       return request(key);
     },
     delete: (key: unknown) => {
+      guard("delete");
       calls.push({ op: "delete", args: [key] });
       return request(undefined);
     },
@@ -44,8 +62,14 @@ function database(entries: readonly (readonly [unknown, unknown])[] = []) {
     transactions: 0,
     transaction: () => {
       fake.transactions += 1;
+      active = true;
       const transaction = { objectStore: () => store, oncomplete: () => {}, onabort: () => {}, onerror: () => {}, error: null };
-      queueMicrotask(() => queueMicrotask(() => transaction.oncomplete()));
+      // A macrotask, so anything the implementation awaits beyond the microtask queue
+      // finds the transaction closed, exactly as a browser would.
+      setTimeout(() => {
+        active = false;
+        transaction.oncomplete();
+      }, 0);
       return transaction;
     },
   };

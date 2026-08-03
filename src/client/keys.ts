@@ -15,10 +15,15 @@
  *     day1.chapters.5f1c….title      -> "The garage-band years"
  *
  * This is the one format in the project that cannot be changed once a reader has answers,
- * so it lives in one place, every function agrees with every other about what a usable
- * identifier is, and `parseAnswerKey` exists so a key can be read back — without it,
- * 0011's rename-on-read could never reach an answer with an instance spliced into its
- * middle, and an orphaned instance could never be told from a live one.
+ * so it lives in one place and every function agrees with every other about what a usable
+ * identifier is.
+ *
+ * There is deliberately no decoder here yet. One was written, reviewed, and removed: its
+ * correctness rests on no identifier being a dotted prefix of one belonging to a DIFFERENT
+ * question, `checkIdentifiers` does not enforce that (0013 · Q6), and nothing called it.
+ * Shipping a decoder whose invariant is unchecked and whose only exercise is its own test
+ * is what 0013 records as the mistake that produced the previous round of defects. It
+ * belongs with 0011's rename-on-read (0013 · Q4), which is what will first need it.
  */
 
 /** Instance identifiers must not contain the separator, or a key cannot be read back. */
@@ -55,11 +60,12 @@ export function newInstanceId(): string {
 /**
  * The key one answer inside a repeat instance is stored under.
  *
- * All three parts are checked, not just the instance. A dotted or empty `group` or `field`
- * would produce a key `parseAnswerKey` could not take apart again, and this format has to
- * stay readable years from now by something simpler than this code. The build enforces the
- * same shape on the schema side (`checkIdentifiers`), so a rejection here means a caller
- * invented an identifier rather than taking one from a question.
+ * The instance and the field are checked for dots as well as emptiness; the group is
+ * checked only for emptiness, because a group identifier is dotted by construction
+ * (`day1.chapters`). That asymmetry is the whole reason a decoder is hard, and it is why
+ * there is not one here yet. The build enforces the same shape on the schema side
+ * (`checkIdentifiers`), so a rejection here means a caller invented an identifier rather
+ * than taking one from a question.
  */
 export function answerKey(group: string, instance: string, field: string): string {
   if (group === "") {
@@ -72,42 +78,6 @@ export function answerKey(group: string, instance: string, field: string): strin
     throw new Error(`field identifier ${JSON.stringify(field)} is not usable in a key`);
   }
   return `${group}${SEPARATOR}${instance}${SEPARATOR}${field}`;
-}
-
-/**
- * Take an answer key apart again, given the group identifiers the schema knows.
- *
- * The group is found by match rather than by counting dots, because a group identifier
- * contains dots itself (`day1.chapters`). That works because no identifier may be a dotted
- * prefix of one belonging to a different question — 0013 · Q6, which is why that property
- * matters beyond tidiness.
- *
- * Returns nothing for a key that names no known group, which is what an answer left behind
- * by a retired question looks like. That is an orphan (0011 · C3) rather than an error, and
- * the caller decides what to show.
- */
-export function parseAnswerKey(
-  key: string,
-  groups: Iterable<string>,
-): { readonly group: string; readonly instance: string; readonly field: string } | undefined {
-  for (const group of groups) {
-    const prefix = `${group}${SEPARATOR}`;
-    if (!key.startsWith(prefix)) {
-      continue;
-    }
-    const rest = key.slice(prefix.length);
-    const cut = rest.indexOf(SEPARATOR);
-    if (cut <= 0 || cut === rest.length - 1) {
-      continue;
-    }
-    const instance = rest.slice(0, cut);
-    const field = rest.slice(cut + 1);
-    if (!usable(instance) || field.includes(SEPARATOR)) {
-      continue;
-    }
-    return { group, instance, field };
-  }
-  return undefined;
 }
 
 /** The key a repeat group's instance order is stored under — the group's own identifier. */

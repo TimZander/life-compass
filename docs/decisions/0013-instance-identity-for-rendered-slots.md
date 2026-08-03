@@ -92,15 +92,20 @@ containment, that every blank sits inside the element carrying its slot, is asse
 against a fixture for each repeat shape, including a multi-slot instance and the row
 holding a single field.
 
-**The client half** followed with the DOM binding: the key encoding and its decoder
-(`src/client/keys.ts`), minting, materialisation, and order-to-slot reconciliation
-(`src/client/fields.ts`). Holding the encoding back until something consumed it was the
-right call and is worth recording as a practice. A first attempt wrote the encoder alone,
-and review found that nearly every defect in it — a missing decoder, two functions
-disagreeing about a valid identifier, and a `data-field` that carries the full identifier
-where the encoder wanted a bare segment — existed because nothing consumed it. A format
-that cannot be changed later should not be frozen by a pull request containing nothing
-that exercises it.
+**The client half** followed with the DOM binding: the key encoding (`src/client/keys.ts`),
+minting, materialisation, and order-to-slot reconciliation (`src/client/fields.ts`).
+Holding the encoding back until something consumed it was the right call and is worth
+recording as a practice. A first attempt wrote the encoder alone, and review found that
+nearly every defect in it — two functions disagreeing about a valid identifier, and a
+`data-field` that carries the full identifier where the encoder wanted a bare segment —
+existed because nothing consumed it. A format that cannot be changed later should not be
+frozen by a pull request containing nothing that exercises it.
+
+**Still not built: the decoder.** One was written for this half and removed again, for the
+same reason and by the same argument. Nothing on the page reads a key back — the binding
+derives every address from the markup — so its only exercise was its own test, and its
+correctness rests on Q6, which the build does not enforce. It belongs with 0011's
+rename-on-read (Q4), which is the first thing that will actually need it.
 
 ## Questions the binding forced
 
@@ -116,11 +121,18 @@ would write. The loser does not retry with its own identifiers; it re-reads the 
 adopts the winner's, because whichever order landed second would otherwise strand the
 other tab's answers under identifiers nothing references.
 
-**Q2. `min` in both directions.** Shrinking leaves stored answers with no slot to show
-them in, and 0011's orphan surface will not catch them because their identifiers are
-still active. Growing leaves a rendered slot with no instance and no rule for what a
-write to it does. Both are reachable by an ordinary worksheet edit against readers who
-have already answered.
+**Q2. `min` in both directions.** *Still open, but no longer silent.* Shrinking leaves
+stored answers with no slot to show them in, and 0011's orphan surface will not catch them
+because their identifiers are still active. Growing leaves a rendered slot with no
+instance. Both are reachable by an ordinary worksheet edit against readers who have already
+answered, and neither has an answer here.
+
+What the binding does have is a floor. A stored order with fewer instances than the page
+has slots is refused outright — the group stops saving and says so — rather than used with
+the extra slots unkeyed. That was the first behaviour, and it discarded every word dictated
+into those slots on every keystroke with nothing on screen and nothing in the console.
+Refusing loudly is not an answer to this question; it is the difference between a question
+being open and a reader losing a paragraph to it.
 
 **Q3. Corrupt or partial orders.** *Answered.* `readOrder` returns three things rather
 than two — `absent`, `unreadable`, and an order — and only `absent` may materialise, so a

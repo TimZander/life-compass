@@ -14,8 +14,8 @@ import { bindAnswers } from "./fields.ts";
 import { orderKey, writeOrder } from "./keys.ts";
 import type { Store } from "./store.ts";
 
-/** A store that records what it was asked to keep, and can be pre-loaded. */
-function recorder(initial: ReadonlyMap<string, string> = new Map()) {
+/** A store that records what it was asked to keep, and can be pre-loaded or made to fail. */
+function recorder(initial: ReadonlyMap<string, string> = new Map(), failClaim = false) {
   const kept = new Map(initial);
   const claims: string[] = [];
   const store: Store & { readonly kept: Map<string, string>; readonly claims: string[] } = {
@@ -33,11 +33,20 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()) {
     },
     async claim(guard, entries) {
       claims.push(guard);
+      if (failClaim) {
+        throw new Error("QuotaExceededError");
+      }
       if (kept.has(guard)) {
         return false;
       }
       for (const [key, value] of entries) {
-        kept.set(key, value);
+        // Empty is absent, not blank — the real store deletes here, and a fake that stored
+        // "" would be more forgiving than the thing it stands in for.
+        if (value === "") {
+          kept.delete(key);
+        } else {
+          kept.set(key, value);
+        }
       }
       return true;
     },
@@ -47,10 +56,11 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()) {
 
 /** One `<p>` holding a single-valued blank, and a two-slot repeat, as the build emits them. */
 const PAGE = `
-  <p><span class="fill" data-field="day1.patterns">______</span></p>
+  <p class="q-single" data-question="day1.patterns"><span class="fill" data-field="day1.patterns" data-label="Patterns">______</span></p>
+  <p class="q-sentence" data-question="day4.enough">The world has enough <span class="fill-sm" data-field="day4.enough.excess" data-label="Enough of">______</span>.</p>
   <ol class="q-repeat" data-question="day1.chapters" data-min="2" data-max="2">
-    <li data-instance="0"><span class="fill" data-field="day1.chapters.title">______</span></li>
-    <li data-instance="1"><span class="fill" data-field="day1.chapters.title">______</span></li>
+    <li data-instance="0"><p><em><span class="fill" data-field="day1.chapters.title" data-label="Chapter 1 — Title">______</span></em></p></li>
+    <li data-instance="1"><p><em><span class="fill" data-field="day1.chapters.title" data-label="Chapter 2 — Title">______</span></em></p></li>
   </ol>`;
 
 let window: Window;
@@ -95,6 +105,14 @@ function assertSame(actual: unknown, expected: unknown, message: string): void {
   assert.ok(actual === expected, message);
 }
 
+/** Quiet window for every test here: long enough to be a debounce, short enough to wait on. */
+const QUIET_MS = 5;
+
+/** Let a debounce, a materialisation and the write it triggers all settle. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, QUIET_MS * 4));
+}
+
 /** Type into a field the way dictation arrives: appended, in bursts, without focus moving. */
 function dictate(field: HTMLTextAreaElement, phrase: string): void {
   field.value += phrase;
@@ -102,33 +120,64 @@ function dictate(field: HTMLTextAreaElement, phrase: string): void {
   field.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
 }
 
+/**
+ * Count assignments to a field's `value`, so "nothing wrote back into it" is observable.
+ *
+ * Watching the caret is not enough and this file learned it the hard way. In a browser any
+ * `.value` assignment — even an identical one — moves the caret to the end; happy-dom
+ * leaves it where it was. So a write-back is invisible in this DOM, and the first version
+ * of the test below passed against an input handler that assigned to the field on every
+ * save. Counting the assignments themselves does not depend on either behaviour.
+ */
+function countValueWrites(field: HTMLTextAreaElement): () => number {
+  const prototype = Object.getPrototypeOf(field) as object;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+  assert.ok(descriptor?.get !== undefined && descriptor.set !== undefined, "no value accessor");
+  let writes = 0;
+  Object.defineProperty(field, "value", {
+    configurable: true,
+    get(this: HTMLTextAreaElement) {
+      return descriptor.get?.call(this) as string;
+    },
+    set(this: HTMLTextAreaElement, next: string) {
+      writes += 1;
+      descriptor.set?.call(this, next);
+    },
+  });
+  return () => writes;
+}
+
 describe("dictating into a field", () => {
-  it("bindAnswers_SavingWhileDictating_LeavesTheFieldAndItsCaretAlone", async () => {
+  it("bindAnswers_SavingWhileDictating_LeavesTheFieldItsCaretAndItsTextAlone", async () => {
     // Arrange — the promise 0001 makes and #24 names. A save that re-renders the field,
     // moves focus, or writes back into it destroys an in-progress dictation: minutes of
     // speech, gone, in a way that is hard to reproduce and maddening to hit.
-    const QUIET = 5;
+    const BURSTS = 3;
+    const CARET = "The garage-band years, ".length;
     const document = render();
     const store = recorder();
-    const answers = createAnswers(store, { quietMs: QUIET, maxWaitMs: QUIET * 10 });
+    const answers = createAnswers(store, { quietMs: QUIET_MS, maxWaitMs: QUIET_MS * 10 });
     await bindAnswers(document, answers, store);
     const field = fieldFor("day1.patterns");
     field.focus();
+    const writes = countValueWrites(field);
 
-    // Act — three bursts with a save allowed to land between them.
+    // Act — three bursts with a save allowed to land between them, and the caret then put
+    // back into the middle, which is what a reader does to correct a mis-transcribed word.
     dictate(field, "The garage-band years, ");
-    await new Promise((resolve) => setTimeout(resolve, QUIET * 4));
-    const caretAfterSave = field.selectionStart;
+    await new Promise((resolve) => setTimeout(resolve, QUIET_MS * 4));
     dictate(field, "and the summer after. ");
     await answers.flush();
     dictate(field, "That is when it started.");
+    field.setSelectionRange(CARET, CARET);
     await answers.flush();
 
-    // Assert — the field is the same element, still focused, caret still at the end, and
-    // nothing rewrote what was said.
+    // Assert — same element, still focused, caret exactly where the reader left it, text
+    // untouched, and the only writes to `value` were the reader's own three bursts.
     assertSame(window.document.activeElement, field, "focus left the field");
-    assert.equal(field.selectionStart, field.value.length, "the caret moved");
-    assert.equal(caretAfterSave, "The garage-band years, ".length, "a save moved the caret");
+    assert.equal(writes(), BURSTS, "a save wrote back into the field");
+    assert.equal(field.selectionStart, CARET, "the caret moved");
+    assert.equal(field.selectionEnd, CARET, "the selection moved");
     assert.equal(
       field.value,
       "The garage-band years, and the summer after. That is when it started.",
@@ -144,7 +193,7 @@ describe("dictating into a field", () => {
     const TYPED = "what I am saying now";
     const document = render();
     const store = recorder(new Map([["day1.patterns", STORED]]));
-    const answers = createAnswers(store, { quietMs: 5 });
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
 
     // Act — start binding, then type before it resolves.
     const binding = bindAnswers(document, answers, store);
@@ -170,7 +219,7 @@ describe("dictating into a field", () => {
     const STORED = "written last week";
     const document = render();
     const store = recorder(new Map([["day1.patterns", STORED]]));
-    const answers = createAnswers(store, { quietMs: 5 });
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
 
     // Act
     const binding = bindAnswers(document, answers, store);
@@ -190,7 +239,7 @@ describe("repeat instances", () => {
     // render the same data-field, and before instances they shared one key.
     const document = render();
     const store = recorder();
-    const answers = createAnswers(store, { quietMs: 5 });
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
     await bindAnswers(document, answers, store);
 
     // Act
@@ -221,7 +270,7 @@ describe("repeat instances", () => {
         [`day1.chapters.${FIRST}.title`, "The garage-band years"],
       ]),
     );
-    const answers = createAnswers(store, { quietMs: 5 });
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
 
     // Act
     await bindAnswers(document, answers, store);
@@ -243,18 +292,18 @@ describe("repeat instances", () => {
     const CORRUPT = "a chapter title, written here by an older version";
     const document = render();
     const store = recorder(new Map([[orderKey("day1.chapters"), CORRUPT]]));
-    const answers = createAnswers(store, { quietMs: 5 });
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
     const warned: string[] = [];
 
     // Act
-    await bindAnswers(document, answers, store, { onUnreadable: (group) => warned.push(group) });
+    await bindAnswers(document, answers, store, { onUnwritable: (group, reason) => warned.push(`${group}:${reason}`) });
     dictate(fieldFor("day1.chapters.title", 0), "typed into a broken group");
     await answers.flush();
 
     // Assert — the stored bytes are untouched, nothing was minted, and the reader is told.
     assert.equal(store.kept.get(orderKey("day1.chapters")), CORRUPT);
     assert.deepEqual(store.claims, []);
-    assert.deepEqual(warned, ["day1.chapters"]);
+    assert.deepEqual(warned, ["day1.chapters:unreadable"]);
     answers.stop();
   });
 
@@ -266,7 +315,7 @@ describe("repeat instances", () => {
     const OTHER = "9a34cd77-1e2f-4b8d-8a01-3c9f7e5d2b66";
     const document = render();
     const store = recorder();
-    const answers = createAnswers(store, { quietMs: 5 });
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
     await bindAnswers(document, answers, store);
 
     // Act — the other tab wins the guard between binding and the first keystroke.
@@ -278,6 +327,162 @@ describe("repeat instances", () => {
     // Assert — stored under THEIR first instance, and their order survived.
     assert.equal(store.kept.get(orderKey("day1.chapters")), writeOrder([THEIRS, OTHER]));
     assert.equal(store.kept.get(`day1.chapters.${THEIRS}.title`), "typed after they won");
+    answers.stop();
+  });
+});
+
+describe("turning a blank into a control", () => {
+  it("upgrade_LongAndShortBlanks_BecomeATextareaAndAnInlineInput", async () => {
+    // Arrange — the choice the module's docstring argues for at length and nothing checked.
+    // A long blank holds a dictated paragraph and needs to wrap; all 31 short ones sit
+    // inside a sentence, where a block element would break the sentence in half.
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+
+    // Assert
+    assert.equal(fieldFor("day1.patterns").tagName, "TEXTAREA");
+    assert.equal(fieldFor("day4.enough.excess").tagName, "INPUT");
+    assert.equal(fieldFor("day4.enough.excess").getAttribute("type"), "text");
+    answers.stop();
+  });
+
+  it("upgrade_EveryControl_KeepsTheRuledLineClassAndIsNamedFromTheSchema", async () => {
+    // Arrange — both halves shipped broken once. The class is what style.css hangs the
+    // control rules off, and without it the field has no blank to sit on; the name is what
+    // a screen reader announces, and deriving it from the surrounding prose produced the
+    // literal "______" for every single-valued question.
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+
+    // Assert
+    assert.equal(fieldFor("day1.patterns").className, "fill");
+    assert.equal(fieldFor("day4.enough.excess").className, "fill-sm");
+    assert.equal(fieldFor("day1.patterns").getAttribute("aria-label"), "Patterns");
+    assert.equal(fieldFor("day1.chapters.title", 0).getAttribute("aria-label"), "Chapter 1 — Title");
+    assert.equal(fieldFor("day1.chapters.title", 1).getAttribute("aria-label"), "Chapter 2 — Title");
+    answers.stop();
+  });
+
+  it("upgrade_BlankWithNoResolvableAddress_IsLeftAsPrintedRatherThanMadeTypeable", async () => {
+    // Arrange — negative case. An upgraded but unbound control looks exactly like a working
+    // one and silently swallows everything dictated into it. Each of these is a build
+    // regression away, and `Number("")` is 0, so a blank marker would collide with slot 0.
+    const NO_QUESTION = '<li data-instance="0"><span class="fill" data-field="a.b">_</span></li>';
+    const BAD_SLOT = '<ol data-question="x.y"><li data-instance="one"><span class="fill" data-field="x.y.z">_</span></li></ol>';
+    const EMPTY_SLOT = '<ol data-question="x.y"><li data-instance=""><span class="fill" data-field="x.y.z">_</span></li></ol>';
+    const WRONG_PREFIX = '<ol data-question="x.y"><li data-instance="0"><span class="fill" data-field="other.z">_</span></li></ol>';
+    const document = render(NO_QUESTION + BAD_SLOT + EMPTY_SLOT + WRONG_PREFIX);
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+
+    // Assert — all four are still spans, so nothing can be typed into them and lost.
+    assert.equal(window.document.querySelectorAll("span.fill").length, 4);
+    assert.equal(window.document.querySelectorAll("textarea, input").length, 0);
+    answers.stop();
+  });
+});
+
+describe("when a group cannot be written to", () => {
+  it("bindAnswers_ClaimRejects_TellsTheReaderInsteadOfDyingSilently", async () => {
+    // Arrange — negative case, and the worst one available. A quota abort rejects the
+    // claim; an unhandled rejection here left the group permanently dead, so every later
+    // phrase was discarded with nothing on screen and nothing in the console.
+    const document = render();
+    const store = recorder(new Map(), true);
+    const failures: unknown[] = [];
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+    await bindAnswers(document, answers, store, { onFailure: (error) => failures.push(error) });
+
+    // Act — two phrases, the second after the first has already failed.
+    dictate(fieldFor("day1.chapters.title", 0), "The garage-band years");
+    await settle();
+    dictate(fieldFor("day1.chapters.title", 0), " and after");
+    await settle();
+
+    // Assert — reported, and reported once rather than on every keystroke.
+    assert.equal(failures.length, 1, "the reader was not told the group stopped saving");
+    assert.deepEqual([...store.kept.keys()], []);
+    answers.stop();
+  });
+
+  it("bindAnswers_StoredOrderShorterThanTheSlotsOnThePage_RefusesLoudly", async () => {
+    // Arrange — negative case. Raising a repeat's `min` after somebody has answered leaves
+    // slot 2 with no instance (0013 · Q2). Using the short order anyway made every word
+    // dictated into that slot vanish on every keystroke with nothing said.
+    const FIRST = "5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55";
+    const document = render();
+    const store = recorder(new Map([[orderKey("day1.chapters"), writeOrder([FIRST])]]));
+    const warned: string[] = [];
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store, {
+      onUnwritable: (group, reason) => warned.push(`${group}:${reason}`),
+    });
+    dictate(fieldFor("day1.chapters.title", 1), "into the slot with no instance");
+    await settle();
+
+    // Assert — the reader is told, the stored order is untouched, and nothing was minted
+    // over the answers already under it.
+    assert.deepEqual(warned, ["day1.chapters:short"]);
+    assert.equal(store.kept.get(orderKey("day1.chapters")), writeOrder([FIRST]));
+    assert.deepEqual(store.claims, []);
+    answers.stop();
+  });
+});
+
+describe("dictating while the page is still loading", () => {
+  it("bindAnswers_PhraseDictatedBeforeLoadResolves_IsSaved", async () => {
+    // Arrange — `load` reads the whole store, and on a cold cache a reader can get a
+    // sentence out before it returns. Attaching the listeners after the await meant that
+    // sentence was displayed and never stored: it survived on screen, so nothing looked
+    // wrong, and it was gone at the next visit.
+    const SPOKEN = "a paragraph said while the page was still opening";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act — dictate into the control before binding resolves.
+    const binding = bindAnswers(document, answers, store);
+    dictate(fieldFor("day1.patterns"), SPOKEN);
+    await binding;
+    await answers.flush();
+
+    // Assert
+    assert.equal(store.kept.get("day1.patterns"), SPOKEN);
+    answers.stop();
+  });
+
+  it("bindAnswers_PhraseDictatedIntoARepeatBeforeLoadResolves_IsSaved", async () => {
+    // Arrange — the same window, but into a group with no instances yet, so the value has
+    // to survive materialisation as well as the load.
+    const SPOKEN = "the first chapter, said early";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    const binding = bindAnswers(document, answers, store);
+    dictate(fieldFor("day1.chapters.title", 0), SPOKEN);
+    await binding;
+    await settle();
+
+    // Assert
+    assert.deepEqual(
+      [...store.kept.values()].filter((value) => value === SPOKEN),
+      [SPOKEN],
+    );
     answers.stop();
   });
 });
