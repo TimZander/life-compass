@@ -486,3 +486,103 @@ describe("dictating while the page is still loading", () => {
     answers.stop();
   });
 });
+
+describe("a short blank whose answer outgrows its line", () => {
+  /**
+   * Stand in for a layout engine, which happy-dom does not have (0014 · C3).
+   *
+   * Every element reports a width of ten pixels per character and every container is 300
+   * wide, so "fits on one line" becomes a question about string length. That is a fake, and
+   * it can only test the decision — whether the control is asked to take its own line —
+   * never how the result looks. The looking is a device's job, and this behaviour exists
+   * because a device found it.
+   */
+  function withFakeLayout(run: () => Promise<void>): Promise<void> {
+    const element = window.HTMLElement.prototype;
+    const width = Object.getOwnPropertyDescriptor(element, "offsetWidth");
+    const client = Object.getOwnPropertyDescriptor(element, "clientWidth");
+    const CHARACTER = 10;
+    const CONTAINER = 300;
+    Object.defineProperty(element, "offsetWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return (this.textContent?.length ?? 0) * CHARACTER;
+      },
+    });
+    Object.defineProperty(element, "clientWidth", { configurable: true, get: () => CONTAINER });
+    return run().finally(() => {
+      if (width !== undefined) {
+        Object.defineProperty(element, "offsetWidth", width);
+      }
+      if (client !== undefined) {
+        Object.defineProperty(element, "clientWidth", client);
+      }
+    });
+  }
+
+  it("fit_ShortAnswerThatStillFitsItsLine_StaysInTheSentence", async () => {
+    // Arrange — the ordinary case. "The world has enough ___" reads as one sentence, and a
+    // blank that jumped to its own line for every answer would take the sentence apart.
+    const SHORT = "noise";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await withFakeLayout(async () => {
+      await bindAnswers(document, answers, store);
+      dictate(fieldFor("day4.enough.excess"), SHORT);
+    });
+
+    // Assert
+    const field = fieldFor("day4.enough.excess");
+    assert.equal(field.classList.contains("fill-grown"), false, "a short answer left the line");
+    assert.equal(field.style.width, "50px", "the blank did not grow to its answer");
+    answers.stop();
+  });
+
+  it("fit_AnswerLongerThanTheLine_TakesItsOwnLineInsteadOfWrappingMidSentence", async () => {
+    // Arrange — reported from a device, and the screenshot is the argument: an inline-block
+    // that wraps starts its later lines at the blank's own left edge, mid-paragraph, and
+    // leaves the rest of the sentence stranded up on the first line.
+    const LONG = "test hw to make this long, and longer still";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await withFakeLayout(async () => {
+      await bindAnswers(document, answers, store);
+      dictate(fieldFor("day4.enough.excess"), LONG);
+    });
+
+    // Assert — the stylesheet owns the width once it is grown, so no inline width is pinned.
+    const field = fieldFor("day4.enough.excess");
+    assert.equal(field.classList.contains("fill-grown"), true, "a long answer stayed inline");
+    assert.equal(field.style.width, "", "an inline width was pinned to the measured text");
+    answers.stop();
+  });
+
+  it("fit_AnswerCutBackDownToSize_ReturnsToTheSentence", async () => {
+    // Arrange — negative case, and the one that would flicker if the width were read back
+    // from the control's own layout rather than measured from its text.
+    const LONG = "test hw to make this long, and longer still";
+    const SHORT = "noise";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await withFakeLayout(async () => {
+      await bindAnswers(document, answers, store);
+      const field = fieldFor("day4.enough.excess");
+      dictate(field, LONG);
+      field.value = SHORT;
+      field.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    });
+
+    // Assert
+    assert.equal(fieldFor("day4.enough.excess").classList.contains("fill-grown"), false);
+    answers.stop();
+  });
+});

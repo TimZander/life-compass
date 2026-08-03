@@ -87,13 +87,25 @@ function widthOf(control: HTMLTextAreaElement): number {
 }
 
 /**
+ * The class a short blank wears once its answer no longer fits on one line.
+ *
+ * A short blank sits inside a sentence, so it is `inline-block` — but an inline-block that
+ * wraps does not flow with the prose around it. The second and later lines start at the
+ * blank's own left edge, mid-paragraph, and the rest of the sentence stays stranded up on
+ * the first line. It is unreadable, and it is what a device showed the moment an answer ran
+ * past one line.
+ *
+ * So a long answer stops pretending to be part of the line and takes one of its own.
+ */
+const GROWN = "fill-grown";
+
+/**
  * Size a control to what is in it, so nothing said is hidden by its box.
  *
- * Both directions, and the width matters as much as the height. A short blank sits inside
- * a sentence and was given a fixed 6rem, which any real answer overruns — the text then
- * scrolls out of sight while the reader is still talking, which is the failure this module
- * exists to prevent, not a cosmetic one. It grows along the line until the line runs out
- * (CSS caps it), and wraps after that.
+ * Both directions. A short blank was given a fixed 6rem, which any real answer overruns —
+ * the text then scrolls out of sight while the reader is still talking, which is the
+ * failure this module exists to prevent, not a cosmetic one. It grows along its line while
+ * it fits, and drops to its own full-width line when it does not.
  *
  * style.css also asks for `field-sizing: content`, which does the same job natively and
  * covers the first paint before this runs. This does not check for it and skip: that would
@@ -104,12 +116,16 @@ function widthOf(control: HTMLTextAreaElement): number {
  */
 function fit(control: HTMLTextAreaElement): void {
   if (control.classList.contains("fill-sm")) {
-    const width = widthOf(control);
-    // Zero means nothing has been laid out — no layout engine, or the control is not on
-    // screen yet. Writing 0 would collapse it to nothing; the CSS minimum stands instead.
-    if (width > 0) {
-      control.style.width = `${width}px`;
-    }
+    // The width the answer would need on a single line, measured independently of how the
+    // control is laid out right now — so this cannot oscillate between the two states by
+    // reading back a width it set itself a keystroke ago.
+    const needed = widthOf(control);
+    const available = control.parentElement?.clientWidth ?? 0;
+    const grown = available > 0 && needed > available;
+    control.classList.toggle(GROWN, grown);
+    // Cleared rather than set when grown: the stylesheet takes the width from there, and an
+    // inline width would pin a full-width box to whatever the text measured.
+    control.style.width = grown || needed <= 0 ? "" : `${needed}px`;
   }
   // Collapse first, or the box can only ever grow: scrollHeight of an already-tall
   // textarea includes the empty space, so deleting a paragraph would leave the height.
