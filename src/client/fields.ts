@@ -64,17 +64,6 @@ export type BindOptions = {
 /** The selector for every blank the build emits. Shared so a caller cannot drift from it. */
 export const BLANK_SELECTOR = "span.fill, span.fill-sm";
 
-/**
- * Whether the browser sizes a control to its content by itself.
- *
- * Where it does, `fit` stays out of the way entirely: an inline `style.width` would
- * override `field-sizing` and take the sizing back off the browser, which does it better.
- */
-const SIZES_ITSELF =
-  typeof CSS !== "undefined" &&
-  typeof CSS.supports === "function" &&
-  CSS.supports("field-sizing", "content");
-
 /** Measures a string in a control's own font, off-screen, with one reused element. */
 let ruler: HTMLSpanElement | undefined;
 
@@ -105,11 +94,15 @@ function widthOf(control: HTMLTextAreaElement): number {
  * scrolls out of sight while the reader is still talking, which is the failure this module
  * exists to prevent, not a cosmetic one. It grows along the line until the line runs out
  * (CSS caps it), and wraps after that.
+ *
+ * style.css also asks for `field-sizing: content`, which does the same job natively and
+ * covers the first paint before this runs. This does not check for it and skip: that would
+ * make the JavaScript depend on a particular line surviving in a stylesheet it does not
+ * own, and a browser that ended up with new script and older CSS would then size nothing
+ * at all. Doing the work unconditionally costs one span measurement per keystroke on the
+ * 74 short blanks in the site, and cannot fall between the two.
  */
 function fit(control: HTMLTextAreaElement): void {
-  if (SIZES_ITSELF) {
-    return;
-  }
   if (control.classList.contains("fill-sm")) {
     const width = widthOf(control);
     // Zero means nothing has been laid out — no layout engine, or the control is not on
