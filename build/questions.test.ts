@@ -280,6 +280,81 @@ describe("sentence questions", () => {
     assert.ok(problems.some((problem) => problem.includes("names the same gap more than once")));
   });
 
+  it("checkSchema_TwoQuestionsProducingOneIdentifier_IsReported", () => {
+    // Arrange — negative case, and one nothing else catches: checkParts looks inside a
+    // single question, loadSchema compares question ids, and checkRegistry collapses both
+    // into one `used` entry. The identifier is the storage key, so this is two questions
+    // writing over each other.
+    const repeat: Question = {
+      kind: "repeat", id: "day1.chapters", instances: "row", label: "Chapter",
+      min: 1, max: 1, fields: [{ id: "title", label: "Title", size: "long" }],
+    };
+    const group: Question = {
+      kind: "group",
+      id: "day1",
+      fields: [{ id: "chapters", label: "Chapters", size: "long" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [repeat, group] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("is produced by both")));
+  });
+
+  it("checkSchema_QuestionsDeclaredInEitherOrder_AreBothReported", () => {
+    // Arrange — the collision is symmetric; catching it only when the repeat is declared
+    // first would make the check depend on file order.
+    const repeat: Question = {
+      kind: "repeat", id: "day1.chapters", instances: "row", label: "Chapter",
+      min: 1, max: 1, fields: [{ id: "title", label: "Title", size: "long" }],
+    };
+    const group: Question = {
+      kind: "group",
+      id: "day1",
+      fields: [{ id: "chapters", label: "Chapters", size: "long" }],
+    };
+
+    // Act & Assert
+    for (const questions of [[repeat, group], [group, repeat]]) {
+      const problems = checkSchema(loadSchema([{ source: "t.md", questions }]));
+      assert.ok(problems.some((problem) => problem.includes("is produced by both")));
+    }
+  });
+
+  it("checkSchema_EmptyPartId_IsReported", () => {
+    // Arrange — negative case: an empty segment makes the identifier unaddressable.
+    // `day1.chapters.` names nothing a reader could ever be shown or given back.
+    const question: Question = {
+      kind: "group",
+      id: "day1.chapters",
+      fields: [{ id: "", label: "Nameless", size: "long" }],
+    };
+
+    // Act
+    const problems = checkSchema(loadSchema([{ source: "t.md", questions: [question] }]));
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("empty segment")));
+  });
+
+  it("checkSchema_GroupPrefixingItsOwnFields_IsAccepted", () => {
+    // Arrange — the positive counterpart. Every group identifier is a dotted prefix of
+    // its own field identifiers; that IS the structure, and 141 such pairs exist in the
+    // shipped schema. A check that flagged them would flag the whole workbook.
+    const question: Question = {
+      kind: "repeat", id: "day1.chapters", instances: "row", label: "Chapter",
+      min: 1, max: 1,
+      fields: [
+        { id: "title", label: "Title", size: "long" },
+        { id: "learned", label: "Learned", size: "long" },
+      ],
+    };
+
+    // Act & Assert
+    assert.deepEqual(checkSchema(loadSchema([{ source: "t.md", questions: [question] }])), []);
+  });
+
   it("checkSchema_RealSchema_IsClean", () => {
     // Act & Assert — the shipped sentences and their fields must agree.
     assert.deepEqual(checkSchema(loadSchema()), []);
@@ -585,6 +660,96 @@ describe("repeat instance weight", () => {
     // Assert
     assert.ok(/<h3 id="t-values-1">Value 1 — <span[^>]*data-field="t\.values\.name"/.test(html));
     assert.ok(html.includes('data-field="t.values.definition"'));
+  });
+});
+
+describe("instance containment", () => {
+  // Golden output rather than a scan. Asserting "every blank sits inside the element
+  // carrying its slot" needs to know where elements end, and the tests that tried to
+  // work that out by splitting strings could not tell a blank INSIDE an instance from
+  // one merely following it — markup with an empty marked element and every blank
+  // outside it passed. Against a small fixture the whole shape can just be stated.
+
+  it("renderQuestion_RowInstance_WrapsEveryFieldInTheMarkedListItem", () => {
+    // Arrange
+    const question: Question = {
+      kind: "repeat", id: "t.chapters", instances: "row", label: "Chapter",
+      min: 1, max: 1,
+      fields: [
+        { id: "title", label: "Title", size: "long" },
+        { id: "learned", label: "Learned", size: "long" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert — both blanks are inside the one element that carries the slot.
+    assert.equal(
+      html,
+      '<ol class="q-repeat" data-question="t.chapters" data-min="1" data-max="1">\n' +
+        '<li data-instance="0"><strong>Title:</strong> ' +
+        '<span class="fill" data-field="t.chapters.title">______</span>\n' +
+        "<ul>\n" +
+        '<li><strong>Learned:</strong> ' +
+        '<span class="fill" data-field="t.chapters.learned">______</span></li>\n' +
+        "</ul>\n</li>\n</ol>",
+    );
+  });
+
+  it("renderQuestion_SectionInstance_WrapsItsHeadingAndFieldsTogether", () => {
+    // Arrange — the shape that needed a new element: before it, the heading and the field
+    // list were siblings with nothing to belong to.
+    const question: Question = {
+      kind: "repeat", id: "t.values", instances: "section", label: "Value",
+      min: 1, max: 1,
+      fields: [
+        { id: "name", label: "Value", size: "long" },
+        { id: "definition", label: "My definition", size: "long" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert — the heading's blank is inside the wrapper too, not before it.
+    assert.equal(
+      html,
+      '<div class="q-repeat" data-question="t.values" data-min="1" data-max="1">\n' +
+        '<div class="q-instance" data-instance="0">\n' +
+        '<h3 id="t-values-1">Value 1 — ' +
+        '<span class="fill" data-field="t.values.name">______</span></h3>\n' +
+        "<ul>\n" +
+        '<li><strong>My definition:</strong> ' +
+        '<span class="fill" data-field="t.values.definition">______</span></li>\n' +
+        "</ul>\n</div>\n</div>",
+    );
+  });
+
+  it("renderQuestion_LineInstance_KeepsEveryFieldOnTheMarkedRow", () => {
+    // Arrange
+    const question: Question = {
+      kind: "repeat", id: "t.generated", instances: "line", label: "Value",
+      min: 1, max: 1,
+      fields: [
+        { id: "value", label: "Value", size: "short" },
+        { id: "evidence", label: "Evidence", size: "short" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.equal(
+      html,
+      '<ol class="q-repeat" data-question="t.generated" data-min="1" data-max="1">\n' +
+        '<li data-instance="0">' +
+        '<span class="fill-sm" data-field="t.generated.value">______</span> — ' +
+        '<strong>Evidence:</strong> ' +
+        '<span class="fill-sm" data-field="t.generated.evidence">______</span></li>\n' +
+        "</ol>",
+    );
   });
 });
 

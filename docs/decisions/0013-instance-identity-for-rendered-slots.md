@@ -70,18 +70,22 @@ day1.chapters              -> ["5f1c…","9a34…","c701…","4b19…","e8a2…"
 day1.chapters.5f1c….title  -> "The garage-band years"
 ```
 
-Reading such a key back means finding where the group identifier ends, which is only
-possible if no identifier is a dotted prefix of another and no single segment contains a
-dot. Both were true across all 254 identifiers and enforced by nothing; `checkSchema` now
-refuses a build that breaks either, because 0011 · C2 means the registry never shrinks
-and the property would otherwise have to survive by accident forever.
+Reading such a key back means finding where the group identifier ends. Q6 below is what
+makes that possible; nothing here relies on it yet, because nothing here reads a key
+back.
+
+`checkSchema` does now refuse two questions that produce the same identifier — a repeat
+`day1.chapters` alongside a group `day1` with a field `chapters`. That is a collision
+today rather than a property of the future format: the identifier is the storage key, so
+it is two questions writing over each other, and nothing else catches it.
 
 ## What is built, and what is not
 
 This record is **Proposed**, not Accepted, because only the first half exists.
 
-**Built:** the slot markers, the `q-instance` wrapper, the identifier-shape checks, and a
-test asserting every repeat marks each slot exactly once and holds its own blanks.
+**Built:** the slot markers, the `q-instance` wrapper, a check that two questions cannot
+produce one identifier, and tests asserting every repeat marks each slot exactly once,
+numbered from zero, with every blank inside the element that carries its slot.
 
 **Not built:** the key encoding, minting, materialisation, and order-to-slot
 reconciliation. Those land with the DOM binding rather than before it. A first attempt
@@ -118,18 +122,35 @@ say it does not cover repeats.
 
 **Q5. Orphan surface.** 0011 · C3 puts orphans in the export envelope alongside live
 answers. An answer whose instance is absent from the order is, to a flat string map,
-indistinguishable from a live one — finding it needs the decoder Q4 also needs.
+indistinguishable from a live one — finding it needs the decoder Q4 also needs. The same
+gap swallows a retired group: once it leaves the schema nothing records that its value
+was an instance list, so 0011's orphan surface would present JSON to a reader as their
+own prose.
+
+**Q6. What makes a key readable back.** Splitting `day1.chapters.<uuid>.title` into its
+parts means knowing where the group identifier ends, which requires that no identifier is
+a dotted prefix of one belonging to a *different* question, and that no single segment
+contains a dot. Both hold across today's 254 identifiers and neither is enforced.
+Enforcing the first properly needs to see retired entries — 0011 · C2 keeps them forever
+and answers written under them survive — and a registry entry records only an id and a
+status, not which question produced it, so it cannot tell a group legitimately prefixing
+its own fields (141 such pairs today, by design) from a real collision. Freezing this
+means deciding what the registry stores, which is a change to 0011 rather than to this
+record.
 
 ## Consequences
 
 **C1.** Single-valued questions are untouched. Their key stays the frozen identifier, and
 the store's existing contract already covers them — which is why the storage slice could
-ship narrowed rather than blocked.
+ship narrowed rather than blocked. Their blanks have no `data-instance` ancestor at all,
+so a binding reading `closest("[data-instance]")` gets null, and null means single-valued
+rather than a bug.
 
 **C2.** The store's values stop being uniformly prose once the encoding lands: exactly
-one key per repeat group will hold JSON. Nothing needs a type tag to tell them apart,
-because the schema already knows which identifiers are groups — but an export (#25) has
-to know it too.
+one key per repeat group will hold JSON. While a group is in the schema nothing needs a
+type tag, because the schema says which identifiers are groups — but an export (#25) has
+to know it too, and a *retired* group has no schema entry at all, which is the second
+half of Q5.
 
 **C3.** Order becomes data rather than position. Once materialised, the array decides
 which slot a stored answer appears in, so the binding has to read the order before it
@@ -139,5 +160,11 @@ reads any answer.
 materialises — alongside "how many slots to print". #24 already noted it doing two jobs;
 Q2 is where that gets resolved rather than noted again.
 
-**C5.** This is still not the add-another control. It makes one possible without a
+**C6.** This record changes 0011's storage shape rather than keeping it: 0011 stores each
+instance's values inside one array per group, and this stores the order under the group
+identifier with every answer under its own key. #24 requires saving at field granularity
+so an interrupted dictation resumes without re-speaking anything, and a single JSON value
+per group rewrites every chapter on every keystroke. Recorded on 0011 as C1b.
+
+**C7.** This is still not the add-another control. It makes one possible without a
 migration, which is the point of doing it before answers exist rather than after.

@@ -83,9 +83,7 @@ day1.chapters -> [
 The group (`day1.chapters`) and the field (`title`) come from the schema; the instance
 comes from the reader's own act of adding one.
 
-*Amended 2026-08-02 by [0013](0013-instance-identity-for-rendered-slots.md): the site
-renders a fixed set of slots and has no adding, so "when the reader adds it" had nowhere
-to attach. 0013 keeps the shape and moves the minting to the first write.* Order lives in the array, so instance
+Order lives in the array, so instance
 identifiers carry no ordering and need not be sortable. Reordering, inserting, and
 deleting are all safe, and an orphan is traceable to a specific chapter rather than to
 "slot 3".
@@ -154,3 +152,17 @@ file.
 **C6.** `crypto.randomUUID()` requires a secure context. The site is HTTPS, so this holds —
 but it rules out opening the built `dist/` over `file://` and expecting the workbook to
 function, which is worth knowing before someone tries it as a way to use the app offline.
+
+**C1a.** *Added 2026-08-02.* "When the reader adds it" had nowhere to attach: the site
+renders a fixed set of slots from the schema and has no add control, so no reader act
+exists to mint an identifier from.
+[0013](0013-instance-identity-for-rendered-slots.md) keeps instance identity and moves
+the minting to the first write.
+
+**C1b.** *Added 2026-08-02.* The storage shape above — one array per group holding each
+instance's `values` — is **not** what 0013 specifies. #24 requires saving at field
+granularity so an interrupted dictation resumes without re-speaking anything, and a
+single JSON value per group rewrites every chapter on every keystroke. 0013 stores the
+instance order under the group identifier and each answer under its own key. The shape in
+this record is superseded; the reasoning that produced it — that instances need identity
+and that order is data rather than position — is not.

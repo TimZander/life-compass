@@ -102,7 +102,7 @@ export function checkRegistry(schema: Schema): readonly string[] {
  */
 export function checkSchema(schema: Schema): readonly string[] {
   const problems: string[] = [];
-  problems.push(...checkIdentifierShape(schema));
+  problems.push(...checkIdentifierSet(schema));
   for (const question of schema.byId.values()) {
     problems.push(...checkText(question));
     problems.push(...checkParts(question));
@@ -117,48 +117,38 @@ export function checkSchema(schema: Schema): readonly string[] {
 }
 
 /**
- * The two properties a stored key depends on, which were true by luck until now.
+ * Two questions must not produce the same identifier.
  *
- * Answers are keyed by identifier, and repeat answers will splice an instance identifier
- * between the group and the field. Reading such a key back means finding where the group
- * ends, which only works if no identifier is a dotted prefix of another and no single
- * part contains a dot. Both hold across all 254 identifiers today and nothing enforced
- * either, so the whole scheme rested on a coincidence that the registry — which by 0011
- * never shrinks — would have had to preserve forever by accident.
+ * Each question is checked internally by `checkParts`, and `loadSchema` refuses two
+ * questions with the same id, but neither sees a collision BETWEEN questions: a repeat
+ * `day1.chapters` and a group `day1` with a field `chapters` both produce
+ * `day1.chapters`, and `checkRegistry` then collapses the two into one `used` entry. The
+ * identifier is the storage key, so that is two questions writing over each other.
  *
- * Checked here rather than in the registry because it is a property OF the set: one
- * entry cannot know whether another is its prefix.
+ * This does not check the other property a stored key will need — that no identifier is
+ * a dotted prefix of one belonging to a DIFFERENT question, which is what makes a key
+ * with an instance spliced into the middle readable again. Enforcing that needs to see
+ * retired entries too, since 0011 · C2 keeps them forever and answers written under them
+ * survive; and the registry does not record which question an entry came from, so it
+ * cannot tell a group legitimately prefixing its own fields from a real collision. That
+ * is one of 0013's open questions, and it lands with the format it protects.
  */
-function checkIdentifierShape(schema: Schema): readonly string[] {
+function checkIdentifierSet(schema: Schema): readonly string[] {
   const problems: string[] = [];
-  // Which question each identifier came from. A group legitimately prefixes its own
-  // fields — that IS the structure — so only pairs from different questions matter.
   const owner = new Map<string, string>();
 
   for (const question of schema.byId.values()) {
     for (const id of identifiersOf(question)) {
-      if (id.split(".").some((part) => part === "")) {
-        problems.push(`${id} has an empty segment`);
+      // An empty segment means an empty part id somewhere, which makes the identifier
+      // unaddressable: `day1.` and `day1..title` name nothing a reader could be given.
+      if (id.split(".").some((segment) => segment === "")) {
+        problems.push(`${question.id} produces ${JSON.stringify(id)}, which has an empty segment`);
       }
       const already = owner.get(id);
-      // Two questions can each be internally consistent and still produce one identifier
-      // between them — a repeat `day1.chapters` and a group `day1` with a field
-      // `chapters`. Nothing else notices: loadSchema compares question ids, checkParts
-      // looks inside one question, and checkRegistry collapses both into a set.
       if (already !== undefined && already !== question.id) {
         problems.push(`${id} is produced by both ${already} and ${question.id}`);
       }
       owner.set(id, question.id);
-    }
-  }
-
-  for (const [id, from] of owner) {
-    for (const [other, otherFrom] of owner) {
-      if (from !== otherFrom && other.startsWith(`${id}.`)) {
-        problems.push(
-          `${id} (${from}) is a prefix of ${other} (${otherFrom}); a stored key could not be read back unambiguously`,
-        );
-      }
     }
   }
   return problems;

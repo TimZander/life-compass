@@ -479,7 +479,25 @@ describe("heading ids", () => {
     }
   });
 
-  it("buildPages_EveryRepeatSlot_IsMarkedExactlyOnceAndHoldsItsOwnBlanks", async () => {
+  it("buildPages_GeneratedHeading_CarriesAnIdLikeEveryOtherHeading", async () => {
+    // Arrange — section repeats are injected after parsing, so the slugger never sees
+    // them. Without an id of their own, Day 2's five values are the only headings on the
+    // site that cannot be linked to and that the build's anchor check cannot see.
+    const source = "days/day-2-values.md";
+
+    // Act
+    const result = await site();
+    const page = result.pages.find((candidate) => candidate.source === source);
+
+    // Assert
+    assert.ok(page !== undefined);
+    assert.ok(page.html.includes('<h3 id="day2-operationalised-1">'));
+    assert.ok(page.headingIds.includes("day2-operationalised-5"));
+  });
+});
+
+describe("repeat instances", () => {
+  it("renderQuestion_EveryRepeatInTheSchema_MarksEachSlotOnceFromZero", () => {
     // Arrange — before this, every slot of a group carried the same data-field, so 264 of
     // the site's blanks shared a key with another blank and would have overwritten each
     // other in storage. The pair (data-instance, data-field) is what makes them distinct.
@@ -488,12 +506,8 @@ describe("heading ids", () => {
     // version of this scraped the page with a non-greedy regex terminated by </div>,
     // which the new q-instance wrapper cut short: it inspected one instance of every
     // section repeat and passed while all five claimed slot zero.
-    const result = await site();
-
     // Act & Assert
     for (const worksheet of WORKSHEETS) {
-      const page = result.pages.find((candidate) => candidate.source === worksheet.source);
-      assert.ok(page !== undefined, `${worksheet.source} was not built`);
       for (const question of worksheet.questions) {
         if (question.kind !== "repeat") {
           continue;
@@ -538,24 +552,13 @@ describe("heading ids", () => {
     );
 
     // Assert
-    assert.equal(marked, expected);
+    assert.equal(
+      marked,
+      expected,
+      "slot markers on the built pages do not match the schema's total",
+    );
   });
 
-  it("buildPages_GeneratedHeading_CarriesAnIdLikeEveryOtherHeading", async () => {
-    // Arrange — section repeats are injected after parsing, so the slugger never sees
-    // them. Without an id of their own, Day 2's five values are the only headings on the
-    // site that cannot be linked to and that the build's anchor check cannot see.
-    const source = "days/day-2-values.md";
-
-    // Act
-    const result = await site();
-    const page = result.pages.find((candidate) => candidate.source === source);
-
-    // Assert
-    assert.ok(page !== undefined);
-    assert.ok(page.html.includes('<h3 id="day2-operationalised-1">'));
-    assert.ok(page.headingIds.includes("day2-operationalised-5"));
-  });
 });
 
 describe("question anchors", () => {

@@ -32,6 +32,12 @@ every citation already written down.
 
 ## Still open
 
-Nothing outstanding. `0004 · C4` raised question-identifier versioning as the one
-decision deliberately left unmade; [0011](0011-question-identifiers-are-frozen-and-registered.md)
-settles it.
+[0013](0013-instance-identity-for-rendered-slots.md) lists six questions the DOM binding
+has to answer before repeat answers can be stored: write atomicity against a single-key
+store, `min` changing in either direction after a reader has materialised instances,
+telling a corrupt instance order from an absent one, whether `0011`'s rename-on-read can
+reach a key with an instance spliced into the middle, how an orphaned instance is
+surfaced, and what the registry must record for a stored key to be readable back.
+
+`0004 · C4` raised question-identifier versioning as the one decision deliberately left
+unmade; [0011](0011-question-identifiers-are-frozen-and-registered.md) settles it.
