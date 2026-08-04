@@ -61,8 +61,10 @@ async function bindAnswerFields(): Promise<void> {
       }),
     // Without this the failure message outlives the failure: it is raised once and, with
     // nothing to clear it, stays on screen for the rest of the page even after the very
-    // next write succeeds.
-    onRecovery: () => dismissBanner(),
+    // next write succeeds. By id, because clearing the whole region would also take down
+    // sw-update's "a new version is ready" prompt — including one still queued behind a
+    // reader who was mid-sentence.
+    onRecovery: () => dismissBanner("storage"),
   });
 
   // The page-hide path, and the reason `flush` waits for the write rather than starting it.
@@ -91,7 +93,7 @@ async function bindAnswerFields(): Promise<void> {
         text:
           reason === "unreadable"
             ? "Some answers here could not be read, so this section is not saving. Your earlier answers are untouched."
-            : "This section has more blanks than answers saved for it, so it is not saving. Your earlier answers are untouched.",
+            : "This section has more blanks than it has saved answers to fill, so the extra ones are not saving. What you answered before is unchanged.",
         actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
       }),
     onFailure: (error: unknown) => {

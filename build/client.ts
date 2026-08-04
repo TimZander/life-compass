@@ -43,9 +43,10 @@ const OPTIONS: ts.CompilerOptions = {
   // served, which is the coupling 0003 avoided by not having a bundler.
   //
   // The sources say `.ts` so that Node can run them, which is what makes this tier
-  // testable at all: a client module importing another client module as `./keys.js` is a
-  // path Node cannot resolve from source. Before fields.ts nothing here had a runtime
-  // import of a sibling, so the question had not come up.
+  // testable at all: a client module importing another as `./keys.js` is a path Node
+  // cannot resolve from source. app.ts has always imported siblings at runtime and a
+  // browser resolves every one — but app.ts has no test, so Node was never asked to load
+  // one. keys.ts is the first sibling that a TESTED module imports.
   rewriteRelativeImportExtensions: true,
 };
 

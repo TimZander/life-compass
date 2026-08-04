@@ -121,18 +121,21 @@ would write. The loser does not retry with its own identifiers; it re-reads the 
 adopts the winner's, because whichever order landed second would otherwise strand the
 other tab's answers under identifiers nothing references.
 
-**Q2. `min` in both directions.** *Still open, but no longer silent.* Shrinking leaves
-stored answers with no slot to show them in, and 0011's orphan surface will not catch them
-because their identifiers are still active. Growing leaves a rendered slot with no
-instance. Both are reachable by an ordinary worksheet edit against readers who have already
-answered, and neither has an answer here.
+**Q2. `min` in both directions.** *Still open. Growing is no longer silent; shrinking
+still is.* Shrinking leaves stored answers with no slot to show them in, and 0011's orphan
+surface will not catch them because their identifiers are still active. Growing leaves a
+rendered slot with no instance. Both are reachable by an ordinary worksheet edit against
+readers who have already answered, and neither has an answer here.
 
-What the binding does have is a floor. A stored order with fewer instances than the page
-has slots is refused outright — the group stops saving and says so — rather than used with
-the extra slots unkeyed. That was the first behaviour, and it discarded every word dictated
-into those slots on every keystroke with nothing on screen and nothing in the console.
-Refusing loudly is not an answer to this question; it is the difference between a question
-being open and a reader losing a paragraph to it.
+What the binding has is a floor under the growing half. A stored order with fewer
+instances than the page has slots is adopted for the slots it covers — those still show
+their answers and still save — while the slots past its end refuse and say so. Discarding
+those keystrokes silently was the first behaviour; refusing the whole group was the second,
+and that hid the reader's existing answers behind a banner claiming they were untouched.
+
+Shrinking is untouched and still silent: an order LONGER than the slot count is accepted
+without comment, and the answers under its extra instances simply never appear. Neither
+half is answered here; one of them just stopped costing the reader words.
 
 **Q3. Corrupt or partial orders.** *Answered.* `readOrder` returns three things rather
 than two — `absent`, `unreadable`, and an order — and only `absent` may materialise, so a

@@ -89,10 +89,11 @@ produce.
 
 **C5.** Client modules now import each other as `./keys.ts`, and the emit rewrites the
 extension to `.js`. [0012](0012-client-typescript-stripped-at-build-time.md) had the
-sources say `.js` so the specifier a browser resolves is the one the source contains, and
-that held while no client module imported another at runtime — `fields.ts` is the first
-that does, and Node cannot resolve `./keys.js` from source, so the tier would have been
-untestable exactly where it matters most. `rewriteRelativeImportExtensions` is the only rewrite: no
+sources say `.js` so the specifier a browser resolves is the one the source contains. That
+held while nothing under test imported a sibling — app.ts has always imported four of them,
+but app.ts has no test, so Node was never asked to resolve one. `fields.ts` imports
+`keys.ts` and is tested, and Node cannot resolve `./keys.js` from source, so the tier would
+have been untestable exactly where it matters most. `rewriteRelativeImportExtensions` is the only rewrite: no
 resolution, no bundling, nothing that knows how the site is served. Only
 `build/client.ts` drives the emit — `tsconfig.client.json` is `noEmit`, so its copy of the
 setting governs the typecheck and nothing else — and the guard is therefore on the emit:

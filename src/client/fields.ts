@@ -89,8 +89,9 @@ function widthOf(control: HTMLTextAreaElement): number {
 /**
  * The class a short blank wears once its answer no longer fits on one line.
  *
- * A short blank sits inside a sentence, so it is `inline-block` — but an inline-block that
- * wraps does not flow with the prose around it. The second and later lines start at the
+ * A short blank is `inline-block` so it can sit inside a sentence — 31 of the 74 do, and
+ * the rest share the treatment — but an inline-block that wraps does not flow with the
+ * prose around it. The second and later lines start at the
  * blank's own left edge, mid-paragraph, and the rest of the sentence stays stranded up on
  * the first line. It is unreadable, and it is what a device showed the moment an answer ran
  * past one line.
@@ -107,12 +108,17 @@ const GROWN = "fill-grown";
  * failure this module exists to prevent, not a cosmetic one. It grows along its line while
  * it fits, and drops to its own full-width line when it does not.
  *
- * style.css also asks for `field-sizing: content`, which does the same job natively and
- * covers the first paint before this runs. This does not check for it and skip: that would
- * make the JavaScript depend on a particular line surviving in a stylesheet it does not
- * own, and a browser that ended up with new script and older CSS would then size nothing
- * at all. Doing the work unconditionally costs one span measurement per keystroke on the
- * 74 short blanks in the site, and cannot fall between the two.
+ * This is the only thing that sizes a control. `field-sizing: content` was in the
+ * stylesheet with a comment claiming it covered the first paint; it did neither — the
+ * control does not exist until `upgrade` creates it, so there is no earlier paint, and the
+ * property only governs an auto size while every width here is explicit and every height
+ * is set below. It has been removed rather than left as dead CSS with a role attributed
+ * to it.
+ *
+ * Costly on purpose: a `getComputedStyle`, a forced reflow for `scrollHeight`, and for a
+ * short blank a span measurement — per keystroke, per field. 0001 is about not blocking
+ * the main thread mid-dictation, and 0014 · C3 means the suite cannot see this. If a phone
+ * ever feels it, this is the first place to look.
  */
 function fit(control: HTMLTextAreaElement): void {
   if (control.classList.contains("fill-sm")) {
@@ -142,13 +148,13 @@ function fit(control: HTMLTextAreaElement): void {
 /**
  * Replace one blank with a control that looks the same and can be typed into.
  *
- * Always a `<textarea>`, short blanks included. An `<input>` was tried for the 31 that sit
- * inside a sentence — "The world has enough ___" — on the grounds that a block element
- * there would break the sentence in half. It kept the sentence and lost the answer: an
- * input cannot wrap, so anything longer than the gap scrolls out of sight while the reader
- * is still speaking. An inline-block textarea keeps the sentence AND grows, which is what
- * the size difference should have meant all along. `fill-sm` and `fill` now differ only in
- * how style.css lays them out.
+ * Always a `<textarea>`, short blanks included. An `<input>` was tried for the short ones —
+ * 74 of them render, 31 inside a sentence like "The world has enough ___" — on the grounds
+ * that a block element there would break the sentence in half. It kept the sentence and
+ * lost the answer: an input cannot wrap, so anything longer than the gap scrolls out of
+ * sight while the reader is still speaking. An inline-block textarea keeps the sentence AND
+ * grows, which is what the size difference should have meant all along. `fill-sm` and
+ * `fill` now differ only in how style.css lays them out.
  *
  * The class comes across so the control keeps the ruled-line look, and style.css has a
  * matching `textarea.fill` rule that undoes the parts of `.fill` which exist only to hide
@@ -211,10 +217,21 @@ function collect(root: ParentNode): readonly Field[] {
     if (!identifier.startsWith(prefix)) {
       continue;
     }
+    // And the remainder has to be one usable segment, because `answerKey` THROWS on an
+    // empty or dotted one. That throw is reachable from the restore loop, which now runs
+    // after the listeners are attached — so one bad identifier rejected `bindAnswers`
+    // partway through, leaving every later field blank on screen, still typeable, and
+    // primed to overwrite the stored answer it had failed to show. `checkIdentifiers` in
+    // the build says an interior dot "passes through unremarked", so a schema edit reaches
+    // this. Refusing the blank here keeps the throw unreachable.
+    const name = identifier.slice(prefix.length);
+    if (name === "" || name.includes(".")) {
+      continue;
+    }
     fields.push({
       element: upgrade(span),
       repeat: { group, slot: Number(marker) },
-      field: identifier.slice(prefix.length),
+      field: name,
     });
   }
   return fields;
@@ -242,6 +259,13 @@ export async function bindAnswers(
   const instances = new Map<string, readonly string[]>();
   /** Groups that must not be written to, and the reason, so it is only reported once. */
   const unwritable = new Map<string, "unreadable" | "short">();
+  /**
+   * Groups whose last materialisation failed, so one failure is reported once.
+   *
+   * Not the same as `unwritable`: this clears the moment a later attempt succeeds. A
+   * failure here is a bad moment, not a verdict on the group.
+   */
+  const failing = new Set<string>();
   const materialising = new Map<string, Promise<void>>();
 
   /** How many slots the page is showing for a group — fixed by the markup, so computed once. */
@@ -279,11 +303,10 @@ export async function bindAnswers(
     if (order.kind === "absent") {
       return;
     }
+    instances.set(group, order.instances);
     if (order.instances.length < (slotCount.get(group) ?? 0)) {
       refuse(group, "short");
-      return;
     }
-    instances.set(group, order.instances);
   }
 
   const keyFor = (field: Field): string | undefined => {
@@ -339,12 +362,16 @@ export async function bindAnswers(
       answers.set(field.field, field.element.value);
       return;
     }
-    if (unwritable.has(repeat.group)) {
-      return;
-    }
     const key = keyFor(field);
     if (key !== undefined) {
+      // A key exists, so this slot saves — even in a group refused as `short`, where the
+      // slots the stored order does cover are as writable as they ever were.
       answers.set(key, field.element.value);
+      return;
+    }
+    if (unwritable.has(repeat.group)) {
+      // No key and already refused: `adopt` told the reader why. Materialising here would
+      // mint over an order that cannot be read, or past one that is merely short.
       return;
     }
     // First keystroke in a group nobody has answered yet. The value is re-read from the
@@ -358,21 +385,29 @@ export async function bindAnswers(
       .then(() => {
         const settled = keyFor(field);
         if (settled !== undefined) {
+          failing.delete(group);
           answers.set(settled, field.element.value);
           return;
         }
         // Materialising resolved and the field still has no key. `adopt` has already told
         // the reader why; saying nothing here would drop the value in silence.
-        refuse(group, unwritable.get(group) ?? "short");
+        const known = unwritable.get(group);
+        if (known !== undefined) {
+          refuse(group, known);
+        }
       })
       .catch((error: unknown) => {
-        options.onFailure?.(error);
-        refuse(group, "unreadable");
+        // Reported, NOT refused. A quota abort, a transaction abort and a version-change
+        // abort all land here and all can clear on the next attempt; marking the group
+        // unwritable turned one bad moment into a group that never saved again for the
+        // life of the page — the very failure this path was rewritten to remove. `finally`
+        // clears the memo, so the reader's next phrase retries.
+        if (!failing.has(group)) {
+          failing.add(group);
+          options.onFailure?.(error);
+        }
       })
       .finally(() => {
-        // In `finally`, not in `then`. Leaving a rejected promise memoised here made the
-        // group permanently dead: every later keystroke reused it, `then` never ran, and
-        // nothing was ever saved again.
         materialising.delete(group);
       });
   }
@@ -380,10 +415,53 @@ export async function bindAnswers(
   // Attached before the await below, so nothing dictated during load is missed.
   for (const field of fields) {
     field.element.addEventListener("input", () => {
-      fit(field.element);
+      // Saving first, and sizing after. `fit` is cosmetic and does forced layout; with it
+      // ahead of the write, anything it threw took the reader's words down with it, and
+      // `dispatchEvent` swallowed the error so nothing reached the console either.
       record(field);
+      try {
+        fit(field.element);
+      } catch (error) {
+        console.error("life-compass: a field could not be resized", error);
+      }
     });
   }
+
+  // Re-fit when the viewport changes shape. `fit` pins a height in pixels for the width the
+  // control had at the time, and the box hides its overflow with no scrollbar — so rotating
+  // a phone narrows the column, the answer rewraps to more lines, and the tail of a
+  // dictated paragraph is clipped with no way to reach it. That is the same loss as the
+  // 9999px indent, through a different door.
+  //
+  // Coalesced into an animation frame because a resize fires continuously while it happens,
+  // and each `fit` forces layout for every field on the page.
+  // Taken from the bound document rather than the global `window`, so this works on
+  // whatever `root` it was handed and needs no extra global installed to be testable.
+  const view = fields[0]?.element.ownerDocument.defaultView;
+  let refitting = false;
+  const refit = (): void => {
+    if (refitting) {
+      return;
+    }
+    refitting = true;
+    const run = (): void => {
+      refitting = false;
+      for (const field of fields) {
+        try {
+          fit(field.element);
+        } catch (error) {
+          console.error("life-compass: a field could not be resized", error);
+        }
+      }
+    };
+    if (typeof view?.requestAnimationFrame === "function") {
+      view.requestAnimationFrame(run);
+    } else {
+      setTimeout(run, 0);
+    }
+  };
+  view?.addEventListener("resize", refit);
+  view?.addEventListener("orientationchange", refit);
 
   const stored = await answers.load();
   for (const group of slotCount.keys()) {
@@ -410,6 +488,10 @@ export async function bindAnswers(
       // write and closes the window.
       record(field);
     }
-    fit(field.element);
+    try {
+      fit(field.element);
+    } catch (error) {
+      console.error("life-compass: a field could not be resized", error);
+    }
   }
 }

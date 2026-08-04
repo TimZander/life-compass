@@ -15,7 +15,7 @@ import { orderKey, writeOrder } from "./keys.ts";
 import type { Store } from "./store.ts";
 
 /** A store that records what it was asked to keep, and can be pre-loaded or made to fail. */
-function recorder(initial: ReadonlyMap<string, string> = new Map(), failClaim = false) {
+function recorder(initial: ReadonlyMap<string, string> = new Map(), failClaim: boolean | number = false) {
   const kept = new Map(initial);
   const claims: string[] = [];
   const store: Store & { readonly kept: Map<string, string>; readonly claims: string[] } = {
@@ -33,7 +33,9 @@ function recorder(initial: ReadonlyMap<string, string> = new Map(), failClaim = 
     },
     async claim(guard, entries) {
       claims.push(guard);
-      if (failClaim) {
+      // A number fails that many attempts and then recovers, which is what a quota abort
+      // or a version-change abort actually looks like — a bad moment, not a verdict.
+      if (typeof failClaim === "number" ? claims.length <= failClaim : failClaim) {
         throw new Error("QuotaExceededError");
       }
       if (kept.has(guard)) {
@@ -120,6 +122,12 @@ function dictate(field: HTMLTextAreaElement, phrase: string): void {
   field.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
 }
 
+/** Replace a field's contents, the way a reader correcting an answer does. */
+function retype(field: HTMLTextAreaElement, text: string): void {
+  field.value = text;
+  field.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+}
+
 /**
  * Count assignments to a field's `value`, so "nothing wrote back into it" is observable.
  *
@@ -131,19 +139,38 @@ function dictate(field: HTMLTextAreaElement, phrase: string): void {
  */
 function countValueWrites(field: HTMLTextAreaElement): () => number {
   const prototype = Object.getPrototypeOf(field) as object;
-  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-  assert.ok(descriptor?.get !== undefined && descriptor.set !== undefined, "no value accessor");
   let writes = 0;
-  Object.defineProperty(field, "value", {
-    configurable: true,
-    get(this: HTMLTextAreaElement) {
-      return descriptor.get?.call(this) as string;
-    },
-    set(this: HTMLTextAreaElement, next: string) {
+  // Every channel that can put text into a textarea, not just `.value`. Watching one of
+  // them proves only that one was not used: `defaultValue`, `textContent` and the `value`
+  // attribute all reach the same box, and a write-back through any of them destroys a
+  // dictation exactly as thoroughly.
+  for (const name of ["value", "defaultValue", "textContent"] as const) {
+    const owner = [prototype, Object.getPrototypeOf(prototype) as object, field].find(
+      (candidate) => Object.getOwnPropertyDescriptor(candidate, name) !== undefined,
+    );
+    const descriptor =
+      owner === undefined ? undefined : Object.getOwnPropertyDescriptor(owner, name);
+    if (descriptor?.get === undefined || descriptor.set === undefined) {
+      continue;
+    }
+    Object.defineProperty(field, name, {
+      configurable: true,
+      get(this: HTMLTextAreaElement) {
+        return descriptor.get?.call(this) as string;
+      },
+      set(this: HTMLTextAreaElement, next: string) {
+        writes += 1;
+        descriptor.set?.call(this, next);
+      },
+    });
+  }
+  const setAttribute = field.setAttribute.bind(field);
+  field.setAttribute = (name: string, value: string): void => {
+    if (name === "value") {
       writes += 1;
-      descriptor.set?.call(this, next);
-    },
-  });
+    }
+    setAttribute(name, value);
+  };
   return () => writes;
 }
 
@@ -487,38 +514,39 @@ describe("dictating while the page is still loading", () => {
   });
 });
 
+/**
+ * Stand in for a layout engine, which happy-dom does not have (0014 · C3).
+ *
+ * Every element reports a width of ten pixels per character and every container is 300
+ * wide, so "fits on one line" becomes a question about string length. That is a fake, and
+ * it can only test the decision — whether the control is asked to take its own line —
+ * never how the result looks. The looking is a device's job, and this behaviour exists
+ * because a device found it.
+ */
+function withFakeLayout(run: () => Promise<void>): Promise<void> {
+  const element = window.HTMLElement.prototype;
+  const width = Object.getOwnPropertyDescriptor(element, "offsetWidth");
+  const client = Object.getOwnPropertyDescriptor(element, "clientWidth");
+  const CHARACTER = 10;
+  const CONTAINER = 300;
+  Object.defineProperty(element, "offsetWidth", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return (this.textContent?.length ?? 0) * CHARACTER;
+    },
+  });
+  Object.defineProperty(element, "clientWidth", { configurable: true, get: () => CONTAINER });
+  return run().finally(() => {
+    if (width !== undefined) {
+      Object.defineProperty(element, "offsetWidth", width);
+    }
+    if (client !== undefined) {
+      Object.defineProperty(element, "clientWidth", client);
+    }
+  });
+}
 describe("a short blank whose answer outgrows its line", () => {
-  /**
-   * Stand in for a layout engine, which happy-dom does not have (0014 · C3).
-   *
-   * Every element reports a width of ten pixels per character and every container is 300
-   * wide, so "fits on one line" becomes a question about string length. That is a fake, and
-   * it can only test the decision — whether the control is asked to take its own line —
-   * never how the result looks. The looking is a device's job, and this behaviour exists
-   * because a device found it.
-   */
-  function withFakeLayout(run: () => Promise<void>): Promise<void> {
-    const element = window.HTMLElement.prototype;
-    const width = Object.getOwnPropertyDescriptor(element, "offsetWidth");
-    const client = Object.getOwnPropertyDescriptor(element, "clientWidth");
-    const CHARACTER = 10;
-    const CONTAINER = 300;
-    Object.defineProperty(element, "offsetWidth", {
-      configurable: true,
-      get(this: HTMLElement) {
-        return (this.textContent?.length ?? 0) * CHARACTER;
-      },
-    });
-    Object.defineProperty(element, "clientWidth", { configurable: true, get: () => CONTAINER });
-    return run().finally(() => {
-      if (width !== undefined) {
-        Object.defineProperty(element, "offsetWidth", width);
-      }
-      if (client !== undefined) {
-        Object.defineProperty(element, "clientWidth", client);
-      }
-    });
-  }
+
 
   it("fit_ShortAnswerThatStillFitsItsLine_StaysInTheSentence", async () => {
     // Arrange — the ordinary case. "The world has enough ___" reads as one sentence, and a
@@ -611,6 +639,226 @@ describe("a short blank whose answer outgrows its line", () => {
 
     // Assert
     assert.equal(fieldFor("day4.enough.excess").classList.contains("fill-grown"), false);
+    answers.stop();
+  });
+});
+
+describe("when materialising fails", () => {
+  it("bindAnswers_ClaimFailsOnceThenRecovers_SavesTheNextPhraseAndReportsOnce", async () => {
+    // Arrange — negative case, and the regression that made an earlier fix worse than the
+    // bug. A quota abort, a transaction abort and a version-change abort all reject the
+    // claim and all can clear on the next attempt. Refusing the group on the first one
+    // turned a bad moment into a section that never saved again for the life of the page.
+    const FAILURES = 1;
+    const RECOVERED = "said again after the store came back";
+    const document = render();
+    const store = recorder(new Map(), FAILURES);
+    const failures: unknown[] = [];
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+    await bindAnswers(document, answers, store, { onFailure: (error) => failures.push(error) });
+
+    // Act
+    dictate(fieldFor("day1.chapters.title", 0), "lost to the abort");
+    await settle();
+    retype(fieldFor("day1.chapters.title", 0), RECOVERED);
+    await settle();
+    await answers.flush();
+
+    // Assert — the retry landed, and the reader was told once rather than per keystroke.
+    assert.ok(
+      [...store.kept.values()].includes(RECOVERED),
+      "the group never saved again after one transient failure",
+    );
+    assert.equal(failures.length, 1, "the failure was reported more than once");
+    answers.stop();
+  });
+
+  it("bindAnswers_SizingThrows_StillSavesWhatWasSaid", async () => {
+    // Arrange — negative case. `fit` is cosmetic and forces layout. With it ahead of the
+    // write, anything it threw took the reader's words with it, and `dispatchEvent`
+    // swallowed the error so nothing reached the console either.
+    const SPOKEN = "a paragraph that must outlive the layout";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+    await bindAnswers(document, answers, store);
+    const field = fieldFor("day1.patterns");
+    Object.defineProperty(field, "scrollHeight", {
+      configurable: true,
+      get() {
+        throw new Error("layout is unavailable");
+      },
+    });
+    const logged: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => logged.push(args);
+
+    // Act
+    try {
+      dictate(field, SPOKEN);
+      await answers.flush();
+    } finally {
+      console.error = original;
+    }
+
+    // Assert
+    assert.equal(store.kept.get("day1.patterns"), SPOKEN, "the sizing failure took the answer");
+    assert.equal(logged.length, 1, "the sizing failure was swallowed");
+    answers.stop();
+  });
+});
+
+describe("a stored order shorter than the page", () => {
+  it("bindAnswers_ShortOrder_StillShowsAndSavesTheSlotsItCovers", async () => {
+    // Arrange — refusing the whole group hid the reader's own work: their answers were
+    // keyed correctly for the slots the order does cover, and dropping it left those slots
+    // blank under a banner saying the answers were untouched. True of storage, and no help
+    // to somebody looking at an empty page.
+    const FIRST = "5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55";
+    const ANSWERED = "written before the worksheet grew";
+    const EDITED = "and edited today";
+    const document = render();
+    const store = recorder(
+      new Map([
+        [orderKey("day1.chapters"), writeOrder([FIRST])],
+        [`day1.chapters.${FIRST}.title`, ANSWERED],
+      ]),
+    );
+    const warned: string[] = [];
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store, {
+      onUnwritable: (group, reason) => warned.push(`${group}:${reason}`),
+    });
+    const restored = fieldFor("day1.chapters.title", 0).value;
+    retype(fieldFor("day1.chapters.title", 0), EDITED);
+    await settle();
+    await answers.flush();
+
+    // Assert — the covered slot shows its answer and still saves; the reader is still told
+    // about the slot that cannot.
+    assert.equal(restored, ANSWERED, "a stored answer was hidden");
+    assert.equal(
+      store.kept.get(`day1.chapters.${FIRST}.title`),
+      EDITED,
+      "the covered slot stopped saving",
+    );
+    assert.deepEqual(warned, ["day1.chapters:short"]);
+    answers.stop();
+  });
+
+  it("bindAnswers_RefusedGroup_IsReportedOncePerGroupNotPerKeystroke", async () => {
+    // Arrange — negative case. A message repeated on every keystroke is the interruption
+    // 0001 forbids more strongly than it requires the message.
+    const CORRUPT = "not an instance order at all";
+    const document = render();
+    const store = recorder(new Map([[orderKey("day1.chapters"), CORRUPT]]));
+    const warned: string[] = [];
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store, { onUnwritable: (group) => warned.push(group) });
+    dictate(fieldFor("day1.chapters.title", 0), "one");
+    dictate(fieldFor("day1.chapters.title", 0), "one two");
+    dictate(fieldFor("day1.chapters.title", 1), "and the other slot");
+    await settle();
+
+    // Assert
+    assert.deepEqual(warned, ["day1.chapters"]);
+    answers.stop();
+  });
+});
+
+describe("losing a claim to an order that cannot be used", () => {
+  it("bindAnswers_AnotherTabWroteAShortOrder_ReportsOnceNotTwice", async () => {
+    // Arrange — the one path that refuses the same group twice: `adopt` refuses it inside
+    // `materialise` after the claim is lost, and the `.then` fallback then finds the field
+    // still has no key and refuses again. Without the once-only guard the reader gets two
+    // banners for one condition.
+    const THEIRS = "5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55";
+    const document = render();
+    const store = recorder();
+    const warned: string[] = [];
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+    await bindAnswers(document, answers, store, {
+      onUnwritable: (group, reason) => warned.push(`${group}:${reason}`),
+    });
+
+    // Act — the other tab wins the guard with an order covering only its first slot.
+    store.kept.set(orderKey("day1.chapters"), writeOrder([THEIRS]));
+    dictate(fieldFor("day1.chapters.title", 1), "typed into the slot they did not cover");
+    await settle();
+
+    // Assert
+    assert.deepEqual(warned, ["day1.chapters:short"]);
+    answers.stop();
+  });
+});
+
+describe("an identifier the build let through", () => {
+  it("collect_FieldSegmentWithADot_IsRefusedInsteadOfAbortingTheWholePage", async () => {
+    // Arrange — negative case, and the sharpest edge of attaching listeners before the
+    // restore. `answerKey` throws on a dotted field segment; that throw reached the restore
+    // loop, rejected bindAnswers partway through, and left every later field blank on
+    // screen, still typeable, and primed to overwrite the answer it had failed to show.
+    // build/questions.ts says an interior dot "passes through unremarked".
+    const DOTTED =
+      '<ol class="q-repeat" data-question="g.rep"><li data-instance="0">' +
+      '<span class="fill" data-field="g.rep.sub.title" data-label="bad">_</span></li>' +
+      '<li data-instance="1"><span class="fill" data-field="g.rep.title" data-label="ok">_</span></li></ol>';
+    const document = render(DOTTED);
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act & Assert — binding completes, the bad blank stays printed, the good one binds.
+    await bindAnswers(document, answers, store);
+    assert.equal(window.document.querySelectorAll("span.fill").length, 1, "the bad blank was bound");
+    assert.equal(window.document.querySelectorAll("textarea").length, 1, "the good blank was not bound");
+    answers.stop();
+  });
+});
+
+describe("listeners and the load they race", () => {
+  it("bindAnswers_InputDuringLoad_IsQueuedBeforeBindingEvenResolves", async () => {
+    // Arrange — pins the listener ORDERING on its own. The restore loop also re-records any
+    // field that is non-empty when load resolves, so a test that waits for binding passes
+    // whether the listeners went on before the await or after it, and either mechanism
+    // could rot unnoticed. This one never awaits the binding.
+    const SPOKEN = "said before the store answered";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act — dictate during load, then flush WITHOUT awaiting the binding.
+    const binding = bindAnswers(document, answers, store);
+    dictate(fieldFor("day1.patterns"), SPOKEN);
+    await answers.flush();
+
+    // Assert
+    assert.equal(store.kept.get("day1.patterns"), SPOKEN, "the listener was not attached yet");
+    await binding;
+    answers.stop();
+  });
+
+  it("bindAnswers_RestoredAnswer_IsSizedSoItIsNotHiddenByItsBox", async () => {
+    // Arrange — a long answer from a previous visit is restored into a 6rem box. Nothing
+    // sized it on load, so it stayed pinned at 6rem with the text hidden — the primary
+    // failure this module exists to prevent, on the reader's own saved work.
+    const LONG = "an answer from last week, far too long for the printed gap";
+    const document = render();
+    const store = recorder(new Map([["day4.enough.excess", LONG]]));
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await withFakeLayout(async () => {
+      await bindAnswers(document, answers, store);
+    });
+
+    // Assert
+    const field = fieldFor("day4.enough.excess");
+    assert.equal(field.value, LONG);
+    assert.equal(field.classList.contains("fill-grown"), true, "a restored answer was left hidden");
     answers.stop();
   });
 });

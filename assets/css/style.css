@@ -40,7 +40,7 @@ hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
    pushes a dictated paragraph 9999px off-screen — so a control undoes all of it and
    keeps only the ruled line. Without these rules the site looks correct and is
    unusable, which is exactly what shipped before a device saw it. */
-textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;border-bottom:1px solid #b9b1a0;border-radius:0;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit;field-sizing:content}
+textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;border-bottom:1px solid #b9b1a0;border-radius:0;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
 /* Long answers are dictated paragraphs: full width, wrapping, growing downward. */
 textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
 /* Short answers sit inside a sentence — "The world has enough ___" — so they stay in the
@@ -56,8 +56,11 @@ textarea.fill-sm.fill-grown{display:block;width:100%;max-width:34rem;margin:.15e
    full-width block box breaks the heading in half. These hold a name, not a paragraph. */
 h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0}
 textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px;border-bottom-color:var(--accent-dark)}
-/* Printing a bound page prints what was written, not a form control (0010). */
-@media print{textarea.fill,textarea.fill-sm{border-bottom:1px solid #b9b1a0}}
+/* Printing a bound page. The height fields.ts pins is for the screen's column width, and
+   a print column is narrower, so the answer rewraps longer than the box and overflow:hidden
+   would cut it off on paper. Print lets the box grow instead — 0010 makes printing a
+   supported output, and an answer that prints truncated is worse than an ugly one. */
+@media print{textarea.fill,textarea.fill-sm{height:auto!important;overflow:visible;white-space:pre-wrap}}
 code{font-family:var(--mono);font-size:.84em;background:#ece6d8;padding:.12em .38em;border-radius:4px}
 pre{background:#f0ebdd;color:#3a352c;border:1px solid var(--rule);padding:1em 1.15em;border-radius:8px;overflow:auto;font-size:.82rem;line-height:1.6;font-style:normal}
 pre code{background:none;padding:0;color:inherit}
