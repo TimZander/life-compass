@@ -453,6 +453,38 @@ describe("header contract", () => {
   });
 });
 
+describe("registry contract", () => {
+  // The registry check was gated on `worksheets === WORKSHEETS` the same fragile way the
+  // header check was gated on `root`, and it detaches just as silently: `checkRegistry`
+  // compares the schema against the real registry, so on real content it reports nothing
+  // whether or not it is wired in — site() cannot tell the two apart. An empty schema uses
+  // none of the active registered ids, which is what gives the check something to report,
+  // so a fixture can finally prove the wiring the way the header block does above (#37).
+  it("buildPages_RegistryCheckOn_ReportsRegistryProblems", async () => {
+    // Arrange — worksheets: [] means no question uses any registered id.
+    const root = await fixture({ "README.md": "# Home\n" });
+
+    // Act
+    const result = await buildPages({ root, worksheets: [], checkRegistry: true });
+
+    // Assert
+    assert.ok(result.problems.some((problem) => problem.kind === "registry"));
+  });
+
+  it("buildPages_RegistryCheckOff_ReportsNoRegistryProblem", async () => {
+    // Arrange — the same empty schema, flag defaulted off. This is the guard the fragile
+    // `worksheets === WORKSHEETS` gate could not express, and it is what keeps every other
+    // fixture test — all of which build with worksheets: [] — clean.
+    const root = await fixture({ "README.md": "# Home\n" });
+
+    // Act
+    const result = await buildPages({ root, worksheets: [] });
+
+    // Assert
+    assert.ok(!result.problems.some((problem) => problem.kind === "registry"));
+  });
+});
+
 describe("task lists", () => {
   it("buildPages_HandWrittenTaskMarker_IsReported", async () => {
     // Arrange — markdown-it does not do task lists and the rule that added them is gone,
