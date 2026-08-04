@@ -49,7 +49,7 @@ const NAV: readonly (readonly [href: string, label: string])[] = [
   ["/docs/decisions/", "Decisions"],
 ];
 
-export function layout(content: string, pageTitle: string | null): string {
+export function layout(content: string, pageTitle: string | null, schema: string): string {
   const nav = NAV.map(([href, label]) => `    <a href="${href}">${label}</a>`).join("\n");
 
   return `<!doctype html>
@@ -67,6 +67,11 @@ export function layout(content: string, pageTitle: string | null): string {
        and the page is the only thing on screen. Matching the paper the pages are drawn
        on keeps the seam between them invisible. -->
   <meta name="color-scheme" content="light">
+  <!-- Which question set this page was built from. An export records it (0009) so a file
+       can later be told apart from one written against a different set of questions; the
+       client has no other way to know, because connect-src 'none' stops it fetching
+       questions.json. Derived only from the identifiers, so it does not churn per build. -->
+  <meta name="life-compass-schema" content="${escapeHtml(schema)}">
   <!-- A module, resolved natively by the browser rather than bundled (0003), and
        external because the CSP has no 'unsafe-inline' and headers.ts will not let it
        gain one. type="module" defers by default. -->

@@ -168,6 +168,7 @@ describe("shipped client scripts", () => {
       "assets/js/answers.js",
       "assets/js/app.js",
       "assets/js/banner.js",
+      "assets/js/export.js",
       "assets/js/fields.js",
       "assets/js/keys.js",
       "assets/js/store.js",
@@ -352,7 +353,7 @@ describe("banner surface", () => {
     // the change, so creating it on demand and filling it in the same task is routinely
     // missed. 0001 makes that a defect rather than a nicety.
     // Act
-    const html = layout("<p>x</p>", "Page");
+    const html = layout("<p>x</p>", "Page", "0123456789ab");
 
     // Assert
     assert.ok(html.includes('<div id="banner-region" aria-live="polite"></div>'));

@@ -13,7 +13,7 @@ import { discover, pageUrls, type Page } from "./pages.ts";
 import { render } from "./markdown.ts";
 import { layout } from "./layout.ts";
 import type { ResolvedLink } from "./links.ts";
-import { checkRegistry, checkSchema, loadSchema, type Schema } from "./questions.ts";
+import { checkRegistry, checkSchema, loadSchema, schemaDigest, type Schema } from "./questions.ts";
 import { checkHeaders, parseHeaders } from "./headers.ts";
 import { icons } from "./icons.ts";
 import { buildClient } from "./client.ts";
@@ -211,6 +211,7 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
   } = options;
   const { pages, assets } = await discover(root, out);
   const schema = loadSchema(worksheets);
+  const digest = schemaDigest(schema);
   const context = {
     urls: pageUrls(pages),
     assets: new Set(assets),
@@ -223,7 +224,7 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
     const markdown = await readFile(path.join(root, page.source), "utf8");
     const rendered = render(markdown, page.source, context);
     const { html, title, links, headingIds, anchors } = rendered;
-    built.push({ ...page, html: layout(html, title), title, links, headingIds, anchors });
+    built.push({ ...page, html: layout(html, title, digest), title, links, headingIds, anchors });
     for (const marker of rendered.taskMarkers) {
       problems.push({
         kind: "task-list",

@@ -8,6 +8,7 @@
  * the questions are simply absent, and nothing says so.
  */
 
+import { createHash } from "node:crypto";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 import { REGISTRY } from "../src/questions/registry.ts";
 import {
@@ -19,6 +20,28 @@ import {
   type RepeatQuestion,
   type SentenceQuestion,
 } from "../src/questions/types.ts";
+
+/**
+ * A short, stable fingerprint of the question set.
+ *
+ * Stamped into every page so an export can record which questions it was written against
+ * (0009). The client cannot work this out for itself: `connect-src 'none'` stops it
+ * fetching `questions.json`, and 0013 deliberately has the binding read everything from
+ * the markup, so the build is the only place that knows.
+ *
+ * Derived from the sorted identifiers and NOTHING else — not the date, not the git SHA.
+ * The build's output feeds the service worker's cache version, so anything that changed
+ * per build would ask every reader to accept an update on every deploy for nothing.
+ * Sorted so that reordering a worksheet's questions, which changes no identifier, does
+ * not change the fingerprint either.
+ */
+export function schemaDigest(schema: Schema): string {
+  const identifiers: string[] = [];
+  for (const question of schema.byId.values()) {
+    identifiers.push(...identifiersOf(question));
+  }
+  return createHash("sha256").update(identifiers.sort().join("\n")).digest("hex").slice(0, 12);
+}
 
 /** `<!-- questions: day1.chapters -->` on a line of its own. */
 export const ANCHOR = /^<!--\s*questions:\s*([A-Za-z0-9._-]+)\s*-->$/;
