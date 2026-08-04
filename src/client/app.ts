@@ -132,9 +132,16 @@ function wireBackup(store: Store): void {
     button.setAttribute("disabled", "disabled");
     saveBackup(store, document, new Date())
       .then((filename) => {
+        // "Downloading", not "saved". This resolves when the anchor has been clicked, and
+        // nothing here observes whether the browser accepted the file — a synthetic click
+        // reports no outcome. Saying "Saved" would assert something unverified, and if a
+        // download is ever refused (an installed app on some platforms handles them
+        // differently from a browser tab) the message would be a plain untruth about
+        // whether the reader's answers are safe, which is the one thing 0008 says this app
+        // must not get wrong. Naming the file gives them something to look for either way.
         showBanner({
           id: "backup",
-          text: `Saved ${filename}. Keep it somewhere you would keep a private notebook.`,
+          text: `Downloading ${filename}. Check your files — and keep it somewhere you would keep a private notebook.`,
           actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
         });
       })
