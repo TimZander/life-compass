@@ -303,6 +303,38 @@ function escape(value: string): string {
 }
 
 /** A drawn blank. The underscores are hidden by the stylesheet and drawn as a rule. */
+/**
+ * What each field is CALLED to a screen reader, which is not always what is printed.
+ *
+ * A label repeated inside one question gets an ordinal. `day3.themes` declares three fields
+ * all labelled "Example", so each theme rendered three adjacent controls announcing
+ * themselves as "Theme 1 — Example" with nothing to tell them apart — and a reader tabbing
+ * between them has only the name to go on.
+ *
+ * The ordinal goes on the spoken name only. The printed worksheet still reads "Example:"
+ * three times, which is how the worksheet has always read and is not this change's to
+ * alter. Labels repeated across DIFFERENT questions are deliberately left alone: those sit
+ * in separate sections under their own headings, and the heading is the context.
+ */
+function spokenNames(fields: readonly Field[]): ReadonlyMap<string, string> {
+  const counts = new Map<string, number>();
+  for (const field of fields) {
+    counts.set(field.label, (counts.get(field.label) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const spoken = new Map<string, string>();
+  for (const field of fields) {
+    if ((counts.get(field.label) ?? 0) < 2) {
+      spoken.set(field.id, field.label);
+      continue;
+    }
+    const nth = (seen.get(field.label) ?? 0) + 1;
+    seen.set(field.label, nth);
+    spoken.set(field.id, `${field.label} ${nth}`);
+  }
+  return spoken;
+}
+
 function blank(fieldId: string, size: "short" | "long", label: string): string {
   const cls = size === "short" ? "fill-sm" : "fill";
   return (
@@ -366,8 +398,12 @@ export function renderQuestion(question: Question): string {
     // A plain list of labelled answers. No numbering, because these prompts differ from
     // one another rather than repeating — numbering them would imply an order that is
     // not there.
+    const spoken = spokenNames(question.fields);
     const items = question.fields
-      .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
+      .map(
+        (x) =>
+          `<li>${labelled(x.label, `${question.id}.${x.id}`, x.size, spoken.get(x.id))}</li>`,
+      )
       .join("\n");
     return `<ul class="q-group" data-question="${escape(question.id)}">\n${items}\n</ul>`;
   }
@@ -394,6 +430,7 @@ export function renderQuestion(question: Question): string {
     // the literal parts and the fields in step without a second pass over the string.
     const parts = question.template.split(GAP);
     const byId = new Map(question.fields.map((field) => [field.id, field]));
+    const spoken = spokenNames(question.fields);
     let html = "";
     for (const [index, part] of parts.entries()) {
       if (index % 2 === 0) {
@@ -408,7 +445,7 @@ export function renderQuestion(question: Question): string {
         : // A sentence has no label of its own — the template IS the prose — so the
           // field's own label is the whole name. They read as sentence fragments
           // ("Optimizing for", "Over") because that is what the gap is asking for.
-          blank(`${question.id}.${part}`, field.size, field.label);
+          blank(`${question.id}.${part}`, field.size, spoken.get(field.id) ?? field.label);
     }
     return `<p class="q-sentence" data-question="${escape(question.id)}">${html}</p>`;
   }
@@ -425,6 +462,7 @@ export function renderQuestion(question: Question): string {
   // instance identifier (docs/decisions/0013).
   if (question.instances === "section") {
     const [name, ...rest] = question.fields;
+    const spoken = spokenNames(question.fields);
     // checkSchema refuses a repeat with no fields, so this is unreachable rather than
     // silent — returning "" here would put an empty section where a question should be.
     if (name === undefined) {
@@ -439,11 +477,11 @@ export function renderQuestion(question: Question): string {
       const anchor = `${question.id.replace(/\./g, "-")}-${index + 1}`;
       const heading =
         `<h3 id="${escape(anchor)}">${escape(question.label)} ${index + 1} — ` +
-        `${blank(`${question.id}.${name.id}`, name.size, `${question.label} ${index + 1} — ${name.label}`)}</h3>`;
+        `${blank(`${question.id}.${name.id}`, name.size, `${question.label} ${index + 1} — ${spoken.get(name.id) ?? name.label}`)}</h3>`;
       const fields = rest
         .map(
           (x) =>
-            `<li>${labelled(x.label, `${question.id}.${x.id}`, x.size, `${question.label} ${index + 1} — ${x.label}`)}</li>`,
+            `<li>${labelled(x.label, `${question.id}.${x.id}`, x.size, `${question.label} ${index + 1} — ${spoken.get(x.id) ?? x.label}`)}</li>`,
         )
         .join("\n");
       sections.push(
@@ -466,11 +504,17 @@ export function renderQuestion(question: Question): string {
   // A field whose label just restates the group's is the same stutter the comment above
   // describes, one line lower down: ten rows reading "Value: ____" under a heading that
   // already says "Narrow to 10". The list number is identity enough.
+  const spoken = spokenNames(question.fields);
   const cell = (field: Field, index: number): string => {
-    const spoken = `${question.label} ${index + 1}`;
+    const instance = `${question.label} ${index + 1}`;
     return field.label === question.label
-      ? blank(`${question.id}.${field.id}`, field.size, spoken)
-      : labelled(field.label, `${question.id}.${field.id}`, field.size, `${spoken} — ${field.label}`);
+      ? blank(`${question.id}.${field.id}`, field.size, instance)
+      : labelled(
+          field.label,
+          `${question.id}.${field.id}`,
+          field.size,
+          `${instance} — ${spoken.get(field.id) ?? field.label}`,
+        );
   };
 
   const items: string[] = [];

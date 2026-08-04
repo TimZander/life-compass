@@ -697,6 +697,64 @@ describe("what a screen reader is told", () => {
     );
   });
 
+  it("renderQuestion_QuestionRepeatingAFieldLabel_NumbersTheSpokenNamesOnly", () => {
+    // Arrange — day3.themes declares three fields all labelled "Example", so each theme
+    // rendered three adjacent controls announcing themselves identically. A reader tabbing
+    // between them has only the name to go on.
+    const question: Question = {
+      kind: "repeat", id: "t.themes", instances: "section", label: "Theme",
+      min: 1, max: 1,
+      fields: [
+        { id: "theme", label: "Theme", size: "long" },
+        { id: "example_1", label: "Example", size: "long" },
+        { id: "example_2", label: "Example", size: "long" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert — numbered when spoken, and the printed page still reads "Example:" twice,
+    // which is how the worksheet has always read.
+    assert.deepEqual(
+      [...html.matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["Theme 1 — Theme", "Theme 1 — Example 1", "Theme 1 — Example 2"],
+    );
+    assert.equal(printed(html).match(/Example:/g)?.length, 2, "the printed label was changed");
+  });
+
+  it("renderQuestion_NoRepeatedLabel_LeavesTheSpokenNameAlone", () => {
+    // Arrange — negative case. Numbering a label that appears once would read as though
+    // there were others, and would put "1" after every field on the site.
+    const question: Question = {
+      kind: "group", id: "t.money",
+      fields: [
+        { id: "overspend", label: "What am I overspending on?", size: "long" },
+        { id: "change", label: "One change", size: "long" },
+      ],
+    };
+
+    // Act & Assert
+    assert.deepEqual(
+      [...renderQuestion(question).matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["What am I overspending on?", "One change"],
+    );
+  });
+
+  it("renderQuestion_EveryShape_NamesAdjacentBlanksDistinctly", () => {
+    // Arrange — the property across the real schema: no two blanks a reader tabs between
+    // inside one question may announce themselves identically.
+    // Act & Assert
+    for (const worksheet of WORKSHEETS) {
+      for (const question of worksheet.questions) {
+        const names = [...renderQuestion(question).matchAll(/data-label="([^"]*)"/g)].map(
+          (match) => match[1],
+        );
+        assert.equal(new Set(names).size, names.length, `${question.id} reuses a spoken name`);
+      }
+    }
+  });
+
   it("renderQuestion_EveryShape_GivesEveryBlankANonEmptyName", () => {
     // Arrange — negative case across the real schema rather than a fixture. A blank with no
     // name, or one named after its own underscores, is what a screen reader reads out.
