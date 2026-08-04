@@ -57,6 +57,39 @@ export type BuildResult = {
   readonly schema: Schema;
 };
 
+/**
+ * Inputs to a build. Every field is optional; the defaults describe the real site.
+ *
+ * `checkHeaders` and `checkRegistry` are named intent rather than something inferred from
+ * `root` or `worksheets`. Each gates a check that is only meaningful against the real tree
+ * — the `_headers` contract, and the registry that describes the global schema — so a
+ * fixture that happens to reuse the real path or the real worksheets must not silently
+ * re-enable them, and (the failure that motivated this) a path that resolves to the real
+ * root but differs as a string must not silently switch the header check off. Both default
+ * off, so a fixture is safe without saying so; the production build turns them on by naming
+ * them, which is exactly two places — the CLI entry below and the real-content test.
+ */
+export type BuildOptions = {
+  /** Source tree to build from. Defaults to the repository root. */
+  readonly root?: string;
+  /**
+   * Output directory. Only used to keep itself out of the discovered content when it lives
+   * inside `root`; see `discover`. `build` defaults it to `dist/`; `buildPages` writes
+   * nothing and leaves it unset.
+   */
+  readonly out?: string;
+  /**
+   * Question definitions to check the tree against. Defaults to the shipped worksheets; the
+   * schema is global, so a fixture root passes its own — or none — rather than have every
+   * real Day 1 question reported as unanchored against it.
+   */
+  readonly worksheets?: readonly Worksheet[];
+  /** Verify `_headers` declares, and ships, the policy the privacy claim rests on. */
+  readonly checkHeaders?: boolean;
+  /** Check the registry against the schema it describes. */
+  readonly checkRegistry?: boolean;
+};
+
 /** Any `.md` left in an emitted href means a link escaped rewriting — e.g. a raw `<a>`. */
 const MARKDOWN_HREF = /(?:href|src)="([^"]*\.md(?:#[^"]*)?)"/g;
 
@@ -166,18 +199,16 @@ function checkQuestionAnchors(
 /**
  * Render every page and verify it. Nothing is written to disk.
  *
- * `out` is only used to keep the output directory out of the discovered content; see
- * `discover`. Pass it whenever the output lives inside `root`.
- *
- * `worksheets` is injectable for the same reason: the schema is global, so a fixture
- * root would otherwise be checked against the real Day 1 questions and report every one
- * of them as unanchored. Tests building a temp tree pass their own, or none.
+ * See `BuildOptions` for what each field means and why the two check flags are explicit.
  */
-export async function buildPages(
-  root: string = ROOT,
-  out?: string,
-  worksheets: readonly Worksheet[] = WORKSHEETS,
-): Promise<BuildResult> {
+export async function buildPages(options: BuildOptions = {}): Promise<BuildResult> {
+  const {
+    root = ROOT,
+    out,
+    worksheets = WORKSHEETS,
+    checkHeaders: shouldCheckHeaders = false,
+    checkRegistry: shouldCheckRegistry = false,
+  } = options;
   const { pages, assets } = await discover(root, out);
   const schema = loadSchema(worksheets);
   const context = {
@@ -251,8 +282,10 @@ export async function buildPages(
   );
   // _headers is deployed verbatim, so this cannot change what Cloudflare serves — it
   // refuses to build when the directives the privacy claim rests on have gone missing.
-  // Only meaningful for the real root; a fixture has no _headers and needs none.
-  if (root === ROOT) {
+  // Gated on an explicit flag, not on `root`: a path that resolves to the real root but
+  // differs as a string (a trailing slash, a symlink, an absolute-vs-relative spelling)
+  // must not silently switch this security check off.
+  if (shouldCheckHeaders) {
     const headersFile = path.join(root, "_headers");
     try {
       const declared = await readFile(headersFile, "utf8");
@@ -283,8 +316,10 @@ export async function buildPages(
     }
   }
 
-  // The registry describes the real schema, so it is only meaningful against it.
-  const registryProblems = worksheets === WORKSHEETS ? checkRegistry(schema) : [];
+  // The registry describes the real schema, so it is only meaningful against it — and,
+  // like the header check, gated on an explicit flag rather than on whether `worksheets`
+  // is the real array, which a fixture could hold without wanting the registry checked.
+  const registryProblems = shouldCheckRegistry ? checkRegistry(schema) : [];
   problems.push(
     ...registryProblems.map((detail) => ({
       kind: "registry" as const,
@@ -296,13 +331,16 @@ export async function buildPages(
   return { pages: built, assets, problems, schema };
 }
 
-/** Render, verify, and write. `out` is a parameter so tests can build to a temp dir. */
-export async function build(
-  root: string = ROOT,
-  out: string = OUT,
-  worksheets: readonly Worksheet[] = WORKSHEETS,
-): Promise<BuildResult> {
-  const result = await buildPages(root, out, worksheets);
+/** Render, verify, and write. `out` is an option so tests can build to a temp dir. */
+export async function build(options: BuildOptions = {}): Promise<BuildResult> {
+  const {
+    root = ROOT,
+    out = OUT,
+    worksheets = WORKSHEETS,
+    checkHeaders = false,
+    checkRegistry = false,
+  } = options;
+  const result = await buildPages({ root, out, worksheets, checkHeaders, checkRegistry });
 
   if (result.problems.length > 0) {
     const detail = result.problems
@@ -377,7 +415,9 @@ export async function build(
 // Only run when executed directly, so the test suite can import the functions above.
 if (process.argv[1] !== undefined && import.meta.filename === path.resolve(process.argv[1])) {
   try {
-    const result = await build();
+    // The real deploy: verify the header contract and the registry, the two checks that
+    // only mean something against the real tree and that nothing downstream re-runs.
+    const result = await build({ checkHeaders: true, checkRegistry: true });
     console.log(
       `Built ${result.pages.length} pages and copied ${result.assets.length} assets to dist/`,
     );

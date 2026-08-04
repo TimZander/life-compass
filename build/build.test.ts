@@ -83,7 +83,7 @@ const EXPECTED_FILL_MARKERS = 447;
 /** Built once and shared: rendering 29 pages per test is pure waste. */
 let cached: Promise<BuildResult> | undefined;
 function site(): Promise<BuildResult> {
-  cached ??= buildPages();
+  cached ??= buildPages({ checkHeaders: true, checkRegistry: true });
   return cached;
 }
 
@@ -249,7 +249,7 @@ describe("buildPages", () => {
     const root = await fixture({ "README.md": "# Home\n\n[gone](nowhere.md)\n" });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.equal(result.problems.length, 1);
@@ -264,7 +264,7 @@ describe("buildPages", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.equal(result.problems.length, 1);
@@ -279,7 +279,7 @@ describe("buildPages", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.deepEqual(result.problems, []);
@@ -290,7 +290,7 @@ describe("buildPages", () => {
     const root = await fixture({ "README.md": "# Home\n\n[up](#not-here)\n" });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.equal(result.problems[0]?.kind, "missing-anchor");
@@ -305,7 +305,7 @@ describe("buildPages", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.equal(result.problems[0]?.kind, "unrewritten-link");
@@ -316,7 +316,7 @@ describe("buildPages", () => {
     const root = await fixture({ "README.md": "# One\n", "index.md": "# Two\n" });
 
     // Act & Assert
-    await assert.rejects(() => buildPages(root, undefined, []), /would both be written to/);
+    await assert.rejects(() => buildPages({ root, worksheets: [] }), /would both be written to/);
   });
 });
 
@@ -331,7 +331,7 @@ describe("build", () => {
     const out = path.join(root, "__dist");
 
     // Act
-    await build(root, out, []);
+    await build({ root, out, worksheets: [] });
 
     // Assert
     const written = await readdir(out, { recursive: true, withFileTypes: true });
@@ -361,7 +361,7 @@ describe("build", () => {
     await writeFile(path.join(out, "leftover.html"), "old", "utf8");
 
     // Act
-    await build(root, out, []);
+    await build({ root, out, worksheets: [] });
 
     // Assert
     const written = await readdir(out);
@@ -376,7 +376,7 @@ describe("build", () => {
     await writeFile(path.join(out, "sentinel.html"), "untouched", "utf8");
 
     // Act & Assert
-    await assert.rejects(() => build(root, out, []), /refusing to build/);
+    await assert.rejects(() => build({ root, out, worksheets: [] }), /refusing to build/);
     assert.equal(await readFile(path.join(out, "sentinel.html"), "utf8"), "untouched");
   });
 
@@ -385,7 +385,103 @@ describe("build", () => {
     const root = await fixture({ "README.md": "# Home\n" });
 
     // Act & Assert
-    await assert.rejects(() => build(root, "dist", []), /expected an absolute, non-root path/);
+    await assert.rejects(
+      () => build({ root, out: "dist", worksheets: [] }),
+      /expected an absolute, non-root path/,
+    );
+  });
+});
+
+describe("header contract", () => {
+  // The wiring between `checkHeaders` and the build's problem list had no test: it was
+  // gated on `root === ROOT`, so no fixture could turn it on, and the integration could
+  // quietly detach while every other test stayed green (#37). A `_headers` the checker
+  // accepts, weakened at exactly the directive the privacy claim rests on: `connect-src`
+  // is 'self' rather than 'none', which is the one change that lets the app reach the
+  // network. Everything else is intact, so the checker reports that and only that.
+  const INTACT_HEADERS = [
+    "/*",
+    "  Content-Security-Policy: default-src 'self'; connect-src 'none'; form-action 'none'",
+    "  X-Content-Type-Options: nosniff",
+    "  Referrer-Policy: no-referrer",
+    "  Permissions-Policy: microphone=()",
+    "/sw.js",
+    "  Cache-Control: no-cache",
+    "  ! Content-Security-Policy",
+    "  Content-Security-Policy: default-src 'self'; connect-src 'self'",
+    "",
+  ].join("\n");
+  const WEAKENED_HEADERS = INTACT_HEADERS.replace("connect-src 'none'", "connect-src 'self'");
+
+  it("buildPages_WeakenedHeadersWithCheckOn_ReportsAHeadersProblem", async () => {
+    // Arrange — the fixture root is not ROOT, so this only reports if the check is gated
+    // on the flag rather than on the path.
+    const root = await fixture({ "README.md": "# Home\n", _headers: WEAKENED_HEADERS });
+
+    // Act
+    const result = await buildPages({ root, worksheets: [], checkHeaders: true });
+
+    // Assert
+    const headerProblems = result.problems.filter((problem) => problem.kind === "headers");
+    assert.equal(headerProblems.length, 1);
+    assert.match(headerProblems[0]?.detail ?? "", /connect-src/);
+  });
+
+  it("buildPages_WeakenedHeadersWithCheckOff_IsSilent", async () => {
+    // Arrange — the same weakened file, but the flag defaults off. This is the guard the
+    // old `root === ROOT` gate could not express: a fixture is safe without opting out,
+    // and the flag — not the path — is what turns the check on.
+    const root = await fixture({ "README.md": "# Home\n", _headers: WEAKENED_HEADERS });
+
+    // Act
+    const result = await buildPages({ root, worksheets: [] });
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+  });
+
+  it("buildPages_IntactHeadersWithCheckOn_ReportsNoProblem", async () => {
+    // Arrange — proves the check passes a contract it should accept, so the positive case
+    // above is not a test that is simply always red.
+    const root = await fixture({ "README.md": "# Home\n", _headers: INTACT_HEADERS });
+
+    // Act
+    const result = await buildPages({ root, worksheets: [], checkHeaders: true });
+
+    // Assert
+    assert.deepEqual(result.problems, []);
+  });
+});
+
+describe("registry contract", () => {
+  // The registry check was gated on `worksheets === WORKSHEETS` the same fragile way the
+  // header check was gated on `root`, and it detaches just as silently: `checkRegistry`
+  // compares the schema against the real registry, so on real content it reports nothing
+  // whether or not it is wired in — site() cannot tell the two apart. An empty schema uses
+  // none of the active registered ids, which is what gives the check something to report,
+  // so a fixture can finally prove the wiring the way the header block does above (#37).
+  it("buildPages_RegistryCheckOn_ReportsRegistryProblems", async () => {
+    // Arrange — worksheets: [] means no question uses any registered id.
+    const root = await fixture({ "README.md": "# Home\n" });
+
+    // Act
+    const result = await buildPages({ root, worksheets: [], checkRegistry: true });
+
+    // Assert
+    assert.ok(result.problems.some((problem) => problem.kind === "registry"));
+  });
+
+  it("buildPages_RegistryCheckOff_ReportsNoRegistryProblem", async () => {
+    // Arrange — the same empty schema, flag defaulted off. This is the guard the fragile
+    // `worksheets === WORKSHEETS` gate could not express, and it is what keeps every other
+    // fixture test — all of which build with worksheets: [] — clean.
+    const root = await fixture({ "README.md": "# Home\n" });
+
+    // Act
+    const result = await buildPages({ root, worksheets: [] });
+
+    // Assert
+    assert.ok(!result.problems.some((problem) => problem.kind === "registry"));
   });
 });
 
@@ -397,7 +493,7 @@ describe("task lists", () => {
     const root = await fixture({ "README.md": "# Home\n\n- [ ] Values filled in\n" });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.ok(result.problems.some((problem) => problem.kind === "task-list"));
@@ -410,7 +506,7 @@ describe("task lists", () => {
     const root = await fixture({ "README.md": "# Home\n\n```\n- [ ] not a real tick\n```\n" });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.deepEqual(result.problems, []);
@@ -421,7 +517,7 @@ describe("task lists", () => {
     const root = await fixture({ "README.md": "# Home\n\n- [a link](README.md) here\n" });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.deepEqual(result.problems, []);
@@ -459,7 +555,7 @@ describe("hand-written blanks", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     const reported = result.problems.filter((problem) => problem.kind === "hand-written-fill");
@@ -486,7 +582,7 @@ describe("hand-written blanks", () => {
       const root = await fixture({ "README.md": `# Home\n\n<span ${spelling}>______</span>\n` });
 
       // Act
-      const result = await buildPages(root, undefined, []);
+      const result = await buildPages({ root, worksheets: [] });
 
       // Assert
       assert.ok(
@@ -504,7 +600,7 @@ describe("hand-written blanks", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.ok(result.problems.some((problem) => problem.kind === "hand-written-fill"));
@@ -528,7 +624,7 @@ describe("hand-written blanks", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.deepEqual(result.problems, []);
@@ -542,7 +638,7 @@ describe("hand-written blanks", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.deepEqual(result.problems, []);
@@ -560,7 +656,7 @@ describe("heading ids", () => {
     });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.ok(result.pages[0]?.html.includes('<h3 id="value-1--______">'));
@@ -949,7 +1045,7 @@ describe("question anchors", () => {
     const root = await fixture({ "README.md": "# Home\n\n<!-- questions: nope.here -->\n" });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.ok(result.problems.some((p) => p.kind === "unresolved-question-anchor"));
@@ -960,7 +1056,7 @@ describe("question anchors", () => {
     const root = await fixture({ "README.md": "# Home\n\n<!-- just a note -->\n" });
 
     // Act
-    const result = await buildPages(root, undefined, []);
+    const result = await buildPages({ root, worksheets: [] });
 
     // Assert
     assert.deepEqual(result.problems, []);
@@ -1020,7 +1116,7 @@ describe("service worker precache", () => {
     temporary.push(out);
 
     // Act
-    const result = await build(ROOT, out);
+    const result = await build({ root: ROOT, out });
     const worker = await readFile(path.join(out, "sw.js"), "utf8");
     const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
     assert.ok(match?.[1] !== undefined, "PRECACHE not found in the generated worker");
@@ -1039,7 +1135,7 @@ describe("service worker precache", () => {
     temporary.push(out);
 
     // Act
-    await build(ROOT, out);
+    await build({ root: ROOT, out });
     const worker = await readFile(path.join(out, "sw.js"), "utf8");
     const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
     assert.ok(match?.[1] !== undefined);
@@ -1068,7 +1164,7 @@ describe("service worker precache", () => {
     temporary.push(out);
 
     // Act
-    await build(ROOT, out);
+    await build({ root: ROOT, out });
     const worker = await readFile(path.join(out, "sw.js"), "utf8");
     const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
     assert.ok(match?.[1] !== undefined);
