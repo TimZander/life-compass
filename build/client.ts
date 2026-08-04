@@ -8,8 +8,10 @@
  * this does.
  *
  * `transpileModule` and not a program: it strips types from one file at a time and emits
- * nothing else. No bundling, no downlevelling, no module rewriting — the `./banner.js`
- * specifier a browser resolves is the same specifier the source imports. Type CHECKING
+ * nothing else. No bundling and no downlevelling. The one thing it does rewrite is the
+ * extension on a relative import — the source says `./keys.ts` so Node can run it, the
+ * browser gets `./keys.js` — and nothing else about a specifier is touched (0012 · C5a).
+ * Type CHECKING
  * stays where it was, in `tsc -p tsconfig.client.json --noEmit`, so this step cannot
  * report an error and cannot silently pass one either: it never looks.
  *
@@ -35,10 +37,17 @@ export type ClientModule = {
 const OPTIONS: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES2023,
   module: ts.ModuleKind.ESNext,
-  // The source's import specifiers are already what the browser needs. Anything that
-  // rewrites them would have to know how the site is served, which is the coupling
-  // 0003 avoided by not having a bundler at all.
   verbatimModuleSyntax: true,
+  // The one rewrite this does: `./keys.ts` becomes `./keys.js`. Nothing else about a
+  // specifier is touched — no resolution, no bundling, no knowledge of how the site is
+  // served, which is the coupling 0003 avoided by not having a bundler.
+  //
+  // The sources say `.ts` so that Node can run them, which is what makes this tier
+  // testable at all: a client module importing another as `./keys.js` is a path Node
+  // cannot resolve from source. app.ts has always imported siblings at runtime and a
+  // browser resolves every one — but app.ts has no test, so Node was never asked to load
+  // one. keys.ts is the first sibling that a TESTED module imports.
+  rewriteRelativeImportExtensions: true,
 };
 
 /**

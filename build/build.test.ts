@@ -39,6 +39,7 @@ const EXPECTED_PAGES: readonly string[] = [
   "docs/decisions/0011-question-identifiers-are-frozen-and-registered.html",
   "docs/decisions/0012-client-typescript-stripped-at-build-time.html",
   "docs/decisions/0013-instance-identity-for-rendered-slots.html",
+  "docs/decisions/0014-a-dom-for-tests-only.html",
   "docs/decisions/index.html",
   "index.html",
   "one-page-anchor.html",

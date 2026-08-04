@@ -30,13 +30,17 @@
     // module, so that one line takes the banner, update prompting and worker
     // registration down together. Requiring `import type` is what keeps them in step.
     "verbatimModuleSyntax": true,
-    // Test files import `./answers.ts` because Node runs them from source, while the
-    // modules themselves must import `./answers.js` or the browser 404s. Allowing the
-    // extension here would let a shipping module do the same and typecheck — so the
-    // guard is downstream: buildClient_RealRoot_EmitsEveryModuleAsBrowserReadyJavaScript
-    // rejects any relative specifier in emitted output that does not end in `.js`, and
-    // `.test.ts` is excluded from the emit entirely.
+    // Every relative import in this tier — module and test alike — says `.ts`, and the
+    // emit rewrites it to `.js`. Node runs these files from source, so `.ts` is what it
+    // can resolve; a browser needs `.js` or it 404s.
+    //
+    // This file emits nothing, so the setting here only lets the checker accept the `.ts`
+    // specifiers. The rewrite that ships is build/client.ts's, and that is where the guard
+    // points: buildClient_RealRoot_EmitsEveryModuleAsBrowserReadyJavaScript rejects any
+    // relative specifier in EMITTED output not ending in `.js`. Checking the source
+    // instead would prove only that somebody typed the extension correctly.
     "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

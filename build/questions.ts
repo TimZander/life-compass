@@ -303,9 +303,44 @@ function escape(value: string): string {
 }
 
 /** A drawn blank. The underscores are hidden by the stylesheet and drawn as a rule. */
-function blank(fieldId: string, size: "short" | "long"): string {
+/**
+ * What each field is CALLED to a screen reader, which is not always what is printed.
+ *
+ * A label repeated inside one question gets an ordinal. `day3.themes` declares three fields
+ * all labelled "Example", so each theme rendered three adjacent controls announcing
+ * themselves as "Theme 1 — Example" with nothing to tell them apart — and a reader tabbing
+ * between them has only the name to go on.
+ *
+ * The ordinal goes on the spoken name only. The printed worksheet still reads "Example:"
+ * three times, which is how the worksheet has always read and is not this change's to
+ * alter. Labels repeated across DIFFERENT questions are deliberately left alone: those sit
+ * in separate sections under their own headings, and the heading is the context.
+ */
+function spokenNames(fields: readonly Field[]): ReadonlyMap<string, string> {
+  const counts = new Map<string, number>();
+  for (const field of fields) {
+    counts.set(field.label, (counts.get(field.label) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const spoken = new Map<string, string>();
+  for (const field of fields) {
+    if ((counts.get(field.label) ?? 0) < 2) {
+      spoken.set(field.id, field.label);
+      continue;
+    }
+    const nth = (seen.get(field.label) ?? 0) + 1;
+    seen.set(field.label, nth);
+    spoken.set(field.id, `${field.label} ${nth}`);
+  }
+  return spoken;
+}
+
+function blank(fieldId: string, size: "short" | "long", label: string): string {
   const cls = size === "short" ? "fill-sm" : "fill";
-  return `<span class="${cls}" data-field="${escape(fieldId)}">______</span>`;
+  return (
+    `<span class="${cls}" data-field="${escape(fieldId)}"` +
+    ` data-label="${escape(label)}">______</span>`
+  );
 }
 
 /**
@@ -317,9 +352,19 @@ function blank(fieldId: string, size: "short" | "long"): string {
  * for it — "My definition", "One change" — and reads as a bold lead-in, which is how
  * every worksheet wrote them before the migration and why Day 5's "One specific change"
  * stood apart from the three questions above it.
+ *
+ * `spoken` is what a screen reader announces for the control once #24 binds it, and it
+ * differs from the printed label inside a repeat: five list items each printing "Title:"
+ * need five distinct names, or a reader tabbing through hears "Title" five times with
+ * nothing to say which chapter they are in.
  */
-function labelled(label: string, fieldId: string, size: "short" | "long"): string {
-  const filled = blank(fieldId, size);
+function labelled(
+  label: string,
+  fieldId: string,
+  size: "short" | "long",
+  spoken: string = label,
+): string {
+  const filled = blank(fieldId, size, spoken);
   return label.trimEnd().endsWith("?")
     ? `${escape(label)} ${filled}`
     : `<strong>${escape(label)}:</strong> ${filled}`;
@@ -345,7 +390,7 @@ export function renderQuestion(question: Question): string {
   if (question.kind === "single") {
     return (
       `<p class="q-single" data-question="${escape(question.id)}">` +
-      `${blank(question.id, question.size)}</p>`
+      `${blank(question.id, question.size, question.label)}</p>`
     );
   }
 
@@ -353,8 +398,12 @@ export function renderQuestion(question: Question): string {
     // A plain list of labelled answers. No numbering, because these prompts differ from
     // one another rather than repeating — numbering them would imply an order that is
     // not there.
+    const spoken = spokenNames(question.fields);
     const items = question.fields
-      .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
+      .map(
+        (x) =>
+          `<li>${labelled(x.label, `${question.id}.${x.id}`, x.size, spoken.get(x.id))}</li>`,
+      )
       .join("\n");
     return `<ul class="q-group" data-question="${escape(question.id)}">\n${items}\n</ul>`;
   }
@@ -381,6 +430,7 @@ export function renderQuestion(question: Question): string {
     // the literal parts and the fields in step without a second pass over the string.
     const parts = question.template.split(GAP);
     const byId = new Map(question.fields.map((field) => [field.id, field]));
+    const spoken = spokenNames(question.fields);
     let html = "";
     for (const [index, part] of parts.entries()) {
       if (index % 2 === 0) {
@@ -390,7 +440,12 @@ export function renderQuestion(question: Question): string {
       const field = byId.get(part);
       // A gap with no field is caught by checkSchema before this runs; rendering the
       // literal brace here would only hide it.
-      html += field === undefined ? "" : blank(`${question.id}.${part}`, field.size);
+      html += field === undefined
+        ? ""
+        : // A sentence has no label of its own — the template IS the prose — so the
+          // field's own label is the whole name. They read as sentence fragments
+          // ("Optimizing for", "Over") because that is what the gap is asking for.
+          blank(`${question.id}.${part}`, field.size, spoken.get(field.id) ?? field.label);
     }
     return `<p class="q-sentence" data-question="${escape(question.id)}">${html}</p>`;
   }
@@ -407,6 +462,7 @@ export function renderQuestion(question: Question): string {
   // instance identifier (docs/decisions/0013).
   if (question.instances === "section") {
     const [name, ...rest] = question.fields;
+    const spoken = spokenNames(question.fields);
     // checkSchema refuses a repeat with no fields, so this is unreachable rather than
     // silent — returning "" here would put an empty section where a question should be.
     if (name === undefined) {
@@ -421,9 +477,12 @@ export function renderQuestion(question: Question): string {
       const anchor = `${question.id.replace(/\./g, "-")}-${index + 1}`;
       const heading =
         `<h3 id="${escape(anchor)}">${escape(question.label)} ${index + 1} — ` +
-        `${blank(`${question.id}.${name.id}`, name.size)}</h3>`;
+        `${blank(`${question.id}.${name.id}`, name.size, `${question.label} ${index + 1} — ${spoken.get(name.id) ?? name.label}`)}</h3>`;
       const fields = rest
-        .map((field) => `<li>${labelled(field.label, `${question.id}.${field.id}`, field.size)}</li>`)
+        .map(
+          (x) =>
+            `<li>${labelled(x.label, `${question.id}.${x.id}`, x.size, `${question.label} ${index + 1} — ${spoken.get(x.id) ?? x.label}`)}</li>`,
+        )
         .join("\n");
       sections.push(
         `<div class="q-instance" data-instance="${index}">\n${heading}\n<ul>\n${fields}\n</ul>\n</div>`,
@@ -445,17 +504,25 @@ export function renderQuestion(question: Question): string {
   // A field whose label just restates the group's is the same stutter the comment above
   // describes, one line lower down: ten rows reading "Value: ____" under a heading that
   // already says "Narrow to 10". The list number is identity enough.
-  const cell = (field: Field): string =>
-    field.label === question.label
-      ? blank(`${question.id}.${field.id}`, field.size)
-      : labelled(field.label, `${question.id}.${field.id}`, field.size);
+  const spoken = spokenNames(question.fields);
+  const cell = (field: Field, index: number): string => {
+    const instance = `${question.label} ${index + 1}`;
+    return field.label === question.label
+      ? blank(`${question.id}.${field.id}`, field.size, instance)
+      : labelled(
+          field.label,
+          `${question.id}.${field.id}`,
+          field.size,
+          `${instance} — ${spoken.get(field.id) ?? field.label}`,
+        );
+  };
 
   const items: string[] = [];
   for (let index = 0; index < question.min; index += 1) {
     if (question.instances === "line") {
       // Every field on the one line. The em dash is the separator the worksheets already
       // used for this shape, and it survives a line wrap better than a comma.
-      items.push(`<li data-instance="${index}">${question.fields.map(cell).join(" — ")}</li>`);
+      items.push(`<li data-instance="${index}">${question.fields.map((x) => cell(x, index)).join(" — ")}</li>`);
       continue;
     }
     if (question.fields.length === 1) {
@@ -463,7 +530,7 @@ export function renderQuestion(question: Question): string {
       if (field === undefined) {
         continue;
       }
-      items.push(`<li data-instance="${index}">${cell(field)}</li>`);
+      items.push(`<li data-instance="${index}">${cell(field, index)}</li>`);
       continue;
     }
     // The first field sits inline with the list number and the rest nest beneath it.
@@ -473,8 +540,8 @@ export function renderQuestion(question: Question): string {
     if (first === undefined) {
       continue;
     }
-    const head = cell(first);
-    const nested = rest.map((field) => `<li>${cell(field)}</li>`).join("\n");
+    const head = cell(first, index);
+    const nested = rest.map((x) => `<li>${cell(x, index)}</li>`).join("\n");
     items.push(`<li data-instance="${index}">${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }
 

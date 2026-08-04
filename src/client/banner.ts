@@ -147,7 +147,22 @@ export function showBanner(message: BannerMessage): void {
   render(message);
 }
 
-export function dismissBanner(): void {
-  pending = null;
+export function dismissBanner(id?: string): void {
+  // With an id, only that message is cleared. Without one, everything is — which is right
+  // for a reader pressing Dismiss and wrong for a caller clearing its own message: storage
+  // recovering used to tear down whatever happened to be showing, including sw-update's
+  // "a new version is ready" prompt, and `pending` being nulled discarded one that was
+  // still queued behind a reader who was mid-sentence.
+  if (id !== undefined) {
+    if (pending?.id === id) {
+      pending = null;
+    }
+    const showing = region()?.firstElementChild;
+    if (showing?.getAttribute("data-banner") !== id) {
+      return;
+    }
+  } else {
+    pending = null;
+  }
   region()?.replaceChildren();
 }

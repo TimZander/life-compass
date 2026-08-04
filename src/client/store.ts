@@ -5,17 +5,12 @@
  * blank as `data-field`. A flat key/value map is what survives a worksheet being
  * reordered, and reordering prose is expected while identifiers are not.
  *
- * IT DOES NOT YET COVER REPEAT GROUPS, and that is 334 of the 447 blanks. 0011 stored a
- * repeat as one ordered array of instances per group — a shape 0013 supersedes (0011 ·
- * C8): the order lives under the group identifier and each answer under its own key, so
- * one field can be saved without rewriting its neighbours. 0013 also works out where
- * those identifiers come from for slots the build renders rather than the reader adds,
- * and the markup now carries a `data-instance` slot marker so a blank can be told apart
- * from the same field in another instance. What is still missing is the storage half —
- * the key encoding, and a write that can set a group's instance order and its first
- * answer together, which this interface cannot express. Both land with the DOM binding,
- * against a consumer that can prove them. Until then this store is correct for
- * single-valued fields and silent about the rest, which is why nothing binds to it yet.
+ * Repeat groups are covered too, and that is 334 of the 447 blanks. 0011 stored a repeat
+ * as one ordered array of instances per group — a shape 0013 supersedes (0011 · C8): the
+ * order lives under the group identifier and each answer under its own key, so one field
+ * can be saved without rewriting its neighbours. That needs a write which can set a
+ * group's instance order and its first answer together, which is what `claim` is for;
+ * `src/client/keys.ts` holds the key format itself.
  *
  * IndexedDB rather than localStorage: localStorage is synchronous, so a write blocks the
  * main thread mid-keystroke, which is precisely what docs/decisions/0001 forbids. It also
@@ -31,10 +26,25 @@
  * ever needs replacing (an encrypted store is already anticipated — 0009).
  */
 export type Store = {
-  /** Every answer, for restoring a page. Single-valued fields only — see the note above. */
+  /** Every answer, for restoring a page — instance orders included. */
   readAll(): Promise<ReadonlyMap<string, string>>;
   /** One field. Writing an empty string removes it rather than storing blankness. */
   write(field: string, value: string): Promise<void>;
+  /**
+   * Write several keys together, but only if `guard` is still absent.
+   *
+   * This exists for one job: materialising a repeat group mints identifiers for every slot
+   * and stores the order alongside the first answer, and 0013 makes that all-or-nothing.
+   * Two tabs both first-writing the same group would otherwise each mint a full set, and
+   * whichever order landed second would strand the other tab's answers under identifiers
+   * nothing references.
+   *
+   * The guard is read and the writes are made inside ONE IndexedDB transaction, which is
+   * what makes it a real check-and-set rather than a hopeful one. Resolves `true` if the
+   * writes landed, `false` if `guard` already had a value — in which case nothing was
+   * written and the caller should re-read rather than assume its own identifiers won.
+   */
+  claim(guard: string, entries: ReadonlyMap<string, string>): Promise<boolean>;
 };
 
 const DATABASE = "life-compass";
@@ -161,6 +171,29 @@ export function fromDatabase(database: IDBDatabase): Store {
           console.warn("life-compass: stored answers this version cannot read", unreadable);
         }
         return answers;
+      });
+    },
+
+    async claim(guard, entries) {
+      return transact("readwrite", async (store) => {
+        // Read inside the transaction. Reading first and writing after would be two
+        // transactions with a gap between them, which is exactly the window another tab
+        // materialises in.
+        const existing = await settled(store.get(guard));
+        if (existing !== undefined) {
+          return false;
+        }
+        for (const [key, value] of entries) {
+          // Requests are issued without awaiting between them, so they all belong to this
+          // transaction — see the note on `transact`. An empty value is still an absent
+          // answer, so it deletes rather than storing blankness.
+          if (value === "") {
+            store.delete(key);
+          } else {
+            store.put(value, key);
+          }
+        }
+        return true;
       });
     },
 

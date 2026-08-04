@@ -29,6 +29,8 @@ type Recorder = Store & {
   failField?: string;
   /** Fail this many writes, then start succeeding. */
   failTimes: number;
+  /** Guards already claimed, so a second claim for one loses. */
+  readonly claimed: Set<string>;
   hold: boolean;
   /** Wait for a write to reach the store, then let it through. */
   releaseNext(): Promise<void>;
@@ -43,10 +45,24 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()): Recorder {
     held,
     fail: false,
     failTimes: 0,
+    claimed: new Set<string>(),
     hold: false,
 
     async readAll() {
       return initial;
+    },
+
+    async claim(guard, entries) {
+      // The fake's guard is its own write log: a group is materialised once, and a second
+      // claim for the same guard must lose rather than overwrite.
+      if (state.claimed.has(guard)) {
+        return false;
+      }
+      state.claimed.add(guard);
+      for (const [key, value] of entries) {
+        state.writes.push(`${key}=${value}`);
+      }
+      return true;
     },
 
     async write(field, value) {

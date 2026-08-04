@@ -7,7 +7,7 @@
  * answers are being typed. Activation now happens when the reader says so.
  */
 
-import { dismissBanner, showBanner } from "./banner.js";
+import { dismissBanner, showBanner } from "./banner.ts";
 
 /** How long to wait for the reload before admitting it is not coming. */
 const ACTIVATION_TIMEOUT_MS = 10_000;

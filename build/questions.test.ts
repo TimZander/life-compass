@@ -2,7 +2,18 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ANCHOR, checkRegistry, checkSchema, loadSchema, renderQuestion } from "./questions.ts";
 import { gapsOf, identifiersOf, type Question } from "../src/questions/types.ts";
-import type { Worksheet } from "../src/questions/index.ts";
+import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
+
+/**
+ * The text a reader actually sees, with attributes stripped.
+ *
+ * A label can legitimately appear in `data-label` — that is how the bound control gets its
+ * accessible name — while being deliberately absent from the printed page. Asserting
+ * against the raw HTML conflates the two, and would pass or fail for the wrong reason.
+ */
+function printed(html: string): string {
+  return html.replace(/<[^>]*>/g, "");
+}
 
 const CHAPTERS: Question = {
   kind: "repeat",
@@ -204,14 +215,17 @@ describe("renderQuestion", () => {
     assert.ok(!html.includes("<script>"));
   });
 
-  it("renderQuestion_SingleQuestion_DoesNotPrintItsLabel", () => {
+  it("renderQuestion_SingleQuestion_DoesNotPrintItsLabelButStillCarriesItForAScreenReader", () => {
     // Arrange — the prose immediately above already asks the question, so printing the
-    // label produced "Patterns — what kind of work…" followed by "Patterns: ____".
+    // label produced "Patterns — what kind of work…" followed by "Patterns: ____". The
+    // label is still the only thing that can name the control once #24 binds it: derived
+    // from the surrounding prose instead, the name came out as the literal "______".
     // Act
     const html = renderQuestion(NOTE);
 
     // Assert
-    assert.ok(!html.includes("Note"));
+    assert.ok(!printed(html).includes("Note"), "the label was printed");
+    assert.ok(html.includes('data-label="Note"'), "the label was not carried for a screen reader");
     assert.ok(html.includes('data-question="t.note"'));
   });
 });
@@ -626,9 +640,137 @@ describe("field labels", () => {
     // Act
     const html = renderQuestion(question);
 
-    // Assert
-    assert.ok(!html.includes("Value"));
+    // Assert — not printed, but each row is still named distinctly, or a reader tabbing
+    // through hears "Value" three times with nothing to say which row they are in.
+    assert.ok(!printed(html).includes("Value"), "the label was printed");
+    assert.deepEqual(
+      [...html.matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["Value 1", "Value 2", "Value 3"],
+    );
     assert.equal(html.match(/<li data-instance="\d+">/g)?.length, 3);
+  });
+});
+
+describe("what a screen reader is told", () => {
+  it("renderQuestion_SectionRepeat_NamesEveryBlankByItsInstance", () => {
+    // Arrange — the heading blank and the fields beneath it both need the instance number,
+    // or a reader tabbing through a five-value section hears "Value" and "My definition"
+    // five times each with nothing to say which one they are in.
+    const question: Question = {
+      kind: "repeat", id: "t.values", instances: "section", label: "Value",
+      min: 2, max: 2,
+      fields: [
+        { id: "name", label: "Value", size: "long" },
+        { id: "definition", label: "My definition", size: "long" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.deepEqual(
+      [...html.matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["Value 1 — Value", "Value 1 — My definition", "Value 2 — Value", "Value 2 — My definition"],
+    );
+  });
+
+  it("renderQuestion_SentenceGap_NamesEachBlankAfterItsOwnField", () => {
+    // Arrange — a sentence has no label of its own; the template is the prose. The field
+    // labels read as the fragments they complete.
+    const question: Question = {
+      kind: "sentence", id: "t.enough",
+      template: "The world has enough {excess}. It needs more {lack}.",
+      fields: [
+        { id: "excess", label: "Enough of", size: "short" },
+        { id: "lack", label: "More of", size: "short" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert
+    assert.deepEqual(
+      [...html.matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["Enough of", "More of"],
+    );
+  });
+
+  it("renderQuestion_QuestionRepeatingAFieldLabel_NumbersTheSpokenNamesOnly", () => {
+    // Arrange — day3.themes declares three fields all labelled "Example", so each theme
+    // rendered three adjacent controls announcing themselves identically. A reader tabbing
+    // between them has only the name to go on.
+    const question: Question = {
+      kind: "repeat", id: "t.themes", instances: "section", label: "Theme",
+      min: 1, max: 1,
+      fields: [
+        { id: "theme", label: "Theme", size: "long" },
+        { id: "example_1", label: "Example", size: "long" },
+        { id: "example_2", label: "Example", size: "long" },
+      ],
+    };
+
+    // Act
+    const html = renderQuestion(question);
+
+    // Assert — numbered when spoken, and the printed page still reads "Example:" twice,
+    // which is how the worksheet has always read.
+    assert.deepEqual(
+      [...html.matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["Theme 1 — Theme", "Theme 1 — Example 1", "Theme 1 — Example 2"],
+    );
+    assert.equal(printed(html).match(/Example:/g)?.length, 2, "the printed label was changed");
+  });
+
+  it("renderQuestion_NoRepeatedLabel_LeavesTheSpokenNameAlone", () => {
+    // Arrange — negative case. Numbering a label that appears once would read as though
+    // there were others, and would put "1" after every field on the site.
+    const question: Question = {
+      kind: "group", id: "t.money",
+      fields: [
+        { id: "overspend", label: "What am I overspending on?", size: "long" },
+        { id: "change", label: "One change", size: "long" },
+      ],
+    };
+
+    // Act & Assert
+    assert.deepEqual(
+      [...renderQuestion(question).matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]),
+      ["What am I overspending on?", "One change"],
+    );
+  });
+
+  it("renderQuestion_EveryShape_NamesAdjacentBlanksDistinctly", () => {
+    // Arrange — the property across the real schema: no two blanks a reader tabs between
+    // inside one question may announce themselves identically.
+    // Act & Assert
+    for (const worksheet of WORKSHEETS) {
+      for (const question of worksheet.questions) {
+        const names = [...renderQuestion(question).matchAll(/data-label="([^"]*)"/g)].map(
+          (match) => match[1],
+        );
+        assert.equal(new Set(names).size, names.length, `${question.id} reuses a spoken name`);
+      }
+    }
+  });
+
+  it("renderQuestion_EveryShape_GivesEveryBlankANonEmptyName", () => {
+    // Arrange — negative case across the real schema rather than a fixture. A blank with no
+    // name, or one named after its own underscores, is what a screen reader reads out.
+    // Act & Assert
+    for (const worksheet of WORKSHEETS) {
+      for (const question of worksheet.questions) {
+        const html = renderQuestion(question);
+        const blanks = html.match(/class="fill(-sm)?"/g)?.length ?? 0;
+        const labels = [...html.matchAll(/data-label="([^"]*)"/g)].map((match) => match[1]);
+        assert.equal(labels.length, blanks, `${question.id} has an unnamed blank`);
+        for (const label of labels) {
+          assert.ok(label !== undefined && label.trim() !== "", `${question.id} has a blank name`);
+          assert.ok(!label.includes("___"), `${question.id} is named after its underscores`);
+        }
+      }
+    }
   });
 });
 

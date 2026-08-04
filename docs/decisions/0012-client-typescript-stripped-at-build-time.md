@@ -98,3 +98,11 @@ modules and whose build reports success.
 **C5.** This replaces the arrangement in 0002 · C4 for client code only. The reasoning
 there was sound and its condition was stated precisely enough to know when it expired,
 which is the argument for writing conditions down rather than conclusions.
+
+**C5a.** "No module rewriting" above no longer holds literally: the emit rewrites `.ts`
+to `.js` in relative specifiers, and the sources say `.ts`. Nothing else about the
+sentence changes — there is still no bundling, no downlevelling and no resolution — but
+the specifier a browser sees is no longer character-for-character the one in the source.
+The reason is that a client module importing a sibling as `./keys.js` cannot be run by
+Node from source, which made this tier untestable at the point it most needed testing.
+Recorded in full as 0014 · C5.

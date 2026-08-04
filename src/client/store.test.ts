@@ -22,23 +22,54 @@ function request(result: unknown): unknown {
 
 function database(entries: readonly (readonly [unknown, unknown])[] = []) {
   const calls: Call[] = [];
+  /**
+   * Whether the current transaction can still take requests.
+   *
+   * IndexedDB commits a transaction as soon as its microtask queue drains, and every
+   * request issued afterwards throws `TransactionInactiveError`. A fake without that rule
+   * accepts requests forever, so "these writes were atomic" and "these writes happened at
+   * some point" look identical — which is how the atomicity test below first came to pass
+   * against an implementation that awaited a macrotask in the middle.
+   */
+  let active = false;
+  const guard = (op: string): void => {
+    if (!active) {
+      throw new Error(`TransactionInactiveError: ${op} was issued after the transaction closed`);
+    }
+  };
   const store = {
     getAllKeys: () => request(entries.map(([key]) => key)),
     getAll: () => request(entries.map(([, value]) => value)),
+    get: (key: unknown) => {
+      guard("get");
+      calls.push({ op: "get", args: [key] });
+      return request(entries.find(([stored]) => stored === key)?.[1]);
+    },
     put: (value: unknown, key: unknown) => {
+      guard("put");
       calls.push({ op: "put", args: [key, value] });
       return request(key);
     },
     delete: (key: unknown) => {
+      guard("delete");
       calls.push({ op: "delete", args: [key] });
       return request(undefined);
     },
   };
   const fake = {
     calls,
+    /** How many transactions were opened. `claim` is only atomic if it opens one. */
+    transactions: 0,
     transaction: () => {
+      fake.transactions += 1;
+      active = true;
       const transaction = { objectStore: () => store, oncomplete: () => {}, onabort: () => {}, onerror: () => {}, error: null };
-      queueMicrotask(() => queueMicrotask(() => transaction.oncomplete()));
+      // A macrotask, so anything the implementation awaits beyond the microtask queue
+      // finds the transaction closed, exactly as a browser would.
+      setTimeout(() => {
+        active = false;
+        transaction.oncomplete();
+      }, 0);
       return transaction;
     },
   };
@@ -121,5 +152,82 @@ describe("write", () => {
 
     // Assert
     assert.deepEqual(fake.calls, [{ op: "delete", args: ["day1.threads"] }]);
+  });
+});
+
+describe("claim", () => {
+  it("claim_GuardNotYetSet_WritesEveryEntryAndReportsTheWin", async () => {
+    // Arrange — materialising a repeat group: the order and the answer that triggered it
+    // go in together, because the answer's key does not exist until the identifiers do
+    // (0013 · Q1).
+    const GUARD = "day1.chapters";
+    const ORDER = '["5f1c","9a34"]';
+    const ANSWER = "day1.chapters.5f1c.title";
+    const fake = database();
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    const won = await store.claim(GUARD, new Map([[GUARD, ORDER], [ANSWER, "The garage-band years"]]));
+
+    // Assert
+    assert.equal(won, true);
+    assert.deepEqual(fake.calls, [
+      { op: "get", args: [GUARD] },
+      { op: "put", args: [GUARD, ORDER] },
+      { op: "put", args: [ANSWER, "The garage-band years"] },
+    ]);
+  });
+
+  it("claim_GuardAlreadySet_WritesNothingAndReportsTheLoss", async () => {
+    // Arrange — negative case, and the two-tab race this operation exists for. Another
+    // tab materialised the same group first; overwriting its order would strand every
+    // answer already written under the identifiers it minted.
+    const GUARD = "day1.chapters";
+    const ORDER = '["5f1c","9a34"]';
+    const fake = database([[GUARD, ORDER]]);
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    const won = await store.claim(GUARD, new Map([[GUARD, '["ffff","eeee"]'], ["day1.chapters.ffff.title", "mine"]]));
+
+    // Assert
+    assert.equal(won, false);
+    assert.deepEqual(fake.calls, [{ op: "get", args: [GUARD] }]);
+  });
+
+  it("claim_ReadAndWrite_ShareOneTransaction", async () => {
+    // Arrange — the whole point. Reading the guard in one transaction and writing in the
+    // next leaves a gap between them, and that gap is exactly where the other tab lands:
+    // both would read "absent" and both would then write.
+    const GUARD = "day1.chapters";
+    const ORDER = '["5f1c","9a34"]';
+    const fake = database();
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    await store.claim(GUARD, new Map([[GUARD, ORDER]]));
+
+    // Assert
+    assert.equal(fake.transactions, 1);
+  });
+
+  it("claim_EmptyValueAmongTheEntries_DeletesRatherThanStoringBlankness", async () => {
+    // Arrange — negative case. The triggering answer can be empty by the time the claim
+    // is issued, because the reader may have deleted what they said while it was in
+    // flight, and `write` already treats "" as absent rather than answered.
+    const GUARD = "day1.chapters";
+    const ORDER = '["5f1c","9a34"]';
+    const fake = database();
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    await store.claim(GUARD, new Map([[GUARD, ORDER], ["day1.chapters.5f1c.title", ""]]));
+
+    // Assert
+    assert.deepEqual(fake.calls, [
+      { op: "get", args: [GUARD] },
+      { op: "put", args: [GUARD, ORDER] },
+      { op: "delete", args: ["day1.chapters.5f1c.title"] },
+    ]);
   });
 });
