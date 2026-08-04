@@ -129,3 +129,67 @@ export function filenameFor(exportedAt: Date): string {
   const time = iso.slice(iso.indexOf("T") + 1, iso.indexOf(":", iso.indexOf(":") + 1)).replace(":", "-");
   return `life-compass-${day}-${time}.json`;
 }
+
+/** Where the build stamped the question set's fingerprint (0009 · C6). */
+export const SCHEMA_META = "life-compass-schema";
+
+/**
+ * The schema fingerprint this page was built from.
+ *
+ * Falls back rather than throwing. A missing meta tag means a build that predates the
+ * stamp or a page served from an old cache — neither is a reason to refuse somebody a
+ * backup, which would put the file's metadata ahead of the answers it exists to protect.
+ * "unknown" is at least honest, and an importer can treat it as "assume nothing".
+ */
+export function schemaOf(document: Document): string {
+  const meta = document.querySelector(`meta[name="${SCHEMA_META}"]`);
+  const content = meta?.getAttribute("content");
+  return content === null || content === undefined || content === "" ? "unknown" : content;
+}
+
+/**
+ * Write the backup out as a file the reader keeps.
+ *
+ * An object URL and a synthetic click, which is the only way to hand somebody a file
+ * without a server — and there is no server (0003), nor may there be: `connect-src 'none'`
+ * (0005, 0007) forbids this app from sending their answers anywhere. The file goes from
+ * memory to their disk and touches nothing else.
+ *
+ * The URL is revoked on a later turn rather than immediately: revoking it in the same tick
+ * as the click can cancel the download it names, since the browser has not necessarily
+ * started reading the blob yet.
+ */
+export function download(document: Document, text: string, filename: string): void {
+  const view = document.defaultView;
+  if (view === null) {
+    throw new Error("this document cannot download a file");
+  }
+  const url = view.URL.createObjectURL(new view.Blob([text], { type: "application/json" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  // Not appended to the document: a click works without it in every browser this supports,
+  // and an anchor left in the page would be a stray focusable element in the reader's tab
+  // order — and briefly, one carrying a URL to everything they have ever written.
+  anchor.click();
+  view.setTimeout(() => view.URL.revokeObjectURL(url), 0);
+}
+
+/**
+ * Everything the export control does: read the store, build the file, hand it over.
+ *
+ * Returns the filename so the caller can tell the reader what was saved. It throws rather
+ * than reporting failure itself, because whether a failure becomes a banner is the page's
+ * decision and not this module's.
+ */
+export async function saveBackup(
+  store: Store,
+  document: Document,
+  exportedAt: Date,
+): Promise<string> {
+  const envelope = await envelopeOf(store, exportedAt, schemaOf(document));
+  const filename = filenameFor(exportedAt);
+  download(document, serialise(envelope), filename);
+  return filename;
+}

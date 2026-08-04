@@ -49,6 +49,40 @@ const NAV: readonly (readonly [href: string, label: string])[] = [
   ["/docs/decisions/", "Decisions"],
 ];
 
+/**
+ * The backup control, on pages that have somewhere to write.
+ *
+ * A first-class control rather than a settings menu item, because 0008 · C3 makes this the
+ * only copy that survives eviction or uninstall — a backup nobody can find is a backup
+ * nobody takes.
+ *
+ * Only on pages carrying blanks. Export covers the whole store rather than the page, so it
+ * would work anywhere; putting it at the foot of a decision record would just be a control
+ * offered where nobody is answering anything. The wording says "all your answers" for the
+ * same reason — the button is on one worksheet and does not mean that worksheet.
+ *
+ * `hidden` until the script has a working store. A control that is visible before it can
+ * do anything is one somebody presses and watches do nothing, and 0008 is about being
+ * straight over whether answers are actually safe.
+ *
+ * The plaintext sentence is 0009 · C1's, which asks for it to be accurate and not
+ * alarming: what the file is, and that where it goes is the reader's call.
+ */
+function backup(content: string): string {
+  if (!content.includes('class="fill')) {
+    return "";
+  }
+  return `
+<section class="backup" id="backup" hidden>
+  <h2>Keep a copy</h2>
+  <p>Your answers live on this device only. Saving a backup is the one copy that survives
+  clearing your browser data or removing the app.</p>
+  <p><button type="button" id="backup-save">Save a backup of all your answers</button></p>
+  <p class="backup-note">The file is ordinary text, not encrypted — anyone who opens it can
+  read what you wrote. Keep it somewhere you would keep a private notebook.</p>
+</section>`;
+}
+
 export function layout(content: string, pageTitle: string | null, schema: string): string {
   const nav = NAV.map(([href, label]) => `    <a href="${href}">${label}</a>`).join("\n");
 
@@ -79,7 +113,7 @@ export function layout(content: string, pageTitle: string | null, schema: string
 </head>
 <body>
   <a class="wordmark" href="/"><svg class="wm-star" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
-  <main><article>${content}</article></main>
+  <main><article>${content}${backup(content)}</article></main>
   <!-- The banner's live region. Static markup on purpose: a screen reader only
        announces changes to a region that existed beforehand, so creating it on demand
        and filling it in the same task is routinely missed (0001). -->

@@ -8,8 +8,19 @@
  */
 
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { envelopeOf, filenameFor, serialise, FORMAT, VERSION } from "./export.ts";
+import { Window } from "happy-dom";
+import { after, before, describe, it } from "node:test";
+import {
+  download,
+  envelopeOf,
+  filenameFor,
+  saveBackup,
+  schemaOf,
+  serialise,
+  FORMAT,
+  SCHEMA_META,
+  VERSION,
+} from "./export.ts";
 import { orderKey, writeOrder } from "./keys.ts";
 import type { Store } from "./store.ts";
 
@@ -181,5 +192,129 @@ describe("the file itself", () => {
     const name = filenameFor(WHEN);
     assert.ok(!/[:*?"<>|\\/]/.test(name), `${name} contains a character some platforms refuse`);
     assert.ok(name.endsWith(".json"));
+  });
+});
+
+let window: Window;
+
+before(() => {
+  window = new Window();
+});
+
+after(() => {
+  void window.close();
+});
+
+/** A page as the build emits it, with or without the schema stamp. */
+function page(meta: string = `<meta name="${SCHEMA_META}" content="${SCHEMA}">`): Document {
+  window.document.head.innerHTML = meta;
+  window.document.body.innerHTML = "";
+  return window.document as unknown as Document;
+}
+
+describe("reading the schema stamp", () => {
+  it("schemaOf_APageTheBuildStamped_ReturnsTheFingerprint", () => {
+    // Arrange & Act & Assert — the client cannot derive this: connect-src 'none' stops it
+    // fetching questions.json, so the page is the only source.
+    assert.equal(schemaOf(page()), SCHEMA);
+  });
+
+  it("schemaOf_APageWithoutOne_FallsBackRatherThanRefusing", () => {
+    // Arrange — negative case, and a deliberate choice about priorities. A missing stamp
+    // means an old build or a stale cached page; refusing to save the backup over it would
+    // put the file's metadata ahead of the answers the file exists to protect.
+    // Act & Assert
+    assert.equal(schemaOf(page("")), "unknown");
+    assert.equal(schemaOf(page(`<meta name="${SCHEMA_META}" content="">`)), "unknown");
+  });
+});
+
+describe("handing the file over", () => {
+  it("download_SomeText_OffersItUnderTheGivenNameAndReleasesTheUrl", () => {
+    // Arrange — an object URL and a synthetic click is the only way to hand somebody a
+    // file with no server, and there may not be one: connect-src 'none' forbids this app
+    // from sending their answers anywhere at all.
+    const NAME = "life-compass-2026-08-04-14-12.json";
+    const TEXT = '{"format":"life-compass/answers"}';
+    const document = page();
+    const created: string[] = [];
+    const revoked: string[] = [];
+    window.URL.createObjectURL = ((): string => {
+      const url = `blob:test-${created.length}`;
+      created.push(url);
+      return url;
+    }) as typeof window.URL.createObjectURL;
+    window.URL.revokeObjectURL = ((url: string) => revoked.push(url)) as typeof window.URL.revokeObjectURL;
+    let clickedHref = "";
+    let clickedName = "";
+    const create = document.createElement.bind(document);
+    document.createElement = ((tag: string) => {
+      const element = create(tag);
+      if (tag === "a") {
+        element.addEventListener("click", () => {
+          clickedHref = (element as HTMLAnchorElement).href;
+          clickedName = (element as HTMLAnchorElement).download;
+        });
+      }
+      return element;
+    }) as typeof document.createElement;
+
+    // Act
+    download(document, TEXT, NAME);
+
+    // Assert
+    assert.equal(created.length, 1, "no object URL was made");
+    assert.equal(clickedName, NAME, "the file was offered under the wrong name");
+    assert.equal(clickedHref, created[0], "the click did not point at the blob");
+    assert.equal(document.querySelectorAll("a").length, 0, "the anchor was left in the page");
+  });
+
+  it("download_AfterTheClick_RevokesOnALaterTurnNotTheSameOne", async () => {
+    // Arrange — negative case. Revoking in the same tick as the click can cancel the very
+    // download it names, because the browser has not necessarily started reading the blob.
+    const MINE = "blob:the-one-this-test-made";
+    const document = page();
+    const revoked: string[] = [];
+    window.URL.createObjectURL = (() => MINE) as typeof window.URL.createObjectURL;
+    window.URL.revokeObjectURL = ((url: string) => revoked.push(url)) as typeof window.URL.revokeObjectURL;
+
+    // Act
+    download(document, "{}", "x.json");
+    const immediately = revoked.includes(MINE);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    // Assert — by identity, not by count: a revoke scheduled by an earlier test lands in
+    // whatever spy is installed when its timer finally fires, so counting is not this
+    // test's business.
+    assert.equal(immediately, false, "the URL was revoked before the download could start");
+    assert.ok(revoked.includes(MINE), "the URL was never released");
+  });
+});
+
+describe("the whole control", () => {
+  it("saveBackup_APageWithAnswers_WritesEverythingAndReportsTheFilename", async () => {
+    // Arrange
+    const ANSWER = "what recurs when I am not performing";
+    const document = page();
+    // Read the bytes back out of the blob the code actually made, rather than intercepting
+    // the string on its way in — this is what a browser would be handed.
+    let handed: { text(): Promise<string> } | undefined;
+    window.URL.createObjectURL = ((blob: { text(): Promise<string> }) => {
+      handed = blob;
+      return "blob:test";
+    }) as unknown as typeof window.URL.createObjectURL;
+    window.URL.revokeObjectURL = (() => {}) as typeof window.URL.revokeObjectURL;
+
+    // Act
+    const filename = await saveBackup(stored(new Map([["day1.patterns", ANSWER]])), document, WHEN);
+
+    // Assert — the file handed over is the envelope, stamped with this page's schema and
+    // named for the moment it was taken.
+    assert.equal(filename, "life-compass-2026-08-04-14-12.json");
+    assert.ok(handed !== undefined, "nothing was handed to the browser");
+    const envelope = JSON.parse(await handed.text());
+    assert.equal(envelope.payload["day1.patterns"], ANSWER);
+    assert.equal(envelope.schema, SCHEMA);
+    assert.equal(envelope.format, FORMAT);
   });
 });

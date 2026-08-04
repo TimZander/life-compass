@@ -70,3 +70,42 @@ describe("the schema fingerprint on the page", () => {
     );
   });
 });
+
+describe("the backup control", () => {
+  const BLANK = '<p><span class="fill" data-field="t.a" data-label="A">______</span></p>';
+
+  it("layout_APageWithBlanks_CarriesTheBackupControlHidden", () => {
+    // Arrange — 0008 · C3 makes an export the only copy that survives eviction or
+    // uninstall, so it is a first-class control rather than a settings item. It ships
+    // `hidden` because until app.ts has a working store there is nothing behind it, and a
+    // button that does nothing when pressed is worse than one that is not there.
+    // Act
+    const html = layout(BLANK, "A worksheet", DIGEST);
+
+    // Assert
+    assert.ok(html.includes('<section class="backup" id="backup" hidden>'), "no backup control");
+    assert.ok(html.includes('id="backup-save"'), "no backup button");
+  });
+
+  it("layout_APageWithNoBlanks_HasNoBackupControl", () => {
+    // Arrange — negative case. Export covers the whole store so it would work anywhere,
+    // but a decision record is not somewhere anybody is answering anything.
+    // Act
+    const html = layout("<p>Just prose.</p>", "A decision record", DIGEST);
+
+    // Assert
+    assert.ok(!html.includes('id="backup"'), "a page with nothing to answer offered a backup");
+  });
+
+  it("layout_TheBackupControl_SaysWhatTheFileIsAndThatItCoversEverything", () => {
+    // Arrange — 0009 · C1 asks for plaintext to be stated plainly, accurate and not
+    // alarming. The scope wording matters too: the button sits on one worksheet and does
+    // not mean that worksheet.
+    // Act
+    const html = layout(BLANK, "A worksheet", DIGEST);
+
+    // Assert
+    assert.ok(html.includes("all your answers"), "the control implies it covers this page only");
+    assert.ok(html.includes("not encrypted"), "the control does not say the file is plaintext");
+  });
+});

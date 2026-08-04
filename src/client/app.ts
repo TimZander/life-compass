@@ -9,7 +9,8 @@
 import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers, BLANK_SELECTOR } from "./fields.ts";
-import { openStore } from "./store.ts";
+import { saveBackup } from "./export.ts";
+import { openStore, type Store } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
 // Runs before registration, because it reports on the load that already happened rather
@@ -83,6 +84,8 @@ async function bindAnswerFields(): Promise<void> {
     }
   });
 
+  wireBackup(store);
+
   await bindAnswers(document, answers, store, {
     // Says that writing has stopped, not just that reading failed. The earlier wording
     // mentioned only the answers already stored, so a reader could dictate a page of new
@@ -104,6 +107,48 @@ async function bindAnswerFields(): Promise<void> {
         actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
       });
     },
+  });
+}
+
+/**
+ * Reveal the backup control and make it work.
+ *
+ * Revealed here rather than in the markup because until this runs there is no working
+ * store, and a button that is visible before it can do anything is one somebody presses
+ * and watches do nothing. If storage never opens, this is never called and the section
+ * stays hidden — the page still reads and prints, which is the whole point of 0010.
+ */
+function wireBackup(store: Store): void {
+  const section = document.getElementById("backup");
+  const button = document.getElementById("backup-save");
+  if (section === null || button === null) {
+    return;
+  }
+  section.hidden = false;
+  button.addEventListener("click", () => {
+    // Disabled while it works, so a second press cannot start a second export over the
+    // first — and re-enabled in `finally`, or one failure would leave the reader with a
+    // dead button and no way to try again.
+    button.setAttribute("disabled", "disabled");
+    saveBackup(store, document, new Date())
+      .then((filename) => {
+        showBanner({
+          id: "backup",
+          text: `Saved ${filename}. Keep it somewhere you would keep a private notebook.`,
+          actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+        });
+      })
+      .catch((error: unknown) => {
+        console.error("life-compass: the backup could not be saved", error);
+        showBanner({
+          id: "backup",
+          text: "That backup could not be saved. Your answers are still on this device.",
+          actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+        });
+      })
+      .finally(() => {
+        button.removeAttribute("disabled");
+      });
   });
 }
 
