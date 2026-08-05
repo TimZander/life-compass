@@ -52,6 +52,12 @@ function recorder(initial: ReadonlyMap<string, string> = new Map(), failClaim: b
       }
       return true;
     },
+    async replaceAll(entries) {
+      kept.clear();
+      for (const [key, value] of entries) {
+        kept.set(key, value);
+      }
+    },
   };
   return store;
 }

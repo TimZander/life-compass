@@ -50,12 +50,39 @@ function region(): HTMLElement | null {
 }
 
 /** Is the reader mid-input right now? */
+/** Input types somebody actually composes text in, as opposed to operates. */
+const TEXT_ENTRY = new Set([
+  "text",
+  "search",
+  "url",
+  "tel",
+  "email",
+  "password",
+  "number",
+  "date",
+  "datetime-local",
+  "month",
+  "week",
+  "time",
+]);
+
 function isTyping(): boolean {
   const active = document.activeElement;
   if (active === null || !(active instanceof HTMLElement)) {
     return false;
   }
-  return active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable;
+  if (active.tagName === "TEXTAREA" || active.isContentEditable) {
+    return true;
+  }
+  // Not every `<input>` is somebody mid-sentence. A file input keeps focus after its
+  // picker closes, so treating it as typing deferred the message explaining why the file
+  // was refused — the reader picked the wrong thing and was told nothing at all, which is
+  // the opposite of what deferring is for. A checkbox and a button are the same: operating
+  // a control is not composing text, and a message about the control just operated is
+  // exactly the message that should not wait.
+  return (
+    active instanceof HTMLInputElement && TEXT_ENTRY.has(active.type.toLowerCase())
+  );
 }
 
 /**

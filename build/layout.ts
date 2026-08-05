@@ -46,45 +46,59 @@ const NAV: readonly (readonly [href: string, label: string])[] = [
   ["/rigorous/", "Rigorous"],
   ["/with-a-partner", "Partner"],
   ["/optional-add-ons", "Add-ons"],
+  ["/backup", "Backup"],
   ["/docs/decisions/", "Decisions"],
 ];
 
 /**
- * The backup control, on pages that have somewhere to write.
+ * The backup and restore controls, on the page that exists for them.
  *
- * A first-class control rather than a settings menu item, because 0008 · C3 makes this the
- * only copy that survives eviction or uninstall — a backup nobody can find is a backup
- * nobody takes.
+ * On their own page rather than at the foot of every worksheet, and the move fixed more
+ * than clutter. Export covers the whole store, but sitting under Day 3 it read as "back up
+ * Day 3" — a confusion the button label had to fight with the words "all your answers".
+ * Here the scope is the page. And restoring is the one irreversible act in the application;
+ * asking somebody to weigh it three inches below the paragraph they were dictating is the
+ * wrong moment for it.
  *
- * Only on pages with questions, which the caller decides from the schema rather than by
- * scanning the rendered HTML. An earlier version matched the substring `class="fill`, which
- * is a third independent definition of "has somewhere to write" alongside `identifiersOf`
- * and `BLANK_SELECTOR`, is coupled to the attribute order `blank()` happens to emit, and
- * misses a page whose only answerable content is a checklist. Export covers the whole store
- * so it would work anywhere; a decision record is simply not where anybody is answering
- * something. The wording says "all your answers" for the same reason — the button sits on
- * one worksheet and does not mean that worksheet.
+ * Reachable from everywhere, which is more than before: the footer navigation renders on
+ * all 35 pages, where the old inline section existed on the 14 that carry blanks.
+ * 0008 · C3 asks for the backup to be pushed rather than buried, and pushing is #26's job —
+ * install prompting and a line saying when you last exported. This page is where the doing
+ * happens; a permanent screenful of warnings under every day's work was nagging, not
+ * pushing.
  *
- * `hidden` until the script has a working store. A control that is visible before it can
- * do anything is one somebody presses and watches do nothing, and 0008 is about being
- * straight over whether answers are actually safe.
- *
- * The plaintext sentence is 0009 · C1's, which asks for it to be accurate and not
- * alarming: what the file is, and that where it goes is the reader's call.
+ * Both controls ship `hidden` and are revealed by the client once a store actually opens.
+ * A control visible before it can do anything is one somebody presses and watches do
+ * nothing, and 0008 is about being straight over whether answers are safe.
  */
-function backup(): string {
+function tools(): string {
   return `
-<section class="backup" id="backup" aria-labelledby="backup-heading" hidden>
-  <h2 id="backup-heading">Keep a copy</h2>
-  <p>Your answers live on this device only. A backup is the one copy that survives your
-  browser reclaiming space, clearing your browsing data, or removing the app.</p>
-  <p><button type="button" id="backup-save">Download a backup of all your answers</button></p>
-  <p class="backup-note">The file is ordinary text, not encrypted — anyone who opens it can
-  read what you wrote. Keep it somewhere you would keep a private notebook.</p>
+<section class="tools" id="backup" aria-labelledby="backup-heading" hidden>
+  <h2 id="backup-heading">Save a backup</h2>
+  <p><button type="button" id="backup-save">Download a backup</button></p>
+</section>
+
+<section class="tools" id="restore" aria-labelledby="restore-heading" hidden>
+  <h2 id="restore-heading">Restore from a backup</h2>
+  <p><input type="file" id="restore-file" accept="application/json,.json"><label
+    class="restore-pick" for="restore-file">Choose a backup file</label></p>
+
+  <div id="restore-confirm" role="group" aria-labelledby="restore-confirm-heading" hidden>
+    <h3 id="restore-confirm-heading">Replace everything with this file?</h3>
+    <p id="restore-chosen"></p>
+    <p id="restore-summary"></p>
+    <p>If you have not saved a copy of what is on this device, do that first — it is the
+    only way back.</p>
+    <p><button type="button" id="restore-backup-first">Download a backup of this device first</button></p>
+    <p><label><input type="checkbox" id="restore-ack"> I have saved a copy of what is on
+    this device.</label></p>
+    <p><button type="button" id="restore-go" aria-disabled="true">Replace every answer on this device</button>
+    <button type="button" id="restore-cancel">Cancel</button></p>
+  </div>
 </section>`;
 }
 
-export function layout(content: string, pageTitle: string | null, answerable: boolean): string {
+export function layout(content: string, pageTitle: string | null, isBackupPage: boolean): string {
   const nav = NAV.map(([href, label]) => `    <a href="${href}">${label}</a>`).join("\n");
 
   return `<!doctype html>
@@ -109,7 +123,7 @@ export function layout(content: string, pageTitle: string | null, answerable: bo
 </head>
 <body>
   <a class="wordmark" href="/"><svg class="wm-star" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
-  <main><article>${content}${answerable ? backup() : ""}</article></main>
+  <main><article>${content}${isBackupPage ? tools() : ""}</article></main>
   <!-- The banner's live region. Static markup on purpose: a screen reader only
        announces changes to a region that existed beforehand, so creating it on demand
        and filling it in the same task is routinely missed (0001). -->

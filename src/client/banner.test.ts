@@ -45,6 +45,36 @@ function showing(): boolean {
 const MESSAGE = { id: "storage", text: "That file is not a Life Compass backup.", actions: [] };
 
 describe("waiting for a pause in typing", () => {
+  it("showBanner_WhileAFileInputHasFocus_SpeaksImmediately", async () => {
+    // Arrange — the restore control's picker leaves focus on its file input, so the rule
+    // "the focused element is an INPUT" deferred every message explaining why a file was
+    // refused, until a pause that never came. The reader picked the wrong thing and was
+    // told nothing at all, which is the opposite of what deferring is for.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+    page("file");
+    dismissBanner();
+
+    // Act
+    showBanner(MESSAGE);
+
+    // Assert
+    assert.equal(showing(), true, "the refusal was deferred behind a file input");
+  });
+
+  it("showBanner_WhileAControlHasFocus_SpeaksImmediately", async () => {
+    // Arrange — operating a control is not composing text, and a message about the control
+    // just operated is precisely the one that should not wait.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+
+    // Act & Assert
+    for (const id of ["checkbox", "button"]) {
+      page(id);
+      dismissBanner();
+      showBanner(MESSAGE);
+      assert.equal(showing(), true, `deferred behind a ${id}`);
+    }
+  });
+
   it("showBanner_WhileSomebodyIsWriting_Waits", async () => {
     // Arrange — the reason the delay exists (0001). A strip appearing under a reader's
     // hands mid-dictation is the interruption the record forbids.

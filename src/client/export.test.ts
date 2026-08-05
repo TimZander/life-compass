@@ -9,8 +9,10 @@
 
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
+import { layout } from "../../build/layout.ts";
 import { after, before, describe, it } from "node:test";
 import {
+  needsStore,
   download,
   envelopeOf,
   filenameFor,
@@ -33,6 +35,9 @@ function stored(entries: ReadonlyMap<string, string>): Store {
       throw new Error("an export must not write");
     },
     async claim() {
+      throw new Error("an export must not write");
+    },
+    async replaceAll() {
       throw new Error("an export must not write");
     },
   };
@@ -419,6 +424,9 @@ describe("flushing before the file is built", () => {
       async claim() {
         return true;
       },
+      async replaceAll() {
+        throw new Error("an export must not write");
+      },
     };
     // An `Answers` that has not written yet, exactly as a debounce leaves it.
     const answers = {
@@ -488,6 +496,9 @@ describe("the control on the page", () => {
       async claim() {
         return true;
       },
+      async replaceAll() {
+        throw new Error("an export must not write");
+      },
     };
 
     // Act
@@ -551,5 +562,41 @@ describe("the control on the page", () => {
 
     // Assert
     assert.equal(logged.length, 1, "a missing control was absorbed silently");
+  });
+});
+
+describe("deciding whether a page needs the store at all", () => {
+  it("needsStore_TheBackupPage_SaysYesEvenThoughItHasNoBlanks", () => {
+    // Arrange — the defect a device found within an hour of the controls moving. The rule
+    // was "does this page have blanks", which was true while the tools lived on the pages
+    // that had them. The backup page has none, so the entry module returned before opening
+    // anything and both controls stayed hidden — a page whose only purpose is those
+    // controls, offering neither.
+    window.document.body.innerHTML = layout("<p>prose</p>", "Backup", true);
+
+    // Act & Assert
+    assert.equal(needsStore(window.document as unknown as Document), true);
+  });
+
+  it("needsStore_AWorksheet_SaysYesForItsBlanks", () => {
+    // Arrange
+    window.document.body.innerHTML = layout(
+      '<p><span class="fill" data-field="t.a" data-label="A">___</span></p>',
+      "A worksheet",
+      false,
+    );
+
+    // Act & Assert
+    assert.equal(needsStore(window.document as unknown as Document), true);
+  });
+
+  it("needsStore_APageOfProseOnly_SaysNo", () => {
+    // Arrange — negative case, and the reason the check exists: a decision record should
+    // not prompt anybody about storage, and 0010 keeps it readable and printable with no
+    // script having run.
+    window.document.body.innerHTML = layout("<p>Just prose.</p>", "A record", false);
+
+    // Act & Assert
+    assert.equal(needsStore(window.document as unknown as Document), false);
   });
 });

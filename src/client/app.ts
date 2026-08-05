@@ -8,16 +8,46 @@
 
 import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
-import { bindAnswers, BLANK_SELECTOR } from "./fields.ts";
-import { wireBackup } from "./export.ts";
+import { bindAnswers } from "./fields.ts";
+import { needsStore, saveBackup, wireBackup } from "./export.ts";
+
+/** Where a just-completed restore leaves its count, to be reported after the reload. */
+const RESTORED_KEY = "life-compass:restored";
+import { explain, wireRestore } from "./import.ts";
 import { openStore } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
-// Runs before registration, because it reports on the load that already happened rather
-// than on anything the worker is about to do.
-confirmRecentUpdate();
+/**
+ * Everything this page does, in one awaitable call.
+ *
+ * The work used to sit at module scope, which made the only way to observe it "import the
+ * module and sleep" — a guess at how long it takes, and the timing-guess pattern that has
+ * already produced a flaky test in this project once. Awaiting it is exact, and it also
+ * means a test needs no cache-busting import specifier to run a second scenario.
+ *
+ * Nothing else changes: the module still calls this once on load, and everything inside
+ * runs in the order it did.
+ */
+export async function start(): Promise<void> {
+  // Runs before registration, because it reports on the load that already happened rather
+  // than on anything the worker is about to do.
+  confirmRecentUpdate();
+  registerWorker();
+  confirmRecentRestore();
+  try {
+    await bindAnswerFields();
+  } catch (error) {
+    console.error("life-compass: answers could not be bound to this page", error);
+    showBanner({
+      id: "storage",
+      text: "Your answers cannot be saved on this device. The page still works for printing.",
+      actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
+    });
+  }
+}
 
-if ("serviceWorker" in navigator) {
+function registerWorker(): void {
+  if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
@@ -38,6 +68,7 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+}
 
 /**
  * Bind the page's blanks to on-device storage.
@@ -49,7 +80,7 @@ if ("serviceWorker" in navigator) {
  * something the app has to say out loud).
  */
 async function bindAnswerFields(): Promise<void> {
-  if (document.querySelector(BLANK_SELECTOR) === null) {
+  if (!needsStore(document)) {
     return;
   }
   const store = await openStore();
@@ -104,6 +135,9 @@ async function bindAnswerFields(): Promise<void> {
     },
   });
 
+  // After binding, not before. A restore that landed while binding was still reading the
+  // store and materialising groups would race `claim` and the restore loop, both of which
+  // write pre-restore state into the replaced store.
   await bindAnswers(document, answers, store, {
     // Says that writing has stopped, not just that reading failed. The earlier wording
     // mentioned only the answers already stored, so a reader could dictate a page of new
@@ -126,13 +160,89 @@ async function bindAnswerFields(): Promise<void> {
       });
     },
   });
+
+  wireRestore(document, answers, store, {
+    onRefused: (refusal) =>
+      showBanner({
+        id: "restore",
+        text: explain(refusal),
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+      }),
+    onBackupFirst: () => {
+      void saveBackup(answers, store, document, new Date())
+        .then((filename) =>
+          showBanner({
+            id: "restore",
+            text: `Downloading ${filename}. Check your files before replacing anything.`,
+            actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+          }),
+        )
+        .catch((error: unknown) => {
+          console.error("life-compass: the backup could not be saved", error);
+          showBanner({
+            id: "restore",
+            text: "That backup could not be saved, so nothing has been replaced.",
+            actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+          });
+        });
+    },
+    onRestored: (count) => {
+      // Guarded, because storage access throws where site data is blocked — which is a
+      // privacy-minded reader, the exact audience here. sw-update.ts wraps the identical
+      // call for the identical reason. Losing the confirmation is a small cost; letting a
+      // throw escape once cost the reader a message saying nothing had changed after
+      // everything had.
+      try {
+        window.sessionStorage.setItem(RESTORED_KEY, String(count));
+      } catch {
+        // The restore has already landed. Only the sentence afterwards is lost.
+      }
+    },
+    onFailure: (error: unknown) => {
+      console.error("life-compass: the backup could not be restored", error);
+      showBanner({
+        id: "restore",
+        text: "That backup could not be restored. Nothing on this device has changed.",
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+      });
+    },
+    reload: () => window.location.reload(),
+  });
 }
 
-void bindAnswerFields().catch((error: unknown) => {
-  console.error("life-compass: answers could not be bound to this page", error);
+/**
+ * Report a restore that happened just before this page loaded.
+ *
+ * The reload is what makes the screen match the store, and it takes the banner with it —
+ * so the one message confirming an irreversible action would be the one message nobody
+ * ever sees. Read and cleared immediately, so it is said once rather than on every
+ * subsequent load.
+ */
+function confirmRecentRestore(): void {
+  let count: string | null = null;
+  // Guarded, and the getter itself can throw. Unguarded at module scope this aborted
+  // evaluation before `bindAnswerFields` ran, so a reader whose browser blocks site data
+  // got no field binding, no autosave, no controls and no banner explaining any of it —
+  // a rare-event confirmation disabling the whole application for the readers most likely
+  // to hit it. sw-update.ts guards both halves for the same reason.
+  try {
+    count = window.sessionStorage.getItem(RESTORED_KEY);
+  } catch {
+    return;
+  }
+  if (count === null) {
+    return;
+  }
+  try {
+    window.sessionStorage.removeItem(RESTORED_KEY);
+  } catch {
+    // Said once is the intent; said twice is better than the application not starting.
+  }
   showBanner({
-    id: "storage",
-    text: "Your answers cannot be saved on this device. The page still works for printing.",
-    actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
+    id: "restore",
+    text: `Restored ${count} ${count === "1" ? "answer" : "answers"} from your backup.`,
+    actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
   });
-});
+}
+
+void start();

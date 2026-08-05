@@ -55,41 +55,72 @@ describe("layout", () => {
 
 });
 
-describe("the backup control", () => {
-  it("layout_AnAnswerablePage_CarriesTheBackupControlHidden", () => {
-    // Arrange — 0008 · C3 makes an export the only copy that survives eviction or
-    // uninstall, so it is a first-class control rather than a settings item. It ships
-    // `hidden` because until app.ts has a working store there is nothing behind it, and a
-    // button that does nothing when pressed is worse than one that is not there.
+describe("the backup and restore controls", () => {
+  /** Every id `export.ts` and `import.ts` look up by name. */
+  const REQUIRED = [
+    "backup",
+    "backup-save",
+    "restore",
+    "restore-file",
+    "restore-confirm",
+    "restore-chosen",
+    "restore-summary",
+    "restore-backup-first",
+    "restore-ack",
+    "restore-go",
+    "restore-cancel",
+  ];
+
+  it("layout_TheBackupPage_CarriesEveryElementTheClientLooksUp", () => {
+    // Arrange — the client finds these by id and gives up with a console message if one is
+    // missing, so a rename ships a control that silently is not there. Nothing pinned the
+    // restore ids at all: renaming any of them left the whole suite green.
     // Act
-    const html = layout("<p>body</p>", "A worksheet", true);
+    const html = layout("<p>body</p>", "Backup", true);
 
     // Assert
-    assert.ok(html.includes('id="backup"'), "no backup control");
-    assert.ok(html.includes("hidden>"), "the control is not hidden until a store opens");
-    assert.ok(html.includes('aria-labelledby="backup-heading"'), "the region has no name");
-    assert.ok(html.includes('id="backup-save"'), "no backup button");
+    for (const id of REQUIRED) {
+      assert.ok(html.includes(`id="${id}"`), `the page does not carry id="${id}"`);
+    }
   });
 
-  it("layout_APageWithNothingToAnswer_HasNoBackupControl", () => {
-    // Arrange — negative case. Export covers the whole store so it would work anywhere,
-    // but a decision record is not somewhere anybody is answering anything.
+  it("layout_BothControls_ShipHiddenAndTheReplaceButtonShipsLocked", () => {
+    // Arrange — a control visible before the client can work is one somebody presses and
+    // watches do nothing; a Replace button live on page load is worse than that.
     // Act
-    const html = layout("<p>Just prose.</p>", "A decision record", false);
+    const html = layout("<p>body</p>", "Backup", true);
 
     // Assert
-    assert.ok(!html.includes('id="backup"'), "a page with nothing to answer offered a backup");
+    assert.ok(/<section class="tools" id="backup"[^>]*\shidden>/.test(html), "backup not hidden");
+    assert.ok(/<section class="tools" id="restore"[^>]*\shidden>/.test(html), "restore not hidden");
+    assert.ok(/id="restore-confirm"[^>]*\shidden>/.test(html), "the confirmation is not hidden");
+    assert.ok(
+      /id="restore-go"[^>]*aria-disabled="true"/.test(html),
+      "the replace button ships unlocked",
+    );
   });
 
-  it("layout_TheBackupControl_SaysWhatTheFileIsAndThatItCoversEverything", () => {
-    // Arrange — 0009 · C1 asks for plaintext to be stated plainly, accurate and not
-    // alarming. The scope wording matters too: the button sits on one worksheet and does
-    // not mean that worksheet.
+  it("layout_TheRestoreControl_WarnsThatReplacingCannotBeUndone", () => {
+    // Arrange — the one irreversible action in the application. The warning is the reason
+    // the confirmation is more than a button.
     // Act
-    const html = layout("<p>body</p>", "A worksheet", true);
+    const html = layout("<p>body</p>", "Backup", true);
 
     // Assert
-    assert.ok(html.includes("all your answers"), "the control implies it covers this page only");
-    assert.ok(html.includes("not encrypted"), "the control does not say the file is plaintext");
+    assert.ok(html.includes("only way back"), "no warning that there is no way back");
+    assert.ok(html.includes("I have saved a copy"), "no acknowledgement to tick");
+  });
+
+  it("layout_AnyOtherPage_CarriesNeitherControl", () => {
+    // Arrange — negative case. They belong on the page that exists for them, not under
+    // every worksheet: export covers the whole store, and at the foot of Day 3 it read as
+    // "back up Day 3".
+    // Act
+    const html = layout('<p><span class="fill" data-field="t.a">___</span></p>', "A worksheet", false);
+
+    // Assert
+    for (const id of REQUIRED) {
+      assert.ok(!html.includes(`id="${id}"`), `a worksheet carries id="${id}"`);
+    }
   });
 });

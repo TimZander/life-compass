@@ -21,6 +21,9 @@ import { renderServiceWorker, type PrecacheEntry } from "./serviceworker.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
 export const ROOT: string = path.join(import.meta.dirname, "..");
+
+/** The page that carries the backup and restore controls (#25). */
+export const BACKUP_SOURCE = "backup.md";
 export const OUT: string = path.join(ROOT, "dist");
 
 export type BuiltPage = Page & {
@@ -223,11 +226,11 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
     const markdown = await readFile(path.join(root, page.source), "utf8");
     const rendered = render(markdown, page.source, context);
     const { html, title, links, headingIds, anchors } = rendered;
-    // Whether this page has anything to answer, taken from the schema rather than from the
-    // rendered HTML — the build already knows, and re-deriving it by string match was a
-    // second answer to the same question that could drift from the first.
-    const answerable = (schema.bySource.get(page.source)?.length ?? 0) > 0;
-    built.push({ ...page, html: layout(html, title, answerable), title, links, headingIds, anchors });
+    // The backup page is the one that carries the tools. Named by source rather than by
+    // scanning the rendered HTML: the build knows which file it is reading, and deriving it
+    // from the output would be a second answer to the same question, free to drift.
+    const isBackupPage = page.source === BACKUP_SOURCE;
+    built.push({ ...page, html: layout(html, title, isBackupPage), title, links, headingIds, anchors });
     for (const marker of rendered.taskMarkers) {
       problems.push({
         kind: "task-list",

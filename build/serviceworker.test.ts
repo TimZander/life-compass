@@ -170,10 +170,24 @@ describe("shipped client scripts", () => {
       "assets/js/banner.js",
       "assets/js/export.js",
       "assets/js/fields.js",
+      "assets/js/import.js",
       "assets/js/keys.js",
       "assets/js/store.js",
       "assets/js/sw-update.js",
     ]);
+    // Emitting a module is not the same as anything loading it. `buildClient` discovers
+    // files by reading the directory, not by following imports, so a feature can be
+    // disconnected from the entry module and still appear here — verified: replacing
+    // app.ts's import of import.ts with local stubs left the whole suite green while the
+    // restore control was wired to nothing.
+    const entry = modules.find((module) => module.output === "assets/js/app.js");
+    assert.ok(entry !== undefined, "no entry module was emitted");
+    for (const sibling of ["export", "import", "fields", "answers", "store", "banner", "sw-update"]) {
+      assert.ok(
+        entry.code.includes(`"./${sibling}.js"`),
+        `app.js does not import ${sibling}.js, so that feature reaches no page`,
+      );
+    }
     for (const module of modules) {
       assert.ok(module.code.length > 0, `${module.output} emitted nothing`);
       // Type annotations are gone, and every relative specifier a browser will resolve

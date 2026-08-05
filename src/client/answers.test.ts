@@ -52,6 +52,12 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()): Recorder {
       return initial;
     },
 
+    async replaceAll() {
+      // The autosave layer has no business replacing the whole store; if it ever calls
+      // this, the test should say so rather than quietly succeed.
+      throw new Error("answers must not replace the store");
+    },
+
     async claim(guard, entries) {
       // The fake's guard is its own write log: a group is materialised once, and a second
       // claim for the same guard must lose rather than overwrite.

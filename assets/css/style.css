@@ -83,6 +83,31 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 #backup-save:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
 #backup-save:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 #backup-save[aria-disabled="true"]{opacity:.6;cursor:progress}
+.backup h3{font-size:1.05rem;margin:1.8em 0 .4em}
+/* The file input itself is replaced by its label, which is styled as a button — the native
+   control renders differently on every platform and reads as "no file chosen" until one is,
+   which is a status nobody asked for next to a destructive action. */
+#restore-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.restore-pick{display:inline-block;font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--rule);background:transparent;color:var(--ink);cursor:pointer}
+.restore-pick:hover{border-color:var(--accent)}
+#restore-file:focus-visible+.restore-pick,.restore-pick:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+/* The confirmation sits in its own tinted block so the irreversible button is never
+   adjacent to the ordinary one above it. */
+#restore-confirm{margin:1.2em 0 0;padding:1.1em 1.2em;background:var(--quote-bg);border:1px solid var(--rule);border-radius:8px}
+#restore-confirm p{margin:0 0 .8em}
+#restore-confirm p:last-child{margin-bottom:0}
+#restore-go{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid #9a3f3f;background:#9a3f3f;color:#fff;cursor:pointer}
+/* Keyed on `aria-disabled`, which is what import.ts toggles — `disabled` would make the
+   button unfocusable and drop a keyboard reader to the body mid-flow. A previous version
+   styled `[disabled]`, which the markup never sets, so the destructive button looked armed
+   from the moment the confirmation appeared and gave no sign that the acknowledgement was
+   what released it.
+
+   Not a faded version of the same button: until it is ticked this is an ordinary outline,
+   and it only becomes the red one when pressing it will actually do something. */
+#restore-go[aria-disabled="true"]{background:transparent;color:var(--muted);border-color:var(--rule);cursor:not-allowed}
+#restore-cancel{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--rule);background:transparent;color:var(--ink);cursor:pointer;margin-left:.5em}
+#restore-go:focus-visible,#restore-cancel:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* A printed worksheet has no button to press. */
 @media print{.backup{display:none}}
 
