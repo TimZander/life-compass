@@ -122,7 +122,7 @@ export function layout(content: string, pageTitle: string | null, isBackupPage: 
   <script type="module" src="/assets/js/app.js"></script>
 </head>
 <body>
-  <a class="wordmark" href="/"><svg class="wm-star" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
+  <a class="wordmark" href="/"><svg class="wm-mark" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L12.96 9.69 L18.01 5.99 L14.31 11.04 L21 12 L14.31 12.96 L18.01 18.01 L12.96 14.31 L12 21 L11.04 14.31 L5.99 18.01 L9.69 12.96 L3 12 L9.69 11.04 L5.99 5.99 L11.04 9.69 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
   <main><article>${content}${isBackupPage ? tools() : ""}</article></main>
   <!-- The banner's live region. Static markup on purpose: a screen reader only
        announces changes to a region that existed beforehand, so creating it on demand

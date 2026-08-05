@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 /** Whether the page has anything to answer; the caller decides from the schema. */
 const ANSWERABLE = true;
 import { documentTitle, layout, SITE_TITLE } from "./layout.ts";
+import { COMPASS_ROSE } from "./icons.ts";
 
 describe("documentTitle", () => {
   it("documentTitle_PageTitleMatchingSiteTitle_IsNotDoubled", () => {
@@ -122,5 +123,26 @@ describe("the backup and restore controls", () => {
     for (const id of REQUIRED) {
       assert.ok(!html.includes(`id="${id}"`), `a worksheet carries id="${id}"`);
     }
+  });
+});
+
+describe("the wordmark", () => {
+  it("layout_TheWordmarkPath_IsTheSameDrawingAsTheIcon", () => {
+    // The installed icon and the page header must be one drawing rather than two shapes
+    // that resemble each other — build/icons.ts rasterises the same coordinates. Nothing
+    // else holds them together, so this fails if either is edited alone.
+    const COORDS_PER_POINT = 2;
+    const html = layout("<p>body</p>", null, false);
+
+    // Act — read the coordinates back out of the rendered wordmark.
+    const path = /class="wm-mark"[^>]*>\s*<path d="([^"]+)"/.exec(html);
+    const numbers = (path?.[1] ?? "").match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+    const points: number[][] = [];
+    for (let at = 0; at < numbers.length; at += COORDS_PER_POINT) {
+      points.push(numbers.slice(at, at + COORDS_PER_POINT));
+    }
+
+    // Assert
+    assert.deepEqual(points, COMPASS_ROSE.map(([x, y]) => [x, y]));
   });
 });
