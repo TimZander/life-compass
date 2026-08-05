@@ -215,22 +215,42 @@ export type RestoreOptions = {
   readonly reload: () => void;
 };
 
+/** How many of a payload's entries are answers rather than addresses. */
+export function countAnswers(envelope: Envelope): number {
+  return answersAmong(Object.values(envelope.payload));
+}
+
 /**
- * How many of a payload's entries are answers rather than addresses.
+ * The same count, for what is already on the device.
+ *
+ * Both numbers in the confirmation must be arrived at the same way or they are not
+ * comparable, and a reader who exports a backup and immediately offers it back must be
+ * shown the same figure twice. They were not: the file's number excluded instance orders
+ * and the device's was the raw key count, so an untouched round trip read "It holds 1
+ * answer. Replacing will discard the 2 answers on this device." — two counts of one store,
+ * disagreeing, in the sentence somebody weighs before an irreversible choice.
+ */
+export function countStored(entries: ReadonlyMap<string, string>): number {
+  return answersAmong(entries.values());
+}
+
+/**
+ * Answers, not addresses.
  *
  * An instance order is stored under a bare group identifier alongside the answers it
- * addresses (0013), so counting every key called them all answers — and 334 of the 447
- * blanks sit inside repeats, so the number a reader was shown before an irreversible
- * choice was inflated for every real file.
- *
- * Told apart by shape, because the client has no copy of the question set (0009 · C6). A
- * value that parses as an instance order is one; dictated prose is not a JSON array. The
- * same test `readEnvelope` uses to validate them, so the two cannot disagree.
+ * addresses (0013), and 334 of the 447 blanks sit inside repeats. Told apart by shape,
+ * because the client has no copy of the question set (0009 · C6): a value that parses as an
+ * instance order is one, and dictated prose is not a JSON array. The same test
+ * `readEnvelope` uses to validate them, so the two cannot disagree.
  */
-export function countAnswers(envelope: Envelope): number {
-  return Object.values(envelope.payload).filter(
-    (value) => !(value.startsWith("[") && readOrder(value).kind === "order"),
-  ).length;
+function answersAmong(values: Iterable<string>): number {
+  let answers = 0;
+  for (const value of values) {
+    if (!(value.startsWith("[") && readOrder(value).kind === "order")) {
+      answers += 1;
+    }
+  }
+  return answers;
 }
 
 /** `3 answers`, `1 answer` — so the sentence a reader weighs is not "1 answers". */
@@ -351,7 +371,7 @@ export function wireRestore(
         summary.textContent =
           `It holds ${tally(countAnswers(reading.envelope))}` +
           `${saved === "" ? "" : `, saved ${new Date(saved).toLocaleDateString()}`}. ` +
-          `Replacing will discard the ${tally(here.size)} on this device.`;
+          `Replacing will discard the ${tally(countStored(here))} on this device.`;
         confirm.hidden = false;
         // Focus moves to the heading of the thing that just appeared, so a screen-reader
         // reader is taken to it and hears what it says. Unhiding a div announces nothing.

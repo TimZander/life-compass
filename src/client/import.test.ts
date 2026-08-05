@@ -12,7 +12,15 @@ import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
 import { envelopeOf, serialise, FORMAT, VERSION } from "./export.ts";
-import { countAnswers, explain, readEnvelope, restore, wireRestore, type Refusal } from "./import.ts";
+import {
+  countAnswers,
+  countStored,
+  explain,
+  readEnvelope,
+  restore,
+  wireRestore,
+  type Refusal,
+} from "./import.ts";
 import { layout } from "../../build/layout.ts";
 import { orderKey, writeOrder } from "./keys.ts";
 import type { Store } from "./store.ts";
@@ -438,6 +446,38 @@ describe("choosing a file to restore from", () => {
     assert.ok(
       page.text("restore-summary").startsWith("It holds 1 answer,"),
       `counted the order as an answer: ${page.text("restore-summary")}`,
+    );
+  });
+
+  it("wireRestore_AFileJustExportedFromThisDevice_ShowsTheSameNumberTwice", async () => {
+    // Arrange — reported from a device: download a backup, offer it straight back, and the
+    // two numbers disagreed. They were counted differently — the file's excluded instance
+    // orders and the device's was the raw key count — so an untouched round trip read "It
+    // holds 1 answer. Replacing will discard the 2 answers on this device." Two counts of
+    // one store, contradicting each other, in the sentence somebody weighs before an
+    // irreversible choice.
+    const INSTANCE = "5f1cba21-0d3e-4a7c-9f10-2b8e6d4c1a55";
+    const HERE = new Map([
+      ["day1.patterns", "what recurs"],
+      [orderKey("day1.chapters"), writeOrder([INSTANCE])],
+      [`day1.chapters.${INSTANCE}.title`, "The garage-band years"],
+    ]);
+    const page = control();
+    const store = recorder(HERE);
+    wireRestore(page.document, answersSpy(), store, options([]));
+
+    // Act — the file this very store would export, offered straight back to it.
+    await page.choose(await fileHolding(HERE));
+
+    // Assert — three keys, two answers, and the same figure on both sides.
+    assert.equal(countStored(HERE), 2, "the device count is not counting answers");
+    assert.ok(
+      page.text("restore-summary").startsWith("It holds 2 answers,"),
+      page.text("restore-summary"),
+    );
+    assert.ok(
+      page.text("restore-summary").endsWith("Replacing will discard the 2 answers on this device."),
+      page.text("restore-summary"),
     );
   });
 
