@@ -1,12 +1,10 @@
 /**
  * When the banner speaks, and when it waits.
  *
- * Deferring a message while somebody is mid-sentence is the whole point of the delay
- * (0001): a strip appearing under a reader's hands while they dictate is the interruption
- * the record forbids. But the rule was "the focused element is an `<input>`", and that is
- * not the same thing — a file input keeps focus after its picker closes, so every message
- * explaining why a backup file was refused was deferred until a pause that never came. The
- * reader picked the wrong file and was told nothing at all.
+ * This module had no tests, which is how a change to a function it calls came to break
+ * every consumer of that function silently — the update prompt's Dismiss button has done
+ * nothing in production since #51. These cover the invocation contract that broke, and the
+ * deferral behaviour it sits next to.
  */
 
 import assert from "node:assert/strict";
@@ -46,11 +44,12 @@ function showing(): boolean {
 
 const MESSAGE = { id: "storage", text: "That file is not a Life Compass backup.", actions: [] };
 
-describe("what counts as typing", () => {
+describe("waiting for a pause in typing", () => {
   it("showBanner_WhileAFileInputHasFocus_SpeaksImmediately", async () => {
-    // Arrange — the defect this rule was hiding. A file picker leaves focus on its input,
-    // so the message explaining the refusal was deferred and the reader learned nothing
-    // about why the file they chose was not used.
+    // Arrange — the restore control's picker leaves focus on its file input, so the rule
+    // "the focused element is an INPUT" deferred every message explaining why a file was
+    // refused, until a pause that never came. The reader picked the wrong thing and was
+    // told nothing at all, which is the opposite of what deferring is for.
     const { showBanner, dismissBanner } = await import("./banner.ts");
     page("file");
     dismissBanner();
@@ -76,9 +75,9 @@ describe("what counts as typing", () => {
     }
   });
 
-  it("showBanner_WhileSomebodyIsWritingProse_Waits", async () => {
-    // Arrange — negative case, and the reason the delay exists at all. A textarea is where
-    // dictation lands; a text input is where a short answer does.
+  it("showBanner_WhileSomebodyIsWriting_Waits", async () => {
+    // Arrange — the reason the delay exists (0001). A strip appearing under a reader's
+    // hands mid-dictation is the interruption the record forbids.
     const { showBanner, dismissBanner } = await import("./banner.ts");
 
     // Act & Assert
@@ -91,8 +90,7 @@ describe("what counts as typing", () => {
   });
 
   it("showBanner_WithNothingFocused_SpeaksImmediately", async () => {
-    // Arrange & Act & Assert — the ordinary case, and the one that must not regress while
-    // narrowing the rule above.
+    // Arrange & Act & Assert — the ordinary case, which the rule above must not swallow.
     const { showBanner, dismissBanner } = await import("./banner.ts");
     page("button");
     (window.document.getElementById("button") as unknown as HTMLElement).blur();
