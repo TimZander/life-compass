@@ -8,8 +8,8 @@
 
 import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
-import { bindAnswers, BLANK_SELECTOR } from "./fields.ts";
-import { saveBackup, wireBackup } from "./export.ts";
+import { bindAnswers } from "./fields.ts";
+import { needsStore, saveBackup, wireBackup } from "./export.ts";
 
 /** Where a just-completed restore leaves its count, to be reported after the reload. */
 const RESTORED_KEY = "life-compass:restored";
@@ -53,7 +53,7 @@ if ("serviceWorker" in navigator) {
  * something the app has to say out loud).
  */
 async function bindAnswerFields(): Promise<void> {
-  if (document.querySelector(BLANK_SELECTOR) === null) {
+  if (!needsStore(document)) {
     return;
   }
   const store = await openStore();

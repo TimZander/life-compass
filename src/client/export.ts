@@ -24,6 +24,7 @@
  */
 
 import type { Answers } from "./answers.ts";
+import { BLANK_SELECTOR } from "./fields.ts";
 import type { Store } from "./store.ts";
 
 /** Identifies the file without reading its contents (0009). */
@@ -190,6 +191,22 @@ export async function saveBackup(
   const filename = filenameFor(exportedAt);
   download(document, serialise(envelope), filename);
   return filename;
+}
+
+/**
+ * Whether a page has anything on it that needs the store opened.
+ *
+ * Blanks OR the backup tools. It used to be blanks alone, which was true while the tools
+ * sat on the pages that had them — and became false the moment they moved to a page of
+ * their own. The backup page has no blanks, so the entry module returned before opening
+ * anything and both controls stayed hidden forever: a page whose only purpose is those
+ * controls, offering neither.
+ *
+ * Here rather than inline in app.ts because app.ts has no tests and cannot have them; this
+ * is the decision that was wrong, so this is the thing that needs one.
+ */
+export function needsStore(document: Document): boolean {
+  return document.querySelector(`${BLANK_SELECTOR}, #backup, #restore`) !== null;
 }
 
 export type BackupOptions = {
