@@ -10,6 +10,7 @@ import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers, BLANK_SELECTOR } from "./fields.ts";
 import { wireBackup } from "./export.ts";
+import { explain, wireRestore } from "./import.ts";
 import { openStore } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
@@ -104,6 +105,30 @@ async function bindAnswerFields(): Promise<void> {
     },
   });
 
+  wireRestore(document, store, {
+    onRefused: (refusal) =>
+      showBanner({
+        id: "backup",
+        text: explain(refusal),
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+      }),
+    onRestored: (count) => {
+      // Written before the reload so it survives into the next page: banner.ts stores
+      // nothing across a navigation, and a reader who has just replaced everything they own
+      // should not be left wondering whether it worked.
+      window.sessionStorage.setItem("life-compass:restored", String(count));
+    },
+    onFailure: (error: unknown) => {
+      console.error("life-compass: the backup could not be restored", error);
+      showBanner({
+        id: "backup",
+        text: "That backup could not be restored. Nothing on this device has changed.",
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+      });
+    },
+    reload: () => window.location.reload(),
+  });
+
   await bindAnswers(document, answers, store, {
     // Says that writing has stopped, not just that reading failed. The earlier wording
     // mentioned only the answers already stored, so a reader could dictate a page of new
@@ -127,6 +152,29 @@ async function bindAnswerFields(): Promise<void> {
     },
   });
 }
+
+/**
+ * Report a restore that happened just before this page loaded.
+ *
+ * The reload is what makes the screen match the store, and it takes the banner with it —
+ * so the one message confirming an irreversible action would be the one message nobody
+ * ever sees. Read and cleared immediately, so it is said once rather than on every
+ * subsequent load.
+ */
+function confirmRecentRestore(): void {
+  const count = window.sessionStorage.getItem("life-compass:restored");
+  if (count === null) {
+    return;
+  }
+  window.sessionStorage.removeItem("life-compass:restored");
+  showBanner({
+    id: "backup",
+    text: `Restored ${count} ${count === "1" ? "answer" : "answers"} from your backup.`,
+    actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+  });
+}
+
+confirmRecentRestore();
 
 void bindAnswerFields().catch((error: unknown) => {
   console.error("life-compass: answers could not be bound to this page", error);

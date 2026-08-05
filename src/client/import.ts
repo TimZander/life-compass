@@ -135,3 +135,146 @@ export function countIn(envelope: Envelope): number {
 export async function restore(store: Store, envelope: Envelope): Promise<void> {
   await store.replaceAll(new Map(Object.entries(envelope.payload)));
 }
+
+/** What a refusal should say to somebody who may be holding their only copy. */
+export function explain(refusal: Refusal): string {
+  switch (refusal.kind) {
+    case "not-json":
+      return "That file is not a Life Compass backup — it could not be read as one at all. Nothing on this device has changed.";
+    case "not-an-envelope":
+    case "bad-payload":
+      return "That file looks like a Life Compass backup but is damaged, so it was not used. Nothing on this device has changed.";
+    case "wrong-format":
+      return `That file is not a Life Compass backup — it says it is ${refusal.found}. Nothing on this device has changed.`;
+    case "newer-version":
+      return "That backup was written by a newer version of Life Compass than this one, so it was not opened. Update, then try again. Nothing on this device has changed.";
+    case "encrypted":
+      return "That backup is encrypted and this version cannot open it. Nothing on this device has changed.";
+  }
+}
+
+export type RestoreOptions = {
+  /** Told why a file was refused. Nothing has been written when this runs. */
+  readonly onRefused: (refusal: Refusal) => void;
+  /** Told how many answers landed, once they have. */
+  readonly onRestored: (count: number) => void;
+  /** Told when reading the file or writing the store failed outright. */
+  readonly onFailure: (error: unknown) => void;
+  /** Start the page again, so what is on screen is what is now stored. */
+  readonly reload: () => void;
+};
+
+/**
+ * Wire the restore control: pick a file, be told what it will cost, then confirm.
+ *
+ * The confirmation is not a formality and it is not a `confirm()` dialog. It states the
+ * two numbers that matter — what the file holds and what is about to be discarded — and it
+ * is gated on the reader ticking that they have a copy of what is here. 0009 · C8 requires
+ * that gate, and requires it to be theirs rather than the code's: an import cannot verify
+ * that an export actually reached disk, because handing a file over is a synthetic click
+ * that reports no outcome. A person looking at their own files is the only thing that
+ * knows.
+ *
+ * The page is reloaded afterwards rather than the fields being re-populated in place.
+ * Binding restores from the store on load and deliberately never writes into a field that
+ * already holds something (0001), so after a replace every answer on screen is the old one
+ * and the next keystroke would save it back over what was just restored.
+ */
+export function wireRestore(document: Document, store: Store, options: RestoreOptions): void {
+  const file = document.getElementById("restore-file");
+  const confirm = document.getElementById("restore-confirm");
+  const summary = document.getElementById("restore-summary");
+  const acknowledge = document.getElementById("restore-ack");
+  const go = document.getElementById("restore-go");
+  const cancel = document.getElementById("restore-cancel");
+  if (
+    !(file instanceof HTMLInputElement) ||
+    confirm === null ||
+    summary === null ||
+    !(acknowledge instanceof HTMLInputElement) ||
+    !(go instanceof HTMLButtonElement) ||
+    cancel === null
+  ) {
+    // The build emits all six on any page that reaches this code, so missing means the
+    // markup and this module have drifted — and the symptom is a restore control that
+    // quietly is not there. Said out loud rather than absorbed.
+    console.error("life-compass: the restore control is missing from this page");
+    return;
+  }
+
+  /** Nothing is pending; the confirmation is put away and cannot be acted on. */
+  const stand_down = (): void => {
+    confirm.hidden = true;
+    acknowledge.checked = false;
+    go.disabled = true;
+    // Cleared so choosing the same file again still fires `change`, which it otherwise
+    // would not — leaving somebody who cancelled unable to pick that file a second time.
+    file.value = "";
+  };
+
+  let pending: Envelope | undefined;
+
+  file.addEventListener("change", () => {
+    const chosen = file.files?.[0];
+    if (chosen === undefined) {
+      return;
+    }
+    chosen
+      .text()
+      .then(async (text) => {
+        const reading = readEnvelope(text);
+        if (!reading.ok) {
+          pending = undefined;
+          stand_down();
+          options.onRefused(reading.refusal);
+          return;
+        }
+        pending = reading.envelope;
+        // Counted at the moment of asking, not earlier: the reader may have written more
+        // since the page loaded, and the number they are shown is the number they are being
+        // asked to give up.
+        const here = (await store.readAll()).size;
+        const coming = countIn(reading.envelope);
+        const saved = reading.envelope.exportedAt.slice(0, 10);
+        summary.textContent =
+          `This backup holds ${coming} ${coming === 1 ? "answer" : "answers"}` +
+          `${saved === "" ? "" : `, saved on ${saved}`}. ` +
+          `Restoring will discard the ${here} ${here === 1 ? "answer" : "answers"} on this device.`;
+        confirm.hidden = false;
+      })
+      .catch((error: unknown) => {
+        pending = undefined;
+        stand_down();
+        options.onFailure(error);
+      });
+  });
+
+  acknowledge.addEventListener("change", () => {
+    go.disabled = !acknowledge.checked;
+  });
+
+  cancel.addEventListener("click", () => {
+    pending = undefined;
+    stand_down();
+  });
+
+  go.addEventListener("click", () => {
+    // Both guards, not either. The disabled attribute is what a reader sees; these are what
+    // make the destructive path unreachable without the two things that must be true.
+    if (pending === undefined || !acknowledge.checked) {
+      return;
+    }
+    const envelope = pending;
+    pending = undefined;
+    go.disabled = true;
+    restore(store, envelope)
+      .then(() => {
+        options.onRestored(countIn(envelope));
+        options.reload();
+      })
+      .catch((error: unknown) => {
+        stand_down();
+        options.onFailure(error);
+      });
+  });
+}

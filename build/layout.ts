@@ -81,6 +81,20 @@ function backup(): string {
   <p><button type="button" id="backup-save">Download a backup of all your answers</button></p>
   <p class="backup-note">The file is ordinary text, not encrypted — anyone who opens it can
   read what you wrote. Keep it somewhere you would keep a private notebook.</p>
+
+  <h3 id="restore-heading">Restore from a backup</h3>
+  <p>Restoring <strong>replaces everything on this device</strong> with the contents of a
+  backup file. Whatever is here now is gone afterwards, and there is no undo.</p>
+  <p><label class="restore-pick" for="restore-file">Choose a backup file</label>
+  <input type="file" id="restore-file" accept="application/json,.json"></p>
+
+  <div id="restore-confirm" hidden>
+    <p id="restore-summary"></p>
+    <p><label><input type="checkbox" id="restore-ack"> I have a copy of what is on this
+    device, or I do not need it.</label></p>
+    <p><button type="button" id="restore-go" disabled>Replace everything on this device</button>
+    <button type="button" id="restore-cancel">Cancel</button></p>
+  </div>
 </section>`;
 }
 

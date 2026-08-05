@@ -9,9 +9,10 @@
  */
 
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { Window } from "happy-dom";
+import { after, before, describe, it } from "node:test";
 import { envelopeOf, serialise, FORMAT, VERSION } from "./export.ts";
-import { countIn, readEnvelope, restore } from "./import.ts";
+import { countIn, explain, readEnvelope, restore, wireRestore, type Refusal } from "./import.ts";
 import { orderKey, writeOrder } from "./keys.ts";
 import type { Store } from "./store.ts";
 
@@ -255,5 +256,242 @@ describe("putting it back", () => {
 
     // Assert
     assert.equal(store.kept.size, 0);
+  });
+});
+
+let window: Window;
+
+before(() => {
+  window = new Window();
+  const scope = globalThis as unknown as Record<string, unknown>;
+  scope["HTMLInputElement"] = window.HTMLInputElement;
+  scope["HTMLButtonElement"] = window.HTMLButtonElement;
+});
+
+after(() => {
+  void window.close();
+});
+
+/** The restore control exactly as `layout()` emits it. */
+const CONTROL = `
+  <input type="file" id="restore-file">
+  <div id="restore-confirm" hidden>
+    <p id="restore-summary"></p>
+    <input type="checkbox" id="restore-ack">
+    <button type="button" id="restore-go" disabled>Replace</button>
+    <button type="button" id="restore-cancel">Cancel</button>
+  </div>`;
+
+/** A page with the control, plus a helper to hand it a chosen file. */
+function control(): {
+  readonly document: Document;
+  choose(text: string): Promise<void>;
+  tick(): void;
+  press(id: string): void;
+  readonly cleared: string[];
+  readonly element: (id: string) => HTMLInputElement & HTMLButtonElement & { textContent: string };
+} {
+  window.document.body.innerHTML = CONTROL;
+  const document = window.document as unknown as Document;
+  // The spec — and happy-dom — only let a file input's value be set to "", so the fixture
+  // cannot fake a chosen filename. Assignments are counted instead: clearing it is what
+  // lets somebody pick the SAME file again, since `change` does not fire for an unchanged
+  // value, and "it was cleared" is only observable as the assignment happening.
+  const cleared: string[] = [];
+  const input0 = window.document.getElementById("restore-file") as unknown as HTMLInputElement;
+  const descriptor = Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(input0) as object,
+    "value",
+  );
+  Object.defineProperty(input0, "value", {
+    configurable: true,
+    get(this: HTMLInputElement) {
+      return descriptor?.get?.call(this) as string;
+    },
+    set(this: HTMLInputElement, next: string) {
+      cleared.push(next);
+      descriptor?.set?.call(this, next);
+    },
+  });
+  const element = (id: string) =>
+    window.document.getElementById(id) as unknown as HTMLInputElement &
+      HTMLButtonElement & { textContent: string };
+  return {
+    document,
+    element,
+    cleared,
+    async choose(text: string) {
+      const input = element("restore-file");
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new window.File([text], "backup.json", { type: "application/json" })],
+      });
+
+      input.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+      // Two turns: reading the file and reading the store are each a promise.
+      await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    },
+    tick() {
+      const box = element("restore-ack");
+      box.checked = true;
+      box.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+    },
+    press(id: string) {
+      element(id).dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
+    },
+  };
+}
+
+/** Long enough for the control's promise chains to settle. */
+const SETTLE_MS = 20;
+
+function options(log: string[]) {
+  return {
+    onRefused: (refusal: Refusal) => log.push(`refused:${refusal.kind}`),
+    onRestored: (count: number) => log.push(`restored:${count}`),
+    onFailure: () => log.push("failed"),
+    reload: () => log.push("reloaded"),
+  };
+}
+
+describe("choosing a file to restore from", () => {
+  it("wireRestore_AValidFile_ShowsWhatItHoldsAndWhatItWillCost", async () => {
+    // Arrange — the two numbers a reader needs before an irreversible choice: what they
+    // gain and what they give up. Counted when asked rather than at page load, because they
+    // may have written more since.
+    const HERE = new Map([["day1.patterns", "one"], ["day1.threads", "two"]]);
+    const page = control();
+    const store = recorder(HERE);
+    wireRestore(page.document, store, options([]));
+
+    // Act
+    await page.choose(await fileHolding(new Map([["day1.patterns", "from the file"]])));
+
+    // Assert
+    assert.equal(page.element("restore-confirm").hidden, false, "the confirmation never appeared");
+    const said = page.element("restore-summary").textContent;
+    assert.ok(said.includes("1 answer"), `does not say what the file holds: ${said}`);
+    assert.ok(said.includes("2 answers"), `does not say what will be discarded: ${said}`);
+    assert.deepEqual([...store.kept], [...HERE], "the store was touched before any confirmation");
+  });
+
+  it("wireRestore_ARefusedFile_SaysWhyAndNeverOffersToReplace", async () => {
+    // Arrange — negative case, and the most important one: a wrong file must not reach the
+    // confirmation at all, or the reader is one tick and one tap from replacing everything
+    // they own with nothing.
+    const HERE = new Map([["day1.patterns", "everything the reader has written"]]);
+    const log: string[] = [];
+    const page = control();
+    const store = recorder(HERE);
+    wireRestore(page.document, store, options(log));
+
+    // Act
+    await page.choose("a shopping list, or a photo, or nothing at all");
+
+    // Assert
+    assert.deepEqual(log, ["refused:not-json"]);
+    assert.equal(page.element("restore-confirm").hidden, true, "a refused file offered a replace");
+    assert.deepEqual([...store.kept], [...HERE]);
+  });
+});
+
+describe("the confirmation gate", () => {
+  it("wireRestore_ReplacePressedWithoutTicking_DoesNothing", async () => {
+    // Arrange — negative case. 0009 · C8 puts the gate with the reader because the code
+    // cannot verify a backup reached disk. If the button worked without the tick, the gate
+    // would be decoration.
+    const HERE = new Map([["day1.patterns", "everything the reader has written"]]);
+    const log: string[] = [];
+    const page = control();
+    const store = recorder(HERE);
+    wireRestore(page.document, store, options(log));
+    await page.choose(await fileHolding(new Map([["day1.patterns", "from the file"]])));
+
+    // Act — press it without ticking the acknowledgement.
+    page.press("restore-go");
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
+    // Assert
+    assert.deepEqual(log, []);
+    assert.deepEqual([...store.kept], [...HERE], "answers were replaced with no acknowledgement");
+    assert.deepEqual(store.replacements, []);
+  });
+
+  it("wireRestore_TickedAndConfirmed_ReplacesEverythingAndReloads", async () => {
+    // Arrange — the whole flow, once. The reload is what makes the screen match the store:
+    // binding restores on load and never writes into a field that already holds something
+    // (0001), so without it every answer on screen is the old one and the next keystroke
+    // saves it back over what was just restored.
+    const log: string[] = [];
+    const page = control();
+    const store = recorder(new Map([["day1.threads", "will be discarded"]]));
+    wireRestore(page.document, store, options(log));
+    await page.choose(await fileHolding(new Map([["day1.patterns", "from the file"]])));
+
+    // Act
+    const lockedBeforeTicking = page.element("restore-go").disabled;
+    page.tick();
+    const unlockedAfterTicking = !page.element("restore-go").disabled;
+    page.press("restore-go");
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
+    // Assert — the gate is visible as well as enforced. A button that stays greyed out
+    // after the tick reads as broken; one that is live before it invites the mis-tap.
+    assert.equal(lockedBeforeTicking, true, "the replace button was live before the tick");
+    assert.equal(unlockedAfterTicking, true, "ticking did not release the replace button");
+    assert.deepEqual(log, ["restored:1", "reloaded"]);
+    assert.deepEqual([...store.kept], [["day1.patterns", "from the file"]]);
+    assert.deepEqual(store.replacements, [1], "the store was written more than once");
+  });
+
+  it("wireRestore_Cancelled_LeavesEverythingAloneAndForgetsTheFile", async () => {
+    // Arrange — negative case. Cancelling must not leave a loaded file one stray tap from
+    // being applied, and must not leave the reader unable to pick the same file again.
+    const HERE = new Map([["day1.patterns", "everything the reader has written"]]);
+    const log: string[] = [];
+    const page = control();
+    const store = recorder(HERE);
+    wireRestore(page.document, store, options(log));
+    await page.choose(await fileHolding(new Map([["day1.patterns", "from the file"]])));
+
+    // Act
+    page.press("restore-cancel");
+    page.tick();
+    page.press("restore-go");
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
+    // Assert
+    assert.deepEqual(log, []);
+    assert.deepEqual([...store.kept], [...HERE]);
+    assert.equal(page.element("restore-confirm").hidden, true);
+    assert.ok(page.cleared.includes(""), "the file input was never cleared, so the same file could not be chosen again");
+  });
+});
+
+describe("what a refusal tells the reader", () => {
+  it("explain_EveryRefusal_SaysNothingChangedAndWhatWentWrong", () => {
+    // Arrange — somebody importing may be holding their only copy. Every message has to
+    // distinguish itself from "your backup is gone", and every one has to say that this
+    // device is untouched.
+    const ALL: Refusal[] = [
+      { kind: "not-json" },
+      { kind: "not-an-envelope" },
+      { kind: "wrong-format", found: "some-other-app/notes" },
+      { kind: "newer-version", found: 2 },
+      { kind: "encrypted", found: "passphrase-aes-gcm" },
+      { kind: "bad-payload" },
+    ];
+
+    // Act & Assert
+    for (const refusal of ALL) {
+      const said = explain(refusal);
+      assert.ok(said.length > 0, refusal.kind);
+      assert.ok(
+        said.includes("Nothing on this device has changed"),
+        `${refusal.kind} does not reassure the reader their answers are intact: ${said}`,
+      );
+    }
+    assert.ok(explain({ kind: "encrypted", found: "x" }).includes("encrypted"));
+    assert.ok(explain({ kind: "newer-version", found: 2 }).includes("newer version"));
   });
 });
