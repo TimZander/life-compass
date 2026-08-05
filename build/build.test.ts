@@ -21,6 +21,7 @@ import { renderQuestion } from "./questions.ts";
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
   "404.html",
+  "backup.html",
   "days/day-1-excavation.html",
   "days/day-2-values.html",
   "days/day-3-passions.html",
@@ -105,28 +106,34 @@ after(async () => {
   await Promise.all(temporary.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-describe("the backup control on real pages", () => {
-  it("buildPages_RealContent_PutsTheBackupControlOnEveryAnswerablePageAndNoOther", async () => {
-    // Arrange — layout.test.ts proves the control is emitted when asked for; nothing proved
-    // the build ever asks. Passing `false` for every page, or dropping the call, left all 34
-    // pages without the one control 0008 · C3 calls mandatory, with every test still green.
+describe("the backup page in a real build", () => {
+  it("buildPages_RealContent_PutsTheToolsOnTheBackupPageAndNoOther", async () => {
+    // Arrange — layout.test.ts proves the controls are emitted when asked for; nothing
+    // proved the build ever asks, and passing `false` for every page left all 35 without
+    // the one control 0008 · C3 calls mandatory, with every test green.
     const { pages } = await site();
 
     // Act
-    const withControl = pages.filter((page) => page.html.includes('id="backup"'));
-    // A rendered blank ELEMENT, deliberately not the same signal the build uses. The build
-    // asks the schema; this asks the output. Two independent answers to "can this page be
-    // answered" is the point — one derived from the other would agree even while both were
-    // wrong. Note 0013's own page contains the literal text `data-field=` in a code block
-    // explaining this markup, which is why the naive string is not the test either.
-    const answerable = pages.filter((page) => page.html.includes('<span class="fill'));
+    const withTools = pages.filter((page) => page.html.includes('id="restore-file"'));
 
-    // Assert — every page a reader can answer offers a backup, and nothing else does.
-    assert.ok(answerable.length > 10, `only ${answerable.length} answerable pages found`);
+    // Assert
     assert.deepEqual(
-      withControl.map((page) => page.url).sort(),
-      answerable.map((page) => page.url).sort(),
+      withTools.map((page) => page.url),
+      ["/backup"],
+      "the backup and restore controls are not on exactly the backup page",
     );
+  });
+
+  it("buildPages_RealContent_LinksToTheBackupPageFromEveryPage", async () => {
+    // Arrange — the controls left the worksheets, so the footer link is now the only route
+    // to them. On every page, including the ones with nothing to answer.
+    const { pages } = await site();
+
+    // Act
+    const missing = pages.filter((page) => !page.html.includes('href="/backup"'));
+
+    // Assert
+    assert.deepEqual(missing.map((page) => page.url), [], "some pages cannot reach the backup");
   });
 });
 

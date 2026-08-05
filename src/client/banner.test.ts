@@ -1,0 +1,103 @@
+/**
+ * When the banner speaks, and when it waits.
+ *
+ * Deferring a message while somebody is mid-sentence is the whole point of the delay
+ * (0001): a strip appearing under a reader's hands while they dictate is the interruption
+ * the record forbids. But the rule was "the focused element is an `<input>`", and that is
+ * not the same thing — a file input keeps focus after its picker closes, so every message
+ * explaining why a backup file was refused was deferred until a pause that never came. The
+ * reader picked the wrong file and was told nothing at all.
+ */
+
+import assert from "node:assert/strict";
+import { Window } from "happy-dom";
+import { after, before, describe, it } from "node:test";
+
+let window: Window;
+
+before(() => {
+  window = new Window();
+  const scope = globalThis as unknown as Record<string, unknown>;
+  scope["document"] = window.document;
+  scope["HTMLElement"] = window.HTMLElement;
+  scope["HTMLInputElement"] = window.HTMLInputElement;
+});
+
+after(() => {
+  void window.close();
+});
+
+/** A page with the live region the build emits, plus something to put focus on. */
+function page(focusOn: string): Document {
+  window.document.body.innerHTML =
+    '<div id="banner-region" aria-live="polite"></div>' +
+    '<input type="file" id="file">' +
+    '<input type="text" id="text">' +
+    '<input type="checkbox" id="checkbox">' +
+    '<button type="button" id="button">Press</button>' +
+    "<textarea id="+'"area"'+"></textarea>";
+  (window.document.getElementById(focusOn) as unknown as HTMLElement | null)?.focus();
+  return window.document as unknown as Document;
+}
+
+function showing(): boolean {
+  return (window.document.getElementById("banner-region")?.children.length ?? 0) > 0;
+}
+
+const MESSAGE = { id: "storage", text: "That file is not a Life Compass backup.", actions: [] };
+
+describe("what counts as typing", () => {
+  it("showBanner_WhileAFileInputHasFocus_SpeaksImmediately", async () => {
+    // Arrange — the defect this rule was hiding. A file picker leaves focus on its input,
+    // so the message explaining the refusal was deferred and the reader learned nothing
+    // about why the file they chose was not used.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+    page("file");
+    dismissBanner();
+
+    // Act
+    showBanner(MESSAGE);
+
+    // Assert
+    assert.equal(showing(), true, "the refusal was deferred behind a file input");
+  });
+
+  it("showBanner_WhileAControlHasFocus_SpeaksImmediately", async () => {
+    // Arrange — operating a control is not composing text, and a message about the control
+    // just operated is precisely the one that should not wait.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+
+    // Act & Assert
+    for (const id of ["checkbox", "button"]) {
+      page(id);
+      dismissBanner();
+      showBanner(MESSAGE);
+      assert.equal(showing(), true, `deferred behind a ${id}`);
+    }
+  });
+
+  it("showBanner_WhileSomebodyIsWritingProse_Waits", async () => {
+    // Arrange — negative case, and the reason the delay exists at all. A textarea is where
+    // dictation lands; a text input is where a short answer does.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+
+    // Act & Assert
+    for (const id of ["text", "area"]) {
+      page(id);
+      dismissBanner();
+      showBanner(MESSAGE);
+      assert.equal(showing(), false, `interrupted somebody writing in a ${id}`);
+    }
+  });
+
+  it("showBanner_WithNothingFocused_SpeaksImmediately", async () => {
+    // Arrange & Act & Assert — the ordinary case, and the one that must not regress while
+    // narrowing the rule above.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+    page("button");
+    (window.document.getElementById("button") as unknown as HTMLElement).blur();
+    dismissBanner();
+    showBanner(MESSAGE);
+    assert.equal(showing(), true);
+  });
+});

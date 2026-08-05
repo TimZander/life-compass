@@ -9,7 +9,10 @@
 import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers, BLANK_SELECTOR } from "./fields.ts";
-import { wireBackup } from "./export.ts";
+import { saveBackup, wireBackup } from "./export.ts";
+
+/** Where a just-completed restore leaves its count, to be reported after the reload. */
+const RESTORED_KEY = "life-compass:restored";
 import { explain, wireRestore } from "./import.ts";
 import { openStore } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
@@ -105,30 +108,9 @@ async function bindAnswerFields(): Promise<void> {
     },
   });
 
-  wireRestore(document, store, {
-    onRefused: (refusal) =>
-      showBanner({
-        id: "backup",
-        text: explain(refusal),
-        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
-      }),
-    onRestored: (count) => {
-      // Written before the reload so it survives into the next page: banner.ts stores
-      // nothing across a navigation, and a reader who has just replaced everything they own
-      // should not be left wondering whether it worked.
-      window.sessionStorage.setItem("life-compass:restored", String(count));
-    },
-    onFailure: (error: unknown) => {
-      console.error("life-compass: the backup could not be restored", error);
-      showBanner({
-        id: "backup",
-        text: "That backup could not be restored. Nothing on this device has changed.",
-        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
-      });
-    },
-    reload: () => window.location.reload(),
-  });
-
+  // After binding, not before. A restore that landed while binding was still reading the
+  // store and materialising groups would race `claim` and the restore loop, both of which
+  // write pre-restore state into the replaced store.
   await bindAnswers(document, answers, store, {
     // Says that writing has stopped, not just that reading failed. The earlier wording
     // mentioned only the answers already stored, so a reader could dictate a page of new
@@ -151,6 +133,54 @@ async function bindAnswerFields(): Promise<void> {
       });
     },
   });
+
+  wireRestore(document, answers, store, {
+    onRefused: (refusal) =>
+      showBanner({
+        id: "restore",
+        text: explain(refusal),
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+      }),
+    onBackupFirst: () => {
+      void saveBackup(answers, store, document, new Date())
+        .then((filename) =>
+          showBanner({
+            id: "restore",
+            text: `Downloading ${filename}. Check your files before replacing anything.`,
+            actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+          }),
+        )
+        .catch((error: unknown) => {
+          console.error("life-compass: the backup could not be saved", error);
+          showBanner({
+            id: "restore",
+            text: "That backup could not be saved, so nothing has been replaced.",
+            actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+          });
+        });
+    },
+    onRestored: (count) => {
+      // Guarded, because storage access throws where site data is blocked — which is a
+      // privacy-minded reader, the exact audience here. sw-update.ts wraps the identical
+      // call for the identical reason. Losing the confirmation is a small cost; letting a
+      // throw escape once cost the reader a message saying nothing had changed after
+      // everything had.
+      try {
+        window.sessionStorage.setItem(RESTORED_KEY, String(count));
+      } catch {
+        // The restore has already landed. Only the sentence afterwards is lost.
+      }
+    },
+    onFailure: (error: unknown) => {
+      console.error("life-compass: the backup could not be restored", error);
+      showBanner({
+        id: "restore",
+        text: "That backup could not be restored. Nothing on this device has changed.",
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+      });
+    },
+    reload: () => window.location.reload(),
+  });
 }
 
 /**
@@ -162,15 +192,29 @@ async function bindAnswerFields(): Promise<void> {
  * subsequent load.
  */
 function confirmRecentRestore(): void {
-  const count = window.sessionStorage.getItem("life-compass:restored");
+  let count: string | null = null;
+  // Guarded, and the getter itself can throw. Unguarded at module scope this aborted
+  // evaluation before `bindAnswerFields` ran, so a reader whose browser blocks site data
+  // got no field binding, no autosave, no controls and no banner explaining any of it —
+  // a rare-event confirmation disabling the whole application for the readers most likely
+  // to hit it. sw-update.ts guards both halves for the same reason.
+  try {
+    count = window.sessionStorage.getItem(RESTORED_KEY);
+  } catch {
+    return;
+  }
   if (count === null) {
     return;
   }
-  window.sessionStorage.removeItem("life-compass:restored");
+  try {
+    window.sessionStorage.removeItem(RESTORED_KEY);
+  } catch {
+    // Said once is the intent; said twice is better than the application not starting.
+  }
   showBanner({
-    id: "backup",
+    id: "restore",
     text: `Restored ${count} ${count === "1" ? "answer" : "answers"} from your backup.`,
-    actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+    actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
   });
 }
 
