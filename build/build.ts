@@ -223,7 +223,11 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
     const markdown = await readFile(path.join(root, page.source), "utf8");
     const rendered = render(markdown, page.source, context);
     const { html, title, links, headingIds, anchors } = rendered;
-    built.push({ ...page, html: layout(html, title), title, links, headingIds, anchors });
+    // Whether this page has anything to answer, taken from the schema rather than from the
+    // rendered HTML — the build already knows, and re-deriving it by string match was a
+    // second answer to the same question that could drift from the first.
+    const answerable = (schema.bySource.get(page.source)?.length ?? 0) > 0;
+    built.push({ ...page, html: layout(html, title, answerable), title, links, headingIds, anchors });
     for (const marker of rendered.taskMarkers) {
       problems.push({
         kind: "task-list",

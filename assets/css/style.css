@@ -72,6 +72,20 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .endnav a:hover{color:var(--accent-dark)}
 @media(max-width:540px){body{font-size:1.1rem}article>h1:first-child{font-size:2rem}}
 
+/* Keeping a copy. Set apart from the worksheet by a rule and a tint rather than a border
+   box, so it reads as a footer to the page's work and not as another question. It is
+   `hidden` in the markup until the script confirms storage actually opens (0008). */
+.backup{margin:3.5em 0 0;padding:1.6em 0 0;border-top:1px solid var(--rule)}
+.backup h2{font-size:1.3rem;margin:0 0 .5em}
+.backup p{margin:0 0 .8em;font-size:.95rem}
+.backup-note{color:var(--muted);font-size:.86rem;font-style:italic}
+#backup-save{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+#backup-save:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
+#backup-save:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+#backup-save[aria-disabled="true"]{opacity:.6;cursor:progress}
+/* A printed worksheet has no button to press. */
+@media print{.backup{display:none}}
+
 /* Banner: one strip for what the app needs to tell you about itself.
    Fixed, so appearing never reflows the page under someone who is reading or typing —
    a layout shift mid-sentence is the same interruption a modal would be. */

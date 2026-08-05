@@ -9,6 +9,7 @@
 import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers, BLANK_SELECTOR } from "./fields.ts";
+import { wireBackup } from "./export.ts";
 import { openStore } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
@@ -81,6 +82,26 @@ async function bindAnswerFields(): Promise<void> {
     if (document.visibilityState === "hidden") {
       void answers.flush();
     }
+  });
+
+  wireBackup(document, answers, store, {
+    onHandedOver: (filename) =>
+      showBanner({
+        id: "backup",
+        // "Downloading", not "saved". Nothing here observes whether the browser accepted
+        // the file — a synthetic click reports no outcome — and claiming a backup exists
+        // when it may not is the one thing 0008 says this app must not get wrong.
+        text: `Downloading ${filename}. Check your files — and keep it somewhere you would keep a private notebook.`,
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+      }),
+    onFailure: (error: unknown) => {
+      console.error("life-compass: the backup could not be saved", error);
+      showBanner({
+        id: "backup",
+        text: "That backup could not be saved. Your answers are still on this device.",
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+      });
+    },
   });
 
   await bindAnswers(document, answers, store, {

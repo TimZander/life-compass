@@ -105,6 +105,31 @@ after(async () => {
   await Promise.all(temporary.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
+describe("the backup control on real pages", () => {
+  it("buildPages_RealContent_PutsTheBackupControlOnEveryAnswerablePageAndNoOther", async () => {
+    // Arrange — layout.test.ts proves the control is emitted when asked for; nothing proved
+    // the build ever asks. Passing `false` for every page, or dropping the call, left all 34
+    // pages without the one control 0008 · C3 calls mandatory, with every test still green.
+    const { pages } = await site();
+
+    // Act
+    const withControl = pages.filter((page) => page.html.includes('id="backup"'));
+    // A rendered blank ELEMENT, deliberately not the same signal the build uses. The build
+    // asks the schema; this asks the output. Two independent answers to "can this page be
+    // answered" is the point — one derived from the other would agree even while both were
+    // wrong. Note 0013's own page contains the literal text `data-field=` in a code block
+    // explaining this markup, which is why the naive string is not the test either.
+    const answerable = pages.filter((page) => page.html.includes('<span class="fill'));
+
+    // Assert — every page a reader can answer offers a backup, and nothing else does.
+    assert.ok(answerable.length > 10, `only ${answerable.length} answerable pages found`);
+    assert.deepEqual(
+      withControl.map((page) => page.url).sort(),
+      answerable.map((page) => page.url).sort(),
+    );
+  });
+});
+
 describe("buildPages", () => {
   it("buildPages_RealContent_ReportsNoProblems", async () => {
     // Arrange & Act
