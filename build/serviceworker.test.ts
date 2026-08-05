@@ -353,7 +353,7 @@ describe("banner surface", () => {
     // the change, so creating it on demand and filling it in the same task is routinely
     // missed. 0001 makes that a defect rather than a nicety.
     // Act
-    const html = layout("<p>x</p>", "Page", "0123456789ab");
+    const html = layout("<p>x</p>", "Page", true);
 
     // Assert
     assert.ok(html.includes('<div id="banner-region" aria-live="polite"></div>'));

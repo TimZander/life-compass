@@ -15,10 +15,9 @@ import {
   envelopeOf,
   filenameFor,
   saveBackup,
-  schemaOf,
   serialise,
+  wireBackup,
   FORMAT,
-  SCHEMA_META,
   VERSION,
 } from "./export.ts";
 import { orderKey, writeOrder } from "./keys.ts";
@@ -39,9 +38,25 @@ function stored(entries: ReadonlyMap<string, string>): Store {
   };
 }
 
+/** An `Answers` that records whether it was flushed before the store was read. */
+function noAnswers(flushed: { yes: boolean } = { yes: false }) {
+  return {
+    async load() {
+      return new Map<string, string>();
+    },
+    set() {},
+    async flush() {
+      flushed.yes = true;
+    },
+    stop() {},
+  };
+}
+
 const WHEN = new Date("2026-08-04T14:12:37.000Z");
-/** Whatever the build stamped into the page; export only carries it through. */
-const SCHEMA = "6bfcb1e41632";
+/** Long enough for a click handler's promise chain to settle. */
+const SETTLE_MS = 20;
+/** Comfortably past the deferral `download` uses before releasing a handed-over URL. */
+const REVOKE_WAIT_MS = 1300;
 
 describe("what the envelope carries", () => {
   it("envelopeOf_EveryKindOfStoredKey_IsCarriedVerbatim", async () => {
@@ -64,7 +79,7 @@ describe("what the envelope carries", () => {
     );
 
     // Act
-    const envelope = await envelopeOf(store, WHEN, SCHEMA);
+    const envelope = await envelopeOf(store, WHEN);
 
     // Assert
     assert.deepEqual(envelope.payload, {
@@ -75,26 +90,54 @@ describe("what the envelope carries", () => {
     });
   });
 
+  it("envelopeOf_AKeyNamedLikeObjectMachinery_SurvivesIntoTheFileAndBackOut", async () => {
+    // Arrange — negative case, and the one drop path that existed in the function whose
+    // whole contract is that nothing is dropped. `payload[key] = value` on a plain object
+    // runs Object.prototype's `__proto__` setter instead of creating a property: the key
+    // and the answer under it vanished, with no error and a file that looked complete.
+    // Reachable through an orphan, whose identifier is whatever some past build allowed.
+    const PRIVATE = "the answer under a key nobody expected";
+    const store = stored(
+      new Map([
+        ["__proto__", PRIVATE],
+        ["constructor", "also awkward"],
+        ["", "an empty key"],
+        ["day1.patterns", "ordinary"],
+      ]),
+    );
+
+    // Act — through the file and back, because the format has to survive both directions.
+    const envelope = await envelopeOf(store, WHEN);
+    const reread = JSON.parse(serialise(envelope)) as { payload: Record<string, string> };
+
+    // Assert
+    const own = (payload: object, key: string): boolean =>
+      Object.prototype.hasOwnProperty.call(payload, key);
+    assert.equal(Object.keys(envelope.payload).length, 4, "a key was dropped on the way in");
+    assert.ok(own(envelope.payload, "__proto__"), "__proto__ was swallowed on the way in");
+    assert.ok(own(reread.payload, "__proto__"), "__proto__ was swallowed on the way back");
+    assert.equal(reread.payload["__proto__"], PRIVATE);
+    assert.equal(Object.keys(reread.payload).length, 4);
+  });
+
   it("envelopeOf_TheEnvelopeItself_IsTheShape0009Froze", async () => {
     // Arrange — the fields an importer branches on before reading a byte of the payload.
     // This shape is permanent once a file exists in the wild.
     const store = stored(new Map([["day1.patterns", "an answer"]]));
 
     // Act
-    const envelope = await envelopeOf(store, WHEN, SCHEMA);
+    const envelope = await envelopeOf(store, WHEN);
 
     // Assert
     assert.equal(envelope.format, FORMAT);
     assert.equal(envelope.version, VERSION);
     assert.equal(envelope.encryption, "none");
     assert.equal(envelope.exportedAt, "2026-08-04T14:12:37.000Z");
-    assert.equal(envelope.schema, SCHEMA);
     assert.deepEqual(Object.keys(envelope).sort(), [
       "encryption",
       "exportedAt",
       "format",
       "payload",
-      "schema",
       "version",
     ]);
   });
@@ -102,7 +145,7 @@ describe("what the envelope carries", () => {
   it("envelopeOf_AnEmptyStore_IsStillAValidEnvelope", async () => {
     // Arrange & Act — negative case. Someone who has written nothing and exports anyway
     // gets a file that imports cleanly, rather than one an importer rejects as malformed.
-    const envelope = await envelopeOf(stored(new Map()), WHEN, SCHEMA);
+    const envelope = await envelopeOf(stored(new Map()), WHEN);
 
     // Assert
     assert.deepEqual(envelope.payload, {});
@@ -122,8 +165,8 @@ describe("what the envelope carries", () => {
     const backwards = stored(new Map([...entries].reverse()));
 
     // Act
-    const one = serialise(await envelopeOf(forwards, WHEN, SCHEMA));
-    const two = serialise(await envelopeOf(backwards, WHEN, SCHEMA));
+    const one = serialise(await envelopeOf(forwards, WHEN));
+    const two = serialise(await envelopeOf(backwards, WHEN));
 
     // Assert
     assert.equal(one, two);
@@ -139,7 +182,7 @@ describe("the file itself", () => {
   it("serialise_AnEnvelope_IsIndentedJsonEndingInANewline", async () => {
     // Arrange — a file the reader is told to look after themselves (0009 · C1), so it is
     // written to be opened and read rather than treated as opaque machine output.
-    const envelope = await envelopeOf(stored(new Map([["day1.patterns", "an answer"]])), WHEN, SCHEMA);
+    const envelope = await envelopeOf(stored(new Map([["day1.patterns", "an answer"]])), WHEN);
 
     // Act
     const text = serialise(envelope);
@@ -158,32 +201,45 @@ describe("the file itself", () => {
     const store = stored(new Map([["day1.patterns", AWKWARD]]));
 
     // Act
-    const text = serialise(await envelopeOf(store, WHEN, SCHEMA));
+    const text = serialise(await envelopeOf(store, WHEN));
 
     // Assert
     assert.equal(JSON.parse(text).payload["day1.patterns"], AWKWARD);
   });
 
-  it("filenameFor_ADate_SortsChronologicallyAndSaysWhatItIs", async () => {
-    // Arrange & Act & Assert
-    assert.equal(filenameFor(WHEN), "life-compass-2026-08-04-14-12.json");
-    assert.equal(
-      filenameFor(new Date("2026-01-09T03:07:59.000Z")),
-      "life-compass-2026-01-09-03-07.json",
-    );
+  it("filenameFor_AMoment_NamesItInTheReadersOwnTimeNotUtc", async () => {
+    // Arrange — built from local components, so this asserts the same thing in every
+    // timezone the suite might run in. UTC here would be a small lie in the one artifact
+    // the reader is asked to look after themselves: an evening export in Denver would be
+    // named for tomorrow, in a folder they are scanning by date.
+    const LOCAL = new Date(2026, 7, 4, 19, 5, 3);
+
+    // Act & Assert
+    assert.equal(filenameFor(LOCAL), "life-compass-2026-08-04-19-05-03.json");
   });
 
-  it("filenameFor_TwoExportsInOneDay_DoNotShareAName", async () => {
+  it("filenameFor_SingleDigitPartsOfADate_ArePaddedSoNamesSort", async () => {
+    // Arrange — negative case. Unpadded, "2026-1-9" sorts after "2026-10-1" in the folder
+    // listing this name exists to be readable in.
+    const EARLY = new Date(2026, 0, 9, 3, 7, 5);
+
+    // Act & Assert
+    assert.equal(filenameFor(EARLY), "life-compass-2026-01-09-03-07-05.json");
+  });
+
+  it("filenameFor_TwoExportsMomentsApart_DoNotShareAName", async () => {
     // Arrange — negative case, and a correction. An earlier version used the date alone,
     // reasoning that a same-day overwrite was safe because "the newer file is a superset
     // of unchanged answers". It is not: a reader who cleared an answer between the two
     // has a newer file that is strictly lossier, and the overwrite would destroy the only
     // copy of what they removed — in the feature whose whole job is to prevent that.
-    const MORNING = new Date("2026-08-04T09:15:00.000Z");
-    const EVENING = new Date("2026-08-04T21:40:00.000Z");
+    // Seconds, not minutes: the likeliest second export is an immediate retry after the
+    // first appeared to do nothing, and minute granularity collides exactly there.
+    const FIRST = new Date(2026, 7, 4, 9, 15, 0);
+    const RETRY = new Date(2026, 7, 4, 9, 15, 6);
 
     // Act & Assert
-    assert.notEqual(filenameFor(MORNING), filenameFor(EVENING));
+    assert.notEqual(filenameFor(FIRST), filenameFor(RETRY));
   });
 
   it("filenameFor_AnyMoment_IsLegalOnEveryPlatform", async () => {
@@ -206,28 +262,11 @@ after(() => {
 });
 
 /** A page as the build emits it, with or without the schema stamp. */
-function page(meta: string = `<meta name="${SCHEMA_META}" content="${SCHEMA}">`): Document {
-  window.document.head.innerHTML = meta;
-  window.document.body.innerHTML = "";
+function page(body: string = ""): Document {
+  window.document.head.innerHTML = "";
+  window.document.body.innerHTML = body;
   return window.document as unknown as Document;
 }
-
-describe("reading the schema stamp", () => {
-  it("schemaOf_APageTheBuildStamped_ReturnsTheFingerprint", () => {
-    // Arrange & Act & Assert — the client cannot derive this: connect-src 'none' stops it
-    // fetching questions.json, so the page is the only source.
-    assert.equal(schemaOf(page()), SCHEMA);
-  });
-
-  it("schemaOf_APageWithoutOne_FallsBackRatherThanRefusing", () => {
-    // Arrange — negative case, and a deliberate choice about priorities. A missing stamp
-    // means an old build or a stale cached page; refusing to save the backup over it would
-    // put the file's metadata ahead of the answers the file exists to protect.
-    // Act & Assert
-    assert.equal(schemaOf(page("")), "unknown");
-    assert.equal(schemaOf(page(`<meta name="${SCHEMA_META}" content="">`)), "unknown");
-  });
-});
 
 describe("handing the file over", () => {
   it("download_SomeText_OffersItUnderTheGivenNameAndReleasesTheUrl", () => {
@@ -269,9 +308,43 @@ describe("handing the file over", () => {
     assert.equal(document.querySelectorAll("a").length, 0, "the anchor was left in the page");
   });
 
-  it("download_AfterTheClick_RevokesOnALaterTurnNotTheSameOne", async () => {
-    // Arrange — negative case. Revoking in the same tick as the click can cancel the very
-    // download it names, because the browser has not necessarily started reading the blob.
+  it("download_AClickThatThrows_StillReleasesTheUrl", async () => {
+    // Arrange — negative case. Without a `finally`, a throwing click left a live
+    // same-origin URL to the reader's entire workbook alive for the life of the document —
+    // the exact exposure the code's own comment says it is avoiding.
+    const MINE = "blob:the-one-that-failed";
+    const document = page();
+    const revoked: string[] = [];
+    window.URL.createObjectURL = (() => MINE) as typeof window.URL.createObjectURL;
+    window.URL.revokeObjectURL = ((url: string) => revoked.push(url)) as typeof window.URL.revokeObjectURL;
+    const create = document.createElement.bind(document);
+    document.createElement = ((tag: string) => {
+      const element = create(tag);
+      if (tag === "a") {
+        (element as HTMLAnchorElement).click = () => {
+          throw new Error("this browser refused the download");
+        };
+      }
+      return element;
+    }) as typeof document.createElement;
+
+    // Act — restored immediately: a spy left installed here made every later test in this
+    // file fail, which is the same pollution the shared `window` already invites.
+    try {
+      assert.throws(() => download(document, "{}", "x.json"), /refused/);
+    } finally {
+      document.createElement = create;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
+    // Assert
+    assert.ok(revoked.includes(MINE), "a URL to every answer was left alive after a failure");
+  });
+
+  it("download_AfterTheClick_HoldsTheUrlOpenPastTheCurrentTurn", async () => {
+    // Arrange — negative case. Revoking before the browser has read the blob cancels the
+    // very download it names, and the reader gets a truncated or empty file that still
+    // lands in their downloads looking like a backup.
     const MINE = "blob:the-one-this-test-made";
     const document = page();
     const revoked: string[] = [];
@@ -280,13 +353,19 @@ describe("handing the file over", () => {
 
     // Act
     download(document, "{}", "x.json");
-    const immediately = revoked.includes(MINE);
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    const synchronously = revoked.includes(MINE);
+    // Draining microtasks is the half a sleep cannot see: a revoke on a resolved promise
+    // still fires inside this same turn, before control ever returns to the browser, and an
+    // earlier version of this test passed against exactly that.
+    await Promise.resolve();
+    await Promise.resolve();
+    const afterMicrotasks = revoked.includes(MINE);
+    await new Promise((resolve) => setTimeout(resolve, REVOKE_WAIT_MS));
 
     // Assert — by identity, not by count: a revoke scheduled by an earlier test lands in
-    // whatever spy is installed when its timer finally fires, so counting is not this
-    // test's business.
-    assert.equal(immediately, false, "the URL was revoked before the download could start");
+    // whatever spy is installed when its timer fires, so counting is not this test's job.
+    assert.equal(synchronously, false, "the URL was revoked in the same statement");
+    assert.equal(afterMicrotasks, false, "the URL was revoked before the browser got a turn");
     assert.ok(revoked.includes(MINE), "the URL was never released");
   });
 });
@@ -306,15 +385,171 @@ describe("the whole control", () => {
     window.URL.revokeObjectURL = (() => {}) as typeof window.URL.revokeObjectURL;
 
     // Act
-    const filename = await saveBackup(stored(new Map([["day1.patterns", ANSWER]])), document, WHEN);
+    const filename = await saveBackup(noAnswers(), stored(new Map([["day1.patterns", ANSWER]])), document, WHEN);
 
     // Assert — the file handed over is the envelope, stamped with this page's schema and
     // named for the moment it was taken.
-    assert.equal(filename, "life-compass-2026-08-04-14-12.json");
+    // Named from the same moment, in the reader's own time — asserted against `filenameFor`
+    // rather than a literal, so this test says nothing about which timezone it runs in.
+    assert.equal(filename, filenameFor(WHEN));
     assert.ok(handed !== undefined, "nothing was handed to the browser");
     const envelope = JSON.parse(await handed.text());
     assert.equal(envelope.payload["day1.patterns"], ANSWER);
-    assert.equal(envelope.schema, SCHEMA);
     assert.equal(envelope.format, FORMAT);
+  });
+});
+
+describe("flushing before the file is built", () => {
+  it("saveBackup_AnswersStillQueued_AreWrittenBeforeTheStoreIsRead", async () => {
+    // Arrange — the defect this exists to prevent, and the worst one this feature could
+    // have. Autosave debounces, so reading the store directly gave a reader who had just
+    // finished dictating a file without that paragraph — and an EMPTY file if it was all
+    // they had written. The reader likeliest to press this is the one just told their
+    // answers are not saving, whose entire unwritten set is what `flush` is holding. With
+    // import replacing the store, that gap becomes permanent loss.
+    const SPOKEN = "the paragraph I finished a moment before pressing the button";
+    const kept = new Map<string, string>();
+    const store: Store = {
+      async readAll() {
+        return new Map(kept);
+      },
+      async write(field, value) {
+        kept.set(field, value);
+      },
+      async claim() {
+        return true;
+      },
+    };
+    // An `Answers` that has not written yet, exactly as a debounce leaves it.
+    const answers = {
+      async load() {
+        return new Map<string, string>();
+      },
+      set() {},
+      async flush() {
+        kept.set("day1.patterns", SPOKEN);
+      },
+      stop() {},
+    };
+    const document = page();
+    let handed: { text(): Promise<string> } | undefined;
+    window.URL.createObjectURL = ((blob: { text(): Promise<string> }) => {
+      handed = blob;
+      return "blob:test";
+    }) as unknown as typeof window.URL.createObjectURL;
+    window.URL.revokeObjectURL = (() => {}) as typeof window.URL.revokeObjectURL;
+
+    // Act
+    await saveBackup(answers, store, document, WHEN);
+
+    // Assert
+    assert.ok(handed !== undefined, "nothing was handed to the browser");
+    assert.equal(JSON.parse(await handed.text()).payload["day1.patterns"], SPOKEN);
+  });
+});
+
+describe("the control on the page", () => {
+  const MARKUP =
+    '<section id="backup" hidden><button type="button" id="backup-save">Download</button></section>';
+
+  it("wireBackup_AWorkingStore_RevealsTheControlAndSavesOnPress", async () => {
+    // Arrange — every line of this was invisible to the suite while it lived in app.ts,
+    // which has no tests: nine mutations of it passed, including deleting it outright.
+    const document = page(MARKUP);
+    const handed: string[] = [];
+    window.URL.createObjectURL = (() => "blob:test") as typeof window.URL.createObjectURL;
+    window.URL.revokeObjectURL = (() => {}) as typeof window.URL.revokeObjectURL;
+
+    // Act
+    wireBackup(document, noAnswers(), stored(new Map([["day1.patterns", "an answer"]])), {
+      onHandedOver: (filename) => handed.push(filename),
+      onFailure: () => handed.push("FAILED"),
+    });
+    const section = document.getElementById("backup");
+    document.getElementById("backup-save")?.dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
+    // Assert
+    assert.equal(section?.hidden, false, "the control was never revealed");
+    assert.equal(handed.length, 1, "the press did not produce exactly one outcome");
+    assert.ok(handed[0]?.startsWith("life-compass-"), `unexpected filename ${handed[0]}`);
+  });
+
+  it("wireBackup_TheStoreFails_ReportsItRatherThanClaimingAFile", async () => {
+    // Arrange — negative case. A failure that reported nothing would leave the reader
+    // believing they hold a backup they do not.
+    const document = page(MARKUP);
+    const failures: unknown[] = [];
+    const broken: Store = {
+      async readAll() {
+        throw new Error("storage is unavailable");
+      },
+      async write() {},
+      async claim() {
+        return true;
+      },
+    };
+
+    // Act
+    wireBackup(document, noAnswers(), broken, {
+      onHandedOver: () => failures.push("CLAIMED A FILE"),
+      onFailure: (error) => failures.push(error),
+    });
+    document.getElementById("backup-save")?.dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
+    // Assert
+    assert.equal(failures.length, 1);
+    assert.ok(failures[0] instanceof Error, "the failure was reported as something else");
+    assert.ok(!document.getElementById("backup-save")?.hasAttribute("aria-disabled"), "the control was left dead");
+  });
+
+  it("wireBackup_PressedTwiceQuickly_RunsOnceAndKeepsTheButtonFocusable", async () => {
+    // Arrange — negative case, twice over. A second press must not start a second export
+    // over the first; and the guard must not be the `disabled` attribute, which makes the
+    // element unfocusable and so drops a keyboard or screen-reader reader to the document
+    // body in the middle of the one flow they were told to use (0001).
+    const document = page(MARKUP);
+    const handed: string[] = [];
+    window.URL.createObjectURL = (() => "blob:test") as typeof window.URL.createObjectURL;
+    window.URL.revokeObjectURL = (() => {}) as typeof window.URL.revokeObjectURL;
+    wireBackup(document, noAnswers(), stored(new Map()), {
+      onHandedOver: (filename) => handed.push(filename),
+      onFailure: () => handed.push("FAILED"),
+    });
+    const button = document.getElementById("backup-save");
+
+    // Act
+    button?.dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
+    const disabledMidFlight = button?.hasAttribute("disabled") ?? false;
+    button?.dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
+    // Assert
+    assert.equal(disabledMidFlight, false, "the button was made unfocusable mid-operation");
+    assert.equal(handed.length, 1, "a second press started a second export");
+  });
+
+  it("wireBackup_APageWithoutTheControl_SaysSoRatherThanReturningQuietly", () => {
+    // Arrange — negative case. The build emits the control on every page that reaches this
+    // code, so absent means the markup and this module have drifted, and the symptom is a
+    // mandatory feature that is simply not there.
+    const document = page("<p>no control here</p>");
+    const logged: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => logged.push(args);
+
+    // Act
+    try {
+      wireBackup(document, noAnswers(), stored(new Map()), {
+        onHandedOver: () => {},
+        onFailure: () => {},
+      });
+    } finally {
+      console.error = original;
+    }
+
+    // Assert
+    assert.equal(logged.length, 1, "a missing control was absorbed silently");
   });
 });

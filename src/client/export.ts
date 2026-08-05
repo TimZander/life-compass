@@ -23,6 +23,7 @@
  *     still be recovered from later.
  */
 
+import type { Answers } from "./answers.ts";
 import type { Store } from "./store.ts";
 
 /** Identifies the file without reading its contents (0009). */
@@ -44,24 +45,6 @@ export type Envelope = {
   readonly encryption: "none";
   /** When this file was written, so a reader with several can tell which is newest. */
   readonly exportedAt: string;
-  /**
-   * Which question set the payload was written against.
-   *
-   * `version` above is the ENVELOPE's and deliberately does not move for a schema edit,
-   * so without this nothing in the file says which questions existed when it was written
-   * — and an importer years later cannot tell an orphan (a question since retired) from a
-   * key for a question that did not exist yet. 0011 · C3 makes that exact distinction the
-   * reason orphans are carried at all, so a file that cannot support it is carrying them
-   * for nothing.
-   *
-   * A digest rather than the identifiers themselves: the client has no copy of the schema
-   * — `connect-src 'none'` means it cannot fetch `questions.json`, and 0013 has the
-   * binding read everything from the markup instead — so the build stamps this into the
-   * page and it is read from there. It answers "was this written against a different
-   * question set", not "how different"; the registry (0011), which keeps every retired
-   * identifier forever, answers the rest.
-   */
-  readonly schema: string;
   /** Every key in the store, exactly as stored. */
   readonly payload: Readonly<Record<string, string>>;
 };
@@ -76,25 +59,22 @@ export type Envelope = {
  * fixed: two exports of unchanged answers are then byte-identical, so somebody keeping
  * successive backups can diff them and see what actually changed rather than a reshuffle.
  */
-export async function envelopeOf(
-  store: Store,
-  exportedAt: Date,
-  schema: string,
-): Promise<Envelope> {
+export async function envelopeOf(store: Store, exportedAt: Date): Promise<Envelope> {
   const stored = await store.readAll();
-  const payload: Record<string, string> = {};
-  for (const key of [...stored.keys()].sort()) {
-    const value = stored.get(key);
-    if (value !== undefined) {
-      payload[key] = value;
-    }
-  }
+  // `Object.fromEntries`, never `payload[key] = value`. Assigning `__proto__` on a plain
+  // object runs Object.prototype's setter instead of creating a property, so that key and
+  // its answer vanish — no error, no warning, and a file that looks complete. Four keys in,
+  // three out, in the one function whose whole contract is that nothing is dropped.
+  // `fromEntries` DEFINES properties rather than assigning them, so every key survives, and
+  // `JSON.parse` on the way back in defines them too, so the format is symmetric.
+  const payload = Object.fromEntries(
+    [...stored].sort(([one], [two]) => (one < two ? -1 : 1)),
+  ) as Readonly<Record<string, string>>;
   return {
     format: FORMAT,
     version: VERSION,
     encryption: "none",
     exportedAt: exportedAt.toISOString(),
-    schema,
     payload,
   };
 }
@@ -113,39 +93,34 @@ export function serialise(envelope: Envelope): string {
 /**
  * A filename that sorts chronologically and says what it is.
  *
- * The clock time is in it, and an earlier version left it out on the reasoning that two
- * exports in one day could overwrite because "the newer file is a superset of unchanged
- * answers". That is false. A reader who shortened or cleared an answer between the two
- * exports has a newer file that is strictly lossier, and the overwrite would destroy the
- * only copy of what they removed — in the one feature whose entire job is to not do that.
+ * The clock is in it, and an earlier version left it out on the reasoning that two exports
+ * in one day could overwrite because "the newer file is a superset of unchanged answers".
+ * That is false: a reader who shortened or cleared an answer between the two has a newer
+ * file that is strictly lossier, and the overwrite would destroy the only copy of what they
+ * removed — in the one feature whose entire job is to not do that. Seconds, not minutes,
+ * because the likeliest second export is an immediate retry after the first appeared to do
+ * nothing, and minute granularity collides exactly there.
  *
- * Minutes rather than seconds: enough that two exports in a session are distinct, short
- * enough to stay readable. Colons are not legal in a filename on every platform, so the
- * time is hyphenated.
+ * LOCAL time, not UTC. `exportedAt` inside the file is ISO and absolute, which is what
+ * anything mechanical should read; this string is for a person scanning a downloads folder,
+ * and telling somebody in Denver that their evening export happened tomorrow is a small lie
+ * in the one artifact they are asked to look after themselves. Local time still sorts, for
+ * the only reader who will ever see these names.
  */
 export function filenameFor(exportedAt: Date): string {
-  const iso = exportedAt.toISOString();
-  const day = iso.slice(0, iso.indexOf("T"));
-  const time = iso.slice(iso.indexOf("T") + 1, iso.indexOf(":", iso.indexOf(":") + 1)).replace(":", "-");
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  const day = `${exportedAt.getFullYear()}-${pad(exportedAt.getMonth() + 1)}-${pad(exportedAt.getDate())}`;
+  const time = `${pad(exportedAt.getHours())}-${pad(exportedAt.getMinutes())}-${pad(exportedAt.getSeconds())}`;
   return `life-compass-${day}-${time}.json`;
 }
 
-/** Where the build stamped the question set's fingerprint (0009 · C6). */
-export const SCHEMA_META = "life-compass-schema";
-
 /**
- * The schema fingerprint this page was built from.
+ * How long a handed-over blob URL is left alive before being released.
  *
- * Falls back rather than throwing. A missing meta tag means a build that predates the
- * stamp or a page served from an old cache — neither is a reason to refuse somebody a
- * backup, which would put the file's metadata ahead of the answers it exists to protect.
- * "unknown" is at least honest, and an importer can treat it as "assume nothing".
+ * Long enough that no browser is still reading when it goes, short enough that the
+ * reader's answers are not sitting behind a live URL for the rest of the session.
  */
-export function schemaOf(document: Document): string {
-  const meta = document.querySelector(`meta[name="${SCHEMA_META}"]`);
-  const content = meta?.getAttribute("content");
-  return content === null || content === undefined || content === "" ? "unknown" : content;
-}
+const REVOKE_AFTER_MS = 1000;
 
 /**
  * Write the backup out as a file the reader keeps.
@@ -165,15 +140,29 @@ export function download(document: Document, text: string, filename: string): vo
     throw new Error("this document cannot download a file");
   }
   const url = view.URL.createObjectURL(new view.Blob([text], { type: "application/json" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = "noopener";
-  // Not appended to the document: a click works without it in every browser this supports,
-  // and an anchor left in the page would be a stray focusable element in the reader's tab
-  // order — and briefly, one carrying a URL to everything they have ever written.
-  anchor.click();
-  view.setTimeout(() => view.URL.revokeObjectURL(url), 0);
+  let handed = false;
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.rel = "noopener";
+    // Not appended to the document: a click works without it in every browser this
+    // supports, and an anchor left in the page would be a stray focusable element in the
+    // reader's tab order — and briefly, one carrying a URL to everything they have written.
+    anchor.click();
+    handed = true;
+  } finally {
+    // Released either way. Without the `finally`, a throwing `click` left a live
+    // same-origin URL to the reader's entire workbook alive for the life of the document —
+    // exactly the exposure the comment above says this avoids.
+    //
+    // A whole second when the click got through, not one macrotask. The browser has to
+    // read the blob before it is revoked, and a revoke on the very next turn is the
+    // tightest deferral there is; if it loses, the reader gets a truncated or empty file
+    // that still lands in their downloads and looks like a backup. A second costs nothing
+    // and is not a race.
+    view.setTimeout(() => view.URL.revokeObjectURL(url), handed ? REVOKE_AFTER_MS : 0);
+  }
 }
 
 /**
@@ -184,12 +173,80 @@ export function download(document: Document, text: string, filename: string): vo
  * decision and not this module's.
  */
 export async function saveBackup(
+  answers: Answers,
   store: Store,
   document: Document,
   exportedAt: Date,
 ): Promise<string> {
-  const envelope = await envelopeOf(store, exportedAt, schemaOf(document));
+  // Everything still in flight goes to storage FIRST. Autosave is debounced — 800ms of
+  // quiet, a 5s ceiling — and reads straight from the store missed all of it: a reader who
+  // finished a paragraph and tapped the button got a file without it, and an empty file if
+  // that was all they had written. Worse, the reader most likely to reach for a backup is
+  // the one who has just been told their answers are NOT being saved, whose whole unwritten
+  // set is exactly what `flush` is holding. With import replacing the store (0009 · C7),
+  // that gap turns into permanent loss.
+  await answers.flush();
+  const envelope = await envelopeOf(store, exportedAt);
   const filename = filenameFor(exportedAt);
   download(document, serialise(envelope), filename);
   return filename;
+}
+
+export type BackupOptions = {
+  /** Told the filename once the file has been handed to the browser. */
+  readonly onHandedOver: (filename: string) => void;
+  /** Told when the backup could not be produced at all. */
+  readonly onFailure: (error: unknown) => void;
+};
+
+/**
+ * Reveal the backup control and make it work.
+ *
+ * Here rather than in app.ts because app.ts has no tests and runs its side effects on
+ * import, so everything put there is verified by reading it. 0014 · C2 exists because
+ * DOM-touching client code checked that way shipped defects the suite could not see, and
+ * nine separate mutations of this logic — including deleting it outright, and swapping the
+ * honest "Downloading" wording back to the "Saved" it must never claim — passed a green
+ * suite while it lived there.
+ *
+ * The section is revealed here, not in the markup, because until this runs there is no
+ * working store behind it, and a control that is visible before it can do anything is one
+ * somebody presses and watches do nothing.
+ */
+export function wireBackup(
+  document: Document,
+  answers: Answers,
+  store: Store,
+  options: BackupOptions,
+): void {
+  const section = document.getElementById("backup");
+  const button = document.getElementById("backup-save");
+  if (section === null || button === null) {
+    // The build emits both on every page that gets here, so missing means the markup and
+    // this module have drifted apart — and the symptom is a backup control that simply is
+    // not there, on the one feature 0008 · C3 calls mandatory. Said out loud, the way
+    // banner.ts does for its own missing region, rather than absorbed.
+    console.error("life-compass: the backup control is missing from this page");
+    return;
+  }
+  section.hidden = false;
+  let running = false;
+  button.addEventListener("click", () => {
+    // `aria-disabled` and a flag, not the `disabled` attribute. A disabled element cannot
+    // hold focus, so disabling the button somebody has just activated drops them to the
+    // document body mid-operation and then re-enables it behind them — losing a keyboard or
+    // screen-reader reader their place in the one flow they were told to use (0001).
+    if (running) {
+      return;
+    }
+    running = true;
+    button.setAttribute("aria-disabled", "true");
+    saveBackup(answers, store, document, new Date())
+      .then(options.onHandedOver)
+      .catch(options.onFailure)
+      .finally(() => {
+        running = false;
+        button.removeAttribute("aria-disabled");
+      });
+  });
 }

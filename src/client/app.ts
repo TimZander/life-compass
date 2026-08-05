@@ -9,8 +9,8 @@
 import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers, BLANK_SELECTOR } from "./fields.ts";
-import { saveBackup } from "./export.ts";
-import { openStore, type Store } from "./store.ts";
+import { wireBackup } from "./export.ts";
+import { openStore } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
 // Runs before registration, because it reports on the load that already happened rather
@@ -84,7 +84,25 @@ async function bindAnswerFields(): Promise<void> {
     }
   });
 
-  wireBackup(store);
+  wireBackup(document, answers, store, {
+    onHandedOver: (filename) =>
+      showBanner({
+        id: "backup",
+        // "Downloading", not "saved". Nothing here observes whether the browser accepted
+        // the file — a synthetic click reports no outcome — and claiming a backup exists
+        // when it may not is the one thing 0008 says this app must not get wrong.
+        text: `Downloading ${filename}. Check your files — and keep it somewhere you would keep a private notebook.`,
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+      }),
+    onFailure: (error: unknown) => {
+      console.error("life-compass: the backup could not be saved", error);
+      showBanner({
+        id: "backup",
+        text: "That backup could not be saved. Your answers are still on this device.",
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
+      });
+    },
+  });
 
   await bindAnswers(document, answers, store, {
     // Says that writing has stopped, not just that reading failed. The earlier wording
@@ -107,55 +125,6 @@ async function bindAnswerFields(): Promise<void> {
         actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
       });
     },
-  });
-}
-
-/**
- * Reveal the backup control and make it work.
- *
- * Revealed here rather than in the markup because until this runs there is no working
- * store, and a button that is visible before it can do anything is one somebody presses
- * and watches do nothing. If storage never opens, this is never called and the section
- * stays hidden — the page still reads and prints, which is the whole point of 0010.
- */
-function wireBackup(store: Store): void {
-  const section = document.getElementById("backup");
-  const button = document.getElementById("backup-save");
-  if (section === null || button === null) {
-    return;
-  }
-  section.hidden = false;
-  button.addEventListener("click", () => {
-    // Disabled while it works, so a second press cannot start a second export over the
-    // first — and re-enabled in `finally`, or one failure would leave the reader with a
-    // dead button and no way to try again.
-    button.setAttribute("disabled", "disabled");
-    saveBackup(store, document, new Date())
-      .then((filename) => {
-        // "Downloading", not "saved". This resolves when the anchor has been clicked, and
-        // nothing here observes whether the browser accepted the file — a synthetic click
-        // reports no outcome. Saying "Saved" would assert something unverified, and if a
-        // download is ever refused (an installed app on some platforms handles them
-        // differently from a browser tab) the message would be a plain untruth about
-        // whether the reader's answers are safe, which is the one thing 0008 says this app
-        // must not get wrong. Naming the file gives them something to look for either way.
-        showBanner({
-          id: "backup",
-          text: `Downloading ${filename}. Check your files — and keep it somewhere you would keep a private notebook.`,
-          actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
-        });
-      })
-      .catch((error: unknown) => {
-        console.error("life-compass: the backup could not be saved", error);
-        showBanner({
-          id: "backup",
-          text: "That backup could not be saved. Your answers are still on this device.",
-          actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
-        });
-      })
-      .finally(() => {
-        button.removeAttribute("disabled");
-      });
   });
 }
 

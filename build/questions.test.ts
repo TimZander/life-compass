@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ANCHOR, checkRegistry, checkSchema, loadSchema, renderQuestion, schemaDigest } from "./questions.ts";
+import { ANCHOR, checkRegistry, checkSchema, loadSchema, renderQuestion } from "./questions.ts";
 import { gapsOf, identifiersOf, type Question } from "../src/questions/types.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
@@ -648,49 +648,6 @@ describe("field labels", () => {
       ["Value 1", "Value 2", "Value 3"],
     );
     assert.equal(html.match(/<li data-instance="\d+">/g)?.length, 3);
-  });
-});
-
-describe("the schema fingerprint", () => {
-  it("schemaDigest_TheSameQuestionsInADifferentOrder_IsTheSameFingerprint", () => {
-    // Arrange — it identifies the question SET. Reordering questions within a worksheet
-    // changes no identifier, so it must not change the fingerprint: the digest reaches
-    // every page, every page feeds the service worker's cache version, and a version that
-    // moved when nothing did would ask every reader to accept an update for nothing.
-    const one: Question = { kind: "single", id: "t.a", label: "A", size: "long" };
-    const two: Question = { kind: "single", id: "t.b", label: "B", size: "long" };
-    const forwards = loadSchema([{ source: "t.md", questions: [one, two] }]);
-    const backwards = loadSchema([{ source: "t.md", questions: [two, one] }]);
-
-    // Act & Assert
-    assert.equal(schemaDigest(forwards), schemaDigest(backwards));
-  });
-
-  it("schemaDigest_ANewIdentifier_ChangesTheFingerprint", () => {
-    // Arrange — negative case, and the whole point: an export records this so a file can
-    // later be told apart from one written against a different set of questions (0009).
-    const base: Question = { kind: "single", id: "t.a", label: "A", size: "long" };
-    const added: Question = { kind: "single", id: "t.b", label: "B", size: "long" };
-
-    // Act & Assert
-    assert.notEqual(
-      schemaDigest(loadSchema([{ source: "t.md", questions: [base] }])),
-      schemaDigest(loadSchema([{ source: "t.md", questions: [base, added] }])),
-    );
-  });
-
-  it("schemaDigest_ALabelChange_LeavesTheFingerprintAlone", () => {
-    // Arrange — negative case. Rewording a prompt is not a change to the question set, and
-    // a fingerprint that moved for it would tell an importer the schema differed when it
-    // did not.
-    const before: Question = { kind: "single", id: "t.a", label: "As written", size: "long" };
-    const after: Question = { kind: "single", id: "t.a", label: "Reworded", size: "long" };
-
-    // Act & Assert
-    assert.equal(
-      schemaDigest(loadSchema([{ source: "t.md", questions: [before] }])),
-      schemaDigest(loadSchema([{ source: "t.md", questions: [after] }])),
-    );
   });
 });
 
