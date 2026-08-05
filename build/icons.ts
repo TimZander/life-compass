@@ -7,30 +7,44 @@
  * trade against docs/decisions/0003, and Node ships everything required: `zlib` for the
  * deflate stream and the CRC, and arithmetic for the rest.
  *
- * The mark is the same eight-point star as the site wordmark, so the installed icon and
- * the page header are the same drawing rather than two things that merely resemble each
- * other. Its coordinates are lifted directly from the SVG path in the layout.
+ * The mark is the same compass rose as the site wordmark — an eight-point star whose
+ * north point is drawn longer, the star you steer by — so the installed icon and the page
+ * header are the same drawing rather than two things that merely resemble each other. Its
+ * coordinates are lifted directly from the SVG path in the layout.
  */
 
 import { crc32, deflateSync } from "node:zlib";
 
-/** The wordmark star, in its original 24×24 viewBox. */
-const STAR: readonly (readonly [x: number, y: number])[] = [
+/**
+ * The wordmark compass rose, in its 24×24 viewBox: eight points around the centre with
+ * the north point (12,0) drawn longest, so the mark reads as the star you steer by.
+ * Exported so a test can hold it against the SVG path in the layout and fail if the two
+ * drawings ever drift apart.
+ */
+export const COMPASS_ROSE: readonly (readonly [x: number, y: number])[] = [
   [12, 0],
-  [14, 10],
-  [24, 12],
-  [14, 14],
-  [12, 24],
-  [10, 14],
-  [0, 12],
-  [10, 10],
+  [12.96, 9.69],
+  [18.01, 5.99],
+  [14.31, 11.04],
+  [21, 12],
+  [14.31, 12.96],
+  [18.01, 18.01],
+  [12.96, 14.31],
+  [12, 21],
+  [11.04, 14.31],
+  [5.99, 18.01],
+  [9.69, 12.96],
+  [3, 12],
+  [9.69, 11.04],
+  [5.99, 5.99],
+  [11.04, 9.69],
 ];
 
 /** Copper accent and warm paper, taken from the site's own palette. */
 const BACKGROUND: readonly [number, number, number] = [0x9a, 0x6b, 0x3f];
 const MARK: readonly [number, number, number] = [0xf6, 0xf4, 0xee];
 
-/** Samples per axis. 3×3 is enough to keep the star's points from looking chewed. */
+/** Samples per axis. 3×3 is enough to keep the rose's points from looking chewed. */
 const SUPERSAMPLE = 3;
 
 function png(type: string, data: Buffer): Buffer {
@@ -73,12 +87,12 @@ export function encodePng(width: number, height: number, rgb: Buffer): Buffer {
   ]);
 }
 
-/** Even-odd ray cast. The star is simple and closed, so this is all it needs. */
+/** Even-odd ray cast. The mark is simple and closed, so this is all it needs. */
 function inside(x: number, y: number): boolean {
   let hit = false;
-  for (let i = 0, j = STAR.length - 1; i < STAR.length; j = i, i += 1) {
-    const a = STAR[i];
-    const b = STAR[j];
+  for (let i = 0, j = COMPASS_ROSE.length - 1; i < COMPASS_ROSE.length; j = i, i += 1) {
+    const a = COMPASS_ROSE[i];
+    const b = COMPASS_ROSE[j];
     if (a === undefined || b === undefined) {
       continue;
     }
@@ -96,7 +110,7 @@ function inside(x: number, y: number): boolean {
  *
  * A maskable icon is cropped to whatever shape the platform prefers, so its mark has to
  * sit inside the safe zone — a circle 80% of the width. Passing a smaller `coverage` is
- * what keeps the star's points from being shaved off on a device that crops to a circle.
+ * what keeps the mark's points from being shaved off on a device that crops to a circle.
  */
 export function drawIcon(size: number, coverage: number): Buffer {
   const pixels = Buffer.alloc(size * size * 3);
