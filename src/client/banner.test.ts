@@ -113,11 +113,16 @@ describe("pressing an action", () => {
     const { showBanner, dismissBanner } = await import("./banner.ts");
     page("button");
     dismissBanner();
-    const given: unknown[][] = [];
+    // The COUNT, never the arguments themselves. With the bug present the first argument
+    // is a MouseEvent, and comparing that with `assert.deepEqual` walks the DOM graph until
+    // the heap is gone — the test then reports as a 30-second out-of-memory kill with no
+    // message, which looks exactly like a passing mutation. 0014 · C6 records this; the
+    // first version of this very test walked into it.
+    const given: number[] = [];
     showBanner({
       id: "storage",
       text: "A new version is ready.",
-      actions: [{ label: "Dismiss", onSelect: (...args: unknown[]) => given.push(args) }],
+      actions: [{ label: "Dismiss", onSelect: (...args: unknown[]) => given.push(args.length) }],
     });
 
     // Act
@@ -125,7 +130,7 @@ describe("pressing an action", () => {
     action.dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
 
     // Assert
-    assert.deepEqual(given, [[]], "the handler was given arguments it does not declare");
+    assert.deepEqual(given, [0], "the handler was given arguments it does not declare");
   });
 
   it("dismissBanner_PassedStraightToAnAction_StillClearsTheBanner", async () => {
