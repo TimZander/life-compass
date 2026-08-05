@@ -60,6 +60,12 @@ function store(): Store & { readonly kept: Map<string, string> } {
       }
       return true;
     },
+    async replaceAll(entries) {
+      kept.clear();
+      for (const [key, value] of entries) {
+        kept.set(key, value);
+      }
+    },
   };
 }
 

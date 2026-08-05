@@ -170,6 +170,7 @@ describe("shipped client scripts", () => {
       "assets/js/banner.js",
       "assets/js/export.js",
       "assets/js/fields.js",
+      "assets/js/import.js",
       "assets/js/keys.js",
       "assets/js/store.js",
       "assets/js/sw-update.js",

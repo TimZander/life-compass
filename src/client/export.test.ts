@@ -35,6 +35,9 @@ function stored(entries: ReadonlyMap<string, string>): Store {
     async claim() {
       throw new Error("an export must not write");
     },
+    async replaceAll() {
+      throw new Error("an export must not write");
+    },
   };
 }
 
@@ -419,6 +422,9 @@ describe("flushing before the file is built", () => {
       async claim() {
         return true;
       },
+      async replaceAll() {
+        throw new Error("an export must not write");
+      },
     };
     // An `Answers` that has not written yet, exactly as a debounce leaves it.
     const answers = {
@@ -487,6 +493,9 @@ describe("the control on the page", () => {
       async write() {},
       async claim() {
         return true;
+      },
+      async replaceAll() {
+        throw new Error("an export must not write");
       },
     };
 

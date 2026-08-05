@@ -45,6 +45,11 @@ function database(entries: readonly (readonly [unknown, unknown])[] = []) {
       calls.push({ op: "get", args: [key] });
       return request(entries.find(([stored]) => stored === key)?.[1]);
     },
+    clear: () => {
+      guard("clear");
+      calls.push({ op: "clear", args: [] });
+      return request(undefined);
+    },
     put: (value: unknown, key: unknown) => {
       guard("put");
       calls.push({ op: "put", args: [key, value] });
@@ -229,5 +234,56 @@ describe("claim", () => {
       { op: "put", args: [GUARD, ORDER] },
       { op: "delete", args: ["day1.chapters.5f1c.title"] },
     ]);
+  });
+});
+
+describe("replaceAll", () => {
+  it("replaceAll_Entries_ClearsAndWritesInOneTransaction", async () => {
+    // Arrange — the destructive operation, and the one place "never partially imports"
+    // (0009 · C4) is either true or not. Clearing in one transaction and writing in the
+    // next leaves a window where a failure empties the store completely.
+    const GUARD = "day1.chapters";
+    const ORDER = '["5f1c"]';
+    const fake = database([["day1.gone", "an answer the file does not have"]]);
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    await store.replaceAll(new Map([[GUARD, ORDER], ["day1.patterns", "from the file"]]));
+
+    // Assert
+    assert.equal(fake.transactions, 1, "the clear and the writes were not atomic");
+    assert.deepEqual(fake.calls, [
+      { op: "clear", args: [] },
+      { op: "put", args: [GUARD, ORDER] },
+      { op: "put", args: ["day1.patterns", "from the file"] },
+    ]);
+  });
+
+  it("replaceAll_AnEmptyValueInTheFile_IsNotStoredAsBlankness", async () => {
+    // Arrange — negative case, matching `write`. A file carrying "" would otherwise restore
+    // a store claiming every blank on the page had been answered.
+    const fake = database();
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    await store.replaceAll(new Map([["day1.patterns", "real"], ["day1.threads", ""]]));
+
+    // Assert
+    assert.deepEqual(fake.calls, [
+      { op: "clear", args: [] },
+      { op: "put", args: ["day1.patterns", "real"] },
+    ]);
+  });
+
+  it("replaceAll_NoEntries_StillClearsWhatWasThere", async () => {
+    // Arrange & Act — negative case. Importing a file exported before anything was written
+    // is destructive and is exactly what the reader asked for; the confirmation gate is
+    // where that gets questioned, not here.
+    const fake = database([["day1.patterns", "will be discarded"]]);
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+    await store.replaceAll(new Map());
+
+    // Assert
+    assert.deepEqual(fake.calls, [{ op: "clear", args: [] }]);
   });
 });

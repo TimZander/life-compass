@@ -45,6 +45,20 @@ export type Store = {
    * written and the caller should re-read rather than assume its own identifiers won.
    */
   claim(guard: string, entries: ReadonlyMap<string, string>): Promise<boolean>;
+  /**
+   * Discard everything stored and put `entries` in its place, all in one transaction.
+   *
+   * The destructive half of #25. An import replaces rather than merges (0009 · C7), and
+   * "never partially imports" (0009 · C4) is a property of THIS operation or it is not a
+   * property at all: clearing and then writing key by key leaves a window where a failure
+   * produces a store that is neither the file nor what was there, with nothing recording
+   * how far it got. One transaction means the reader ends up with exactly one of the two.
+   *
+   * Nothing else may use this. It is the only call in the application that can take a
+   * reader's answers away, and it is the reason the import asks them to confirm they hold
+   * a backup first.
+   */
+  replaceAll(entries: ReadonlyMap<string, string>): Promise<void>;
 };
 
 const DATABASE = "life-compass";
@@ -194,6 +208,25 @@ export function fromDatabase(database: IDBDatabase): Store {
           }
         }
         return true;
+      });
+    },
+
+    async replaceAll(entries) {
+      await transact("readwrite", async (store) => {
+        // Issued without awaiting between them, so they plainly all belong to this
+        // transaction — the same rule `claim` relies on, and the note on `transact`
+        // explains it. Awaiting the clear first would also work, because a request's
+        // continuation runs while the transaction is still active, but that leans on a
+        // subtler rule for nothing: there is no reason to read the clear's result.
+        store.clear();
+        for (const [key, value] of entries) {
+          // An empty value is an absent answer, not a blank one, exactly as `write` has it.
+          // A file carrying "" would otherwise restore a store that claims every blank was
+          // answered.
+          if (value !== "") {
+            store.put(value, key);
+          }
+        }
       });
     },
 
