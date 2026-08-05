@@ -151,7 +151,12 @@ function render(message: BannerMessage): void {
     // The action decides what happens to the banner. Dismissing here first made
     // "Update" depend on immediately re-showing a banner this had just torn down —
     // a hidden contract between two files, where every action reads as dismissing.
-    button.addEventListener("click", action.onSelect);
+    // Called with no arguments, which is what `BannerAction` declares. Passing the handler
+    // straight to `addEventListener` handed it the click event instead, and a handler whose
+    // first parameter is optional — `dismissBanner(id?)` — silently took the event as that
+    // id, matched nothing, and dismissed nothing. TypeScript cannot see it: a function of
+    // fewer parameters is assignable to one of more.
+    button.addEventListener("click", () => action.onSelect());
     actions.appendChild(button);
   }
   banner.appendChild(actions);

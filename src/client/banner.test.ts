@@ -101,3 +101,51 @@ describe("what counts as typing", () => {
     assert.equal(showing(), true);
   });
 });
+
+describe("pressing an action", () => {
+  it("showBanner_AnActionHandler_IsCalledWithNoArguments", async () => {
+    // Arrange — `BannerAction.onSelect` is declared `() => void`, and handing it straight to
+    // `addEventListener` called it with the click event instead. Harmless until a handler
+    // took an optional first parameter: `dismissBanner(id?)` then received a MouseEvent as
+    // the id, matched no banner, and dismissed nothing — so the update prompt's Dismiss
+    // button stopped working. TypeScript cannot see this, because a function of fewer
+    // parameters is assignable to one of more.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+    page("button");
+    dismissBanner();
+    const given: unknown[][] = [];
+    showBanner({
+      id: "storage",
+      text: "A new version is ready.",
+      actions: [{ label: "Dismiss", onSelect: (...args: unknown[]) => given.push(args) }],
+    });
+
+    // Act
+    const action = window.document.querySelector(".banner-action") as unknown as HTMLElement;
+    action.dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
+
+    // Assert
+    assert.deepEqual(given, [[]], "the handler was given arguments it does not declare");
+  });
+
+  it("dismissBanner_PassedStraightToAnAction_StillClearsTheBanner", async () => {
+    // Arrange — the shape sw-update.ts uses, and the one that broke. This is the end-to-end
+    // version of the case above: whatever the handler is handed, Dismiss must dismiss.
+    const { showBanner, dismissBanner } = await import("./banner.ts");
+    page("button");
+    dismissBanner();
+    showBanner({
+      id: "update",
+      text: "A new version is ready.",
+      actions: [{ label: "Dismiss", onSelect: dismissBanner }],
+    });
+    assert.equal(showing(), true, "the banner never appeared");
+
+    // Act
+    const action = window.document.querySelector(".banner-action") as unknown as HTMLElement;
+    action.dispatchEvent(new window.Event("click", { bubbles: true }) as unknown as Event);
+
+    // Assert
+    assert.equal(showing(), false, "Dismiss did not dismiss");
+  });
+});

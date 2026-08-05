@@ -66,7 +66,7 @@ function offer(worker: ServiceWorker): void {
     id: "update",
     text: "A new version of the workbook is ready.",
     actions: [
-      { label: "Later", onSelect: dismissBanner },
+      { label: "Later", onSelect: () => dismissBanner() },
       { label: "Update", primary: true, onSelect: () => accept(worker) },
     ],
   });
@@ -89,7 +89,7 @@ function accept(worker: ServiceWorker): void {
     showBanner({
       id: "update",
       text: "The update did not finish. Close the app and open it again.",
-      actions: [{ label: "Dismiss", onSelect: dismissBanner }],
+      actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
     });
   }, ACTIVATION_TIMEOUT_MS);
 
@@ -145,6 +145,6 @@ export function confirmRecentUpdate(): void {
   showBanner({
     id: "update",
     text: "Updated. You are on the latest version.",
-    actions: [{ label: "Dismiss", onSelect: dismissBanner }],
+    actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
   });
 }
