@@ -17,11 +17,37 @@ import { explain, wireRestore } from "./import.ts";
 import { openStore } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
-// Runs before registration, because it reports on the load that already happened rather
-// than on anything the worker is about to do.
-confirmRecentUpdate();
+/**
+ * Everything this page does, in one awaitable call.
+ *
+ * The work used to sit at module scope, which made the only way to observe it "import the
+ * module and sleep" — a guess at how long it takes, and the timing-guess pattern that has
+ * already produced a flaky test in this project once. Awaiting it is exact, and it also
+ * means a test needs no cache-busting import specifier to run a second scenario.
+ *
+ * Nothing else changes: the module still calls this once on load, and everything inside
+ * runs in the order it did.
+ */
+export async function start(): Promise<void> {
+  // Runs before registration, because it reports on the load that already happened rather
+  // than on anything the worker is about to do.
+  confirmRecentUpdate();
+  registerWorker();
+  confirmRecentRestore();
+  try {
+    await bindAnswerFields();
+  } catch (error) {
+    console.error("life-compass: answers could not be bound to this page", error);
+    showBanner({
+      id: "storage",
+      text: "Your answers cannot be saved on this device. The page still works for printing.",
+      actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
+    });
+  }
+}
 
-if ("serviceWorker" in navigator) {
+function registerWorker(): void {
+  if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
@@ -41,6 +67,7 @@ if ("serviceWorker" in navigator) {
         console.error("Service worker registration failed:", error);
       });
   });
+}
 }
 
 /**
@@ -218,13 +245,4 @@ function confirmRecentRestore(): void {
   });
 }
 
-confirmRecentRestore();
-
-void bindAnswerFields().catch((error: unknown) => {
-  console.error("life-compass: answers could not be bound to this page", error);
-  showBanner({
-    id: "storage",
-    text: "Your answers cannot be saved on this device. The page still works for printing.",
-    actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
-  });
-});
+void start();

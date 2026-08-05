@@ -1,12 +1,12 @@
 /**
  * The entry module's decisions, which nothing used to check.
  *
- * Every other client module is tested by calling it. `app.ts` is different: it takes no
- * arguments, exports nothing, and does its work as side effects when it is imported. That
- * was described in several comments as making it untestable, and that was wrong — a claim
- * this project treats as a defect in its own right. Installing the globals before importing
- * is what every other suite here already does, and a query string on the specifier gives a
- * fresh module instance per case, so the side effects can run more than once in one file.
+ * It was described in several comments as untestable, which was wrong — a claim this
+ * project treats as a defect in its own right. What was true is that it did its work at
+ * module scope, so the only way to observe it was to import and then sleep, guessing at how
+ * long the work takes. That guess is the pattern that has already produced one flaky test
+ * here, so `start()` is exported and these await it instead. Exact, and no cache-busting
+ * import specifier is needed to run a second scenario.
  *
  * The cost of leaving it untested was not hypothetical. Moving the backup controls onto
  * their own page broke the one decision this module makes about whether to open a store at
@@ -16,13 +16,62 @@
 
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import { describe, it } from "node:test";
+import { before, describe, it } from "node:test";
 import { layout } from "../../build/layout.ts";
 
-/** How long to let the module's asynchronous work settle before observing it. */
-const SETTLE_MS = 60;
-
 type Session = { throws?: boolean; seed?: Record<string, string> };
+
+/**
+ * `start`, resolved once before any test runs.
+ *
+ * The module calls `start()` itself on load, so importing it inside the first test would
+ * run that test's scenario twice while every later test ran once — an asymmetry that could
+ * hide a defect in whichever case happened to be first. Importing here, against a bare
+ * window with nothing on it, means that free run does nothing and all five cases are alike.
+ */
+let start: () => Promise<void>;
+
+before(async () => {
+  install(new Window({ url: "https://example.test/" }), {});
+  ({ start } = await import("./app.ts"));
+});
+
+/** Point the globals at a window, with a session store that behaves as asked. */
+function install(window: Window, session: Session): Window {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  for (const name of ["document", "HTMLElement", "HTMLInputElement", "HTMLTextAreaElement", "Event"]) {
+    scope[name] = (window as unknown as Record<string, unknown>)[name];
+  }
+  scope["window"] = window;
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: (window as unknown as { navigator: unknown }).navigator,
+  });
+  const store: Record<string, string> = { ...session.seed };
+  const refuse = (): never => {
+    throw new Error("SecurityError: site data is blocked");
+  };
+  Object.defineProperty(window, "sessionStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => (session.throws === true ? refuse() : (store[key] ?? null)),
+      setItem: (key: string, value: string) => {
+        if (session.throws === true) {
+          refuse();
+        }
+        store[key] = value;
+      },
+      removeItem: (key: string) => {
+        if (session.throws === true) {
+          refuse();
+        }
+        delete store[key];
+      },
+    },
+  });
+  (window as unknown as { seen: Record<string, string> }).seen = store;
+  return window;
+}
 
 /**
  * Run `app.ts` against a page, and hand back what the reader would see.
@@ -33,63 +82,23 @@ type Session = { throws?: boolean; seed?: Record<string, string> };
  */
 async function run(body: string, session: Session = {}): Promise<{
   readonly banner: string;
-  readonly revealed: (id: string) => boolean;
   readonly remaining: Record<string, string>;
 }> {
-  const window = new Window({ url: "https://example.test/backup" });
-  const scope = globalThis as unknown as Record<string, unknown>;
-  for (const name of ["document", "HTMLElement", "HTMLInputElement", "HTMLTextAreaElement", "Event"]) {
-    scope[name] = (window as unknown as Record<string, unknown>)[name];
-  }
-  scope["window"] = window;
-  Object.defineProperty(globalThis, "navigator", {
-    configurable: true,
-    value: (window as unknown as { navigator: unknown }).navigator,
-  });
-
-  const store: Record<string, string> = { ...session.seed };
-  Object.defineProperty(window, "sessionStorage", {
-    configurable: true,
-    value: {
-      getItem(key: string) {
-        if (session.throws === true) {
-          throw new Error("SecurityError: site data is blocked");
-        }
-        return store[key] ?? null;
-      },
-      setItem(key: string, value: string) {
-        if (session.throws === true) {
-          throw new Error("SecurityError: site data is blocked");
-        }
-        store[key] = value;
-      },
-      removeItem(key: string) {
-        if (session.throws === true) {
-          throw new Error("SecurityError: site data is blocked");
-        }
-        delete store[key];
-      },
-    },
-  });
-
+  const window = install(new Window({ url: "https://example.test/backup" }), session);
   window.document.body.innerHTML = body;
   const noise = console.error;
   console.error = () => {};
   try {
-    // A fresh instance per case: the module does its work on import, so the cache would
-    // otherwise give every case after the first a module that had already run.
-    await import(`./app.ts?case=${Math.random()}`);
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    // Awaited, not slept on. `start` is the same work the module runs on load, so when it
+    // resolves there is nothing left in flight to observe.
+    await start();
   } finally {
     console.error = noise;
   }
   const region = window.document.getElementById("banner-region");
   const result = {
     banner: region?.textContent?.trim() ?? "",
-    revealed: (id: string) =>
-      (window.document.getElementById(id) as unknown as { hidden: boolean } | null)?.hidden ===
-      false,
-    remaining: { ...store },
+    remaining: { ...(window as unknown as { seen: Record<string, string> }).seen },
   };
   void window.close();
   return result;
