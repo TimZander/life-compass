@@ -202,8 +202,11 @@ export async function saveBackup(
  * anything and both controls stayed hidden forever: a page whose only purpose is those
  * controls, offering neither.
  *
- * Here rather than inline in app.ts because app.ts has no tests and cannot have them; this
- * is the decision that was wrong, so this is the thing that needs one.
+ * Here rather than inline in app.ts because a decision worth getting right is worth
+ * calling by name and testing directly — this is the one that was wrong. app.ts is tested
+ * too now (`app.test.ts`), which is a correction: several comments called it untestable,
+ * and it never was. It does its work on import, so a test installs the globals first and
+ * imports it, which is what every other suite here already does.
  */
 export function needsStore(document: Document): boolean {
   return document.querySelector(`${BLANK_SELECTOR}, #backup, #restore`) !== null;
@@ -219,12 +222,12 @@ export type BackupOptions = {
 /**
  * Reveal the backup control and make it work.
  *
- * Here rather than in app.ts because app.ts has no tests and runs its side effects on
- * import, so everything put there is verified by reading it. 0014 · C2 exists because
- * DOM-touching client code checked that way shipped defects the suite could not see, and
- * nine separate mutations of this logic — including deleting it outright, and swapping the
- * honest "Downloading" wording back to the "Saved" it must never claim — passed a green
- * suite while it lived there.
+ * Here rather than in app.ts because logic with a store and a DOM in it is easier to drive
+ * directly than through a module that runs on import. That matters: nine separate mutations
+ * of this logic — including deleting it outright, and swapping the honest "Downloading"
+ * wording back to the "Saved" it must never claim — passed a green suite while it lived in
+ * app.ts. 0014 · C2 exists because DOM-touching client code verified by reading shipped
+ * defects the suite could not see.
  *
  * The section is revealed here, not in the markup, because until this runs there is no
  * working store behind it, and a control that is visible before it can do anything is one
