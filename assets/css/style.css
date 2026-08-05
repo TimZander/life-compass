@@ -97,7 +97,15 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 #restore-confirm p{margin:0 0 .8em}
 #restore-confirm p:last-child{margin-bottom:0}
 #restore-go{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid #9a3f3f;background:#9a3f3f;color:#fff;cursor:pointer}
-#restore-go[disabled]{opacity:.45;cursor:not-allowed}
+/* Keyed on `aria-disabled`, which is what import.ts toggles — `disabled` would make the
+   button unfocusable and drop a keyboard reader to the body mid-flow. A previous version
+   styled `[disabled]`, which the markup never sets, so the destructive button looked armed
+   from the moment the confirmation appeared and gave no sign that the acknowledgement was
+   what released it.
+
+   Not a faded version of the same button: until it is ticked this is an ordinary outline,
+   and it only becomes the red one when pressing it will actually do something. */
+#restore-go[aria-disabled="true"]{background:transparent;color:var(--muted);border-color:var(--rule);cursor:not-allowed}
 #restore-cancel{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--rule);background:transparent;color:var(--ink);cursor:pointer;margin-left:.5em}
 #restore-go:focus-visible,#restore-cancel:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* A printed worksheet has no button to press. */

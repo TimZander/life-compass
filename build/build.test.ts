@@ -106,6 +106,35 @@ after(async () => {
   await Promise.all(temporary.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
+describe("the stylesheet and the markup agreeing", () => {
+  it("styleSheet_TheLockedReplaceButton_IsKeyedOnTheAttributeTheClientActuallySets", async () => {
+    // Arrange — the destructive button is held shut with `aria-disabled`, because
+    // `disabled` makes an element unfocusable and would drop a keyboard reader to the body
+    // mid-flow. The stylesheet styled `[disabled]`, which the markup never sets, so the
+    // button looked armed from the moment the confirmation appeared and nothing showed that
+    // ticking the acknowledgement was what released it.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const { pages } = await site();
+    const backup = pages.find((page) => page.url === "/backup");
+    assert.ok(backup !== undefined, "there is no backup page");
+
+    // Act & Assert — the markup ships the attribute, and the stylesheet keys off the same
+    // one. Either half alone leaves a destructive control with no visible locked state.
+    assert.ok(
+      /id="restore-go"[^>]*aria-disabled="true"/.test(backup.html),
+      "the replace button does not ship locked",
+    );
+    assert.ok(
+      css.includes('#restore-go[aria-disabled="true"]'),
+      "the stylesheet does not style the locked replace button",
+    );
+    assert.ok(
+      !css.includes("#restore-go[disabled]"),
+      "the stylesheet still targets an attribute the markup never sets",
+    );
+  });
+});
+
 describe("the backup page in a real build", () => {
   it("buildPages_RealContent_PutsTheToolsOnTheBackupPageAndNoOther", async () => {
     // Arrange — layout.test.ts proves the controls are emitted when asked for; nothing
