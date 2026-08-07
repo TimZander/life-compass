@@ -103,14 +103,27 @@ jobs:
           # minutes of this job's timeout-minutes: 10, and check() runs about 38 times —
           # so a wholly broken deployment must still cost seconds per URL, or the job is
           # killed on time and reports a timeout instead of naming what was wrong.
+          ATTEMPTS=3
+          RETRY_SLEEP=2
           check() {
             attempt=1
             while :; do
-              got=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL$1")
+              # `|| true` matters more than it looks. This step runs under `bash -e`, so
+              # a curl that fails to CONNECT — rather than answering a status — fails the
+              # assignment and kills the whole step on the spot: no ::error:: naming the
+              # URL, and every check below it skipped. A reset from an edge node is the
+              # same kind of transient as the 404 above, and swallowing curl's exit hands
+              # it to the same retry instead.
+              #
+              # No fallback value is supplied, because curl writes one: %{http_code} is
+              # "000" when there was no response at all — checked against a refused
+              # connection, an unresolvable host and a rejected certificate. Substituting
+              # a second one appended to it, and the failure reported "returned 000000".
+              got=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL$1" || true)
               [ "$got" = "$2" ] && break
-              [ "$attempt" -ge 3 ] && break
+              [ "$attempt" -ge "$ATTEMPTS" ] && break
               attempt=$((attempt + 1))
-              sleep 2
+              sleep "$RETRY_SLEEP"
             done
 
             if [ "$got" != "$2" ]; then
