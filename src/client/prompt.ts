@@ -91,6 +91,10 @@ function fieldLines(fields: readonly { id: string; label: string; size: Size }[]
  * asks for "5–8 chapters" in its prose and prints five, so asking an assistant for the
  * worksheet's range would invite three answers nothing on the page can show. The importer
  * refuses the excess either way; this is what stops it being an ordinary outcome.
+ *
+ * This is a workaround for a missing capability rather than the shape anyone would choose.
+ * A worksheet that asks for "5-8 chapters" means the reader decides, and #74 is where that
+ * becomes true. When it lands, this asks for the range and the ceiling becomes `max`.
  */
 function slotsFor(question: Extract<Question, { kind: "repeat" }>): number {
   return question.min;
