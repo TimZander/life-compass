@@ -172,10 +172,6 @@ describe("shipped client scripts", () => {
       "assets/js/fields.js",
       "assets/js/import.js",
       "assets/js/keys.js",
-      // Generated into src/client by build/schema.ts, then discovered here like any other
-      // module — which is the point of generating a `.ts` rather than emitting straight to
-      // dist. See docs/decisions/0015 and build/schema.ts.
-      "assets/js/schema.js",
       "assets/js/store.js",
       "assets/js/sw-update.js",
     ]);

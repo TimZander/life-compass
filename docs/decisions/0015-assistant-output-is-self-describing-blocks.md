@@ -240,19 +240,20 @@ validate anything. That is a prerequisite for
 [#68](https://github.com/TimZander/life-compass/issues/68), not a detail of them.
 
 **C4a.** *Added 2026-08-08.* Emitting it straight into `dist` does not work, and the first
-attempt did exactly that. A declaration file satisfied `tsc` while the only real JavaScript
+attempt did exactly that: a declaration file satisfied `tsc` while the only real JavaScript
 lived in the output, so nothing that runs from source — every test — could resolve the import
-at all; nothing imported it yet, so nothing noticed. It is **generated into the source tree**
-instead, git-ignored and rebuilt by npm hooks, which lets one file serve Node, the typechecker
-and the browser.
+at all. Nothing imported it yet, so nothing noticed. It has been removed again rather than
+replaced, because a module the client cannot use is worth less than nothing while it is also
+36 kB of precache; it returns with its first consumer, generated somewhere Node, the
+typechecker and the browser all read one file.
 
-The lesson worth keeping is not about hooks. Hooks are skippable — `node --run`, a direct
-`tsc`, `npm ci --ignore-scripts` — so the guarantee cannot live in them. It lives in
-`checkSpecifiers`, which refuses to emit a client module graph containing an import nothing
-satisfies. Before it, deleting the generated file produced a successful build, a shipped site
-whose client was dead, and a precache manifest that omitted the missing file so `cache.addAll`
-succeeded and the deploy smoke test read one fewer URL. Every gate passed. A generated file is
-only safe where something asserts its absence is a failure.
+The lesson that did ship is not about where the file goes. It is that a generated file is
+only safe where something asserts its absence is a failure. Hooks cannot be that — `node
+--run`, a direct `tsc`, `npm ci --ignore-scripts` and a symlinked checkout all skip them —
+so `checkSpecifiers` in `build/client.ts` refuses to emit a client module graph containing an
+import nothing satisfies. Before it, deleting the generated file produced a successful build,
+a shipped site whose client was dead, and a precache manifest that omitted the missing file so
+`cache.addAll` succeeded and the deploy smoke test read one fewer URL. Every gate passed.
 
 **C5.** Reading a block cannot write, structurally, as in `import.ts` — the function that
 reads one has no store to reach. Applying several blocks across several groups is a different

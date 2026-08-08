@@ -8,13 +8,6 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "//schema": "The question definitions, written into src/client so the client can import them. Generated rather than committed, and rebuilt before every check — see build/schema.ts.",
-    "schema": "node build/schema.ts",
-    "prepare": "npm run schema",
-    "schema:check": "node build/schema.ts --check",
-    "prebuild": "npm run schema",
-    "pretypecheck": "npm run schema",
-    "pretest": "npm run schema",
     "build": "node build/build.ts",
     "serve": "node build/build.ts && node build/serve.ts",
     "//typecheck": "Two projects, both real TypeScript. The build runs from source; the client is emitted by build/client.ts and checked only here. See tsconfig.client.json.",

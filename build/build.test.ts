@@ -17,7 +17,6 @@ import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion } from "./questions.ts";
-import { schemaSource, schemaModuleIsCurrent, SCHEMA_MODULE } from "./schema.ts";
 import { checkSpecifiers } from "./client.ts";
 
 /** Every page the site is expected to publish. */
@@ -138,90 +137,6 @@ describe("the stylesheet and the markup agreeing", () => {
   });
 });
 
-describe("the schema the client receives", () => {
-  /** Read WORKSHEETS back out of a generated module, the way an importer would. */
-  function worksheetsIn(code: string): unknown {
-    const found = /^export const WORKSHEETS[^=]*= ([\s\S]*);\n$/m.exec(code);
-    assert.ok(found?.[1] !== undefined, "the schema module does not export WORKSHEETS");
-    return JSON.parse(found[1]);
-  }
-
-  it("build_RealSite_SchemaModuleAndQuestionsJsonCarryTheSameDefinitions", async () => {
-    // Arrange — the agreement, not either side of it. Two artifacts describe the question
-    // set: questions.json for anything outside the page, and the emitted module for the page
-    // itself. Both come from one source, and this is what keeps that true — the shape of
-    // check #57 shipped without, when two counts of one store disagreed.
-    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-"));
-    temporary.push(out);
-
-    // Act
-    await build({ root: ROOT, out });
-    const emitted = await readFile(path.join(out, "assets/js/schema.js"), "utf8");
-    const json = JSON.parse(await readFile(path.join(out, "questions.json"), "utf8"));
-
-    // Assert
-    assert.deepEqual(worksheetsIn(emitted), json.worksheets);
-  });
-
-  it("build_RealSite_EmitsASchemaModuleStrippedOfTheTypeImport", async () => {
-    // Arrange — the module names `Worksheet` so it typechecks, and that type lives outside
-    // the client tier. build/client.ts rewrites relative specifiers to `.js`, and
-    // `../questions/index.js` is not a file the browser is ever served, so a value import
-    // would 404 the whole module. `import type` is what makes it disappear before it ships.
-    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-emit-"));
-    temporary.push(out);
-
-    // Act
-    await build({ root: ROOT, out });
-    const emitted = await readFile(path.join(out, "assets/js/schema.js"), "utf8");
-
-    // Assert
-    assert.ok(!emitted.includes("../questions/"), "the emitted module imports something unserved");
-    assert.ok(emitted.includes("export const WORKSHEETS"), "the emitted module exports nothing");
-  });
-
-  it("build_RealSite_PrecachesTheSchemaModuleSoTheBridgeWorksOffline", async () => {
-    // Arrange — the whole workbook is precached rather than a shell, and a schema the client
-    // cannot read offline would make the agent bridge the one part of the site that needs the
-    // network, in an application whose claim is that it needs none.
-    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-sw-"));
-    temporary.push(out);
-
-    // Act
-    await build({ root: ROOT, out });
-    const worker = await readFile(path.join(out, "sw.js"), "utf8");
-    const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
-    assert.ok(match?.[1] !== undefined);
-    const precached = new Set(JSON.parse(match[1]) as string[]);
-
-    // Assert
-    assert.ok(precached.has("/assets/js/schema.js"), "the schema module is not precached");
-  });
-
-  it("schemaSource_EveryWorksheet_ReachesTheClient", async () => {
-    // Arrange — a module that parsed but carried half the workbook would satisfy the
-    // agreement above only if questions.json were wrong in the same way. This asks the
-    // definitions themselves.
-    // Act
-    const carried = worksheetsIn(schemaSource(WORKSHEETS)) as { source: string }[];
-
-    // Assert
-    assert.deepEqual(
-      carried.map((worksheet) => worksheet.source).sort(),
-      WORKSHEETS.map((worksheet) => worksheet.source).sort(),
-    );
-  });
-
-  it("schemaSource_NoWorksheets_StillProducesAModuleThatParses", async () => {
-    // Arrange — negative case. An empty set is no reason to write something that cannot be
-    // loaded: build/client.ts carries a comment about a syntax error here being a harder
-    // failure to trace than a thrown error, because every export becomes undefined at the
-    // import site.
-    // Act & Assert
-    assert.deepEqual(worksheetsIn(schemaSource([])), []);
-  });
-});
-
 describe("refusing a client graph the browser cannot load", () => {
   it("checkSpecifiers_AnImportNothingEmits_Throws", () => {
     // Arrange — the failure this exists for, and it shipped once. `buildClient` discovers
@@ -259,38 +174,6 @@ describe("refusing a client graph the browser cannot load", () => {
 
     // Act & Assert
     assert.doesNotThrow(() => checkSpecifiers(modules));
-  });
-});
-
-describe("the generated schema module staying current", () => {
-  it("schemaModuleIsCurrent_Generated_IsTrue", async () => {
-    // Arrange — `pretest` regenerated it moments ago, so this is the ordinary state.
-    // Act & Assert
-    assert.equal(await schemaModuleIsCurrent(ROOT), true);
-  });
-
-  it("schemaModuleIsCurrent_Absent_IsFalse", async () => {
-    // Arrange — negative case, and the state of every fresh clone: the file is git-ignored.
-    // A missing file must read as "not current" rather than throwing, because `--check` uses
-    // this to decide an exit code in CI.
-    const empty = await mkdtemp(path.join(tmpdir(), "life-compass-nothing-"));
-    temporary.push(empty);
-
-    // Act & Assert
-    assert.equal(await schemaModuleIsCurrent(empty), false);
-  });
-
-  it("schemaModuleIsCurrent_Stale_IsFalse", async () => {
-    // Arrange — the drift `--check` exists to catch: someone edits src/questions and the
-    // generated file is left behind. Under `npm test` the pretest hook makes this
-    // unreachable, which is exactly why the check has to run as its own CI step.
-    const root = await mkdtemp(path.join(tmpdir(), "life-compass-stale-"));
-    temporary.push(root);
-    await mkdir(path.join(root, SCHEMA_MODULE, ".."), { recursive: true });
-    await writeFile(path.join(root, SCHEMA_MODULE), "export const WORKSHEETS = [];\n", "utf8");
-
-    // Act & Assert
-    assert.equal(await schemaModuleIsCurrent(root), false);
   });
 });
 

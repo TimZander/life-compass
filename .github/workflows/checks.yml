@@ -42,12 +42,6 @@ jobs:
       # different tree than the one that was reviewed.
       - run: npm ci
 
-      # Before anything else: the generated client schema must match src/questions. Every
-      # other check regenerates it first through an npm pre-hook, so under `npm test` the
-      # agreement assertion can never fire — this is the one place drift is reachable.
-      - name: Schema module is current
-        run: npm run schema:check
-
       - name: Typecheck
         run: npm run typecheck
 
