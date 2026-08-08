@@ -172,6 +172,10 @@ describe("shipped client scripts", () => {
       "assets/js/fields.js",
       "assets/js/import.js",
       "assets/js/keys.js",
+      "assets/js/prompt.js",
+      // Generated into src/client by build/schema.ts, then discovered here like any other
+      // module. See docs/decisions/0015 · C4a and build/schema.ts.
+      "assets/js/schema.js",
       "assets/js/store.js",
       "assets/js/sw-update.js",
     ]);
