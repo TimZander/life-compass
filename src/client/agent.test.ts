@@ -9,7 +9,8 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
-import { bridgeIsOn, wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { bridgeIsOn } from "./bridge.ts";
 import { ASKS } from "./schema.ts";
 
 let window: Window;

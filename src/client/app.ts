@@ -10,7 +10,7 @@ import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers } from "./fields.ts";
 import { needsStore, saveBackup, wireBackup } from "./export.ts";
-import { preferences, wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { bridgeIsOn, preferences } from "./bridge.ts";
 
 /** Where a just-completed restore leaves its count, to be reported after the reload. */
 const RESTORED_KEY = "life-compass:restored";
@@ -44,26 +44,7 @@ export async function start(): Promise<void> {
   // blocks site data — not the `getItem` beneath it. Unguarded here this would abort `start`
   // before the fields were bound, which is the failure `confirmRecentRestore` below documents
   // having already cost this application once.
-  wireAgentPage(document, preferences(window));
-  // The copy buttons, wired outside the store path for the same reason as the opt-in above.
-  // A prompt needs no stored answers unless the reader asks for them, so gating the control
-  // on a store that opened would take the only non-typing route through the workbook away
-  // from precisely the reader who cannot type — the storage failure and the accessibility
-  // need are uncorrelated, and 0001 makes the second one primary.
-  //
-  // The store is read when a panel OPENS, not now: a load-time snapshot misses everything
-  // dictated this session, and misses the instance order a repeat mints on its first write.
-  let opened: Promise<Store> | null = null;
-  wireQuestionControls(document, preferences(window), async () => {
-    try {
-      opened ??= openStore();
-      return await (await opened).readAll();
-    } catch {
-      // Nothing to include is a worse prompt, not a broken one.
-      opened = null;
-      return new Map<string, string>();
-    }
-  });
+  await wireAssistantBridge();
   try {
     await bindAnswerFields();
   } catch (error) {
@@ -73,6 +54,54 @@ export async function start(): Promise<void> {
       text: "Your answers cannot be saved on this device. The page still works for printing.",
       actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
     });
+  }
+}
+
+/**
+ * Load the assistant bridge, but only for a reader who has something to do with it.
+ *
+ * A dynamic import, because the bridge reaches the prompt generator and through it the whole
+ * question schema — 94 kB raw, 19 kB gzipped. Statically imported, every reader paid that on
+ * every page including the 404 and every decision record, to run a feature that is off by
+ * default and that most of them will never turn on.
+ *
+ * Two reasons to load it: the reader has switched it on, or this is the page carrying the
+ * switch. `bridge.ts` answers the first without pulling any of it in, which is the whole
+ * reason that module exists separately.
+ *
+ * Outside the store path, like the opt-in it wires. Storage failing and needing to answer by
+ * voice are uncorrelated, and 0001 makes the second primary — gating the control on a store
+ * that opened would take the only non-typing route through the workbook away from precisely
+ * the reader who cannot type.
+ */
+async function wireAssistantBridge(): Promise<void> {
+  const storage = preferences(window);
+  const carriesTheSwitch = document.getElementById("agent") !== null;
+  if (!carriesTheSwitch && !bridgeIsOn(storage)) {
+    return;
+  }
+
+  try {
+    const { wireAgentPage, wireQuestionControls } = await import("./agent.ts");
+    wireAgentPage(document, storage);
+    // The store is read when a panel OPENS, not now: a load-time snapshot misses everything
+    // dictated this session, and misses the instance order a repeat mints on its first write.
+    let opened: Promise<Store> | null = null;
+    wireQuestionControls(document, storage, async () => {
+      try {
+        opened ??= openStore();
+        return await (await opened).readAll();
+      } catch {
+        // Nothing to include is a worse prompt, not a broken one.
+        opened = null;
+        return new Map<string, string>();
+      }
+    });
+  } catch (error) {
+    // Survivable: every worksheet still reads, prints and accepts typing. Said out loud
+    // rather than swallowed, because for a reader who cannot type comfortably this was the
+    // route they came for.
+    console.error("life-compass: the assistant bridge could not be loaded", error);
   }
 }
 

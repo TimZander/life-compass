@@ -21,59 +21,7 @@
 
 import { promptFor, priorFrom, findQuestion, explain } from "./prompt.ts";
 import { showBanner, dismissBanner } from "./banner.ts";
-
-/**
- * Where the opt-in lives.
- *
- * `localStorage`, not the answer store. It is a preference rather than an answer: putting it
- * in the store would carry it into every export and restore it onto whatever device a backup
- * lands on, quietly turning the feature on for somebody who never asked for it.
- */
-const PREFERENCE = "life-compass:assistant";
-
-/**
- * The preference store, or nothing.
- *
- * Reaching for `window.localStorage` is itself what throws when a browser blocks site data —
- * not the `getItem` beneath it — so the access is guarded here rather than inside the
- * functions that use it. app.ts records the same lesson about `sessionStorage`: unguarded, it
- * aborted before the fields were bound, disabling the whole application for exactly the
- * privacy-minded readers most likely to block storage. This is that mistake made a third time
- * unless the access lives behind this function.
- */
-export function preferences(from: Window): Storage | null {
-  try {
-    return from.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-export function bridgeIsOn(storage: Storage | null): boolean {
-  if (storage === null) {
-    return false;
-  }
-  try {
-    // Compared against the exact value written, so anything else — a stale key, a value from
-    // some other tool, a half-written string — reads as off, which is the safe direction.
-    return storage.getItem(PREFERENCE) === "on";
-  } catch {
-    return false;
-  }
-}
-
-/** Whether the preference was actually recorded. The caller has to know — see `wireAgentPage`. */
-function setBridge(storage: Storage | null, on: boolean): boolean {
-  if (storage === null) {
-    return false;
-  }
-  try {
-    storage.setItem(PREFERENCE, on ? "on" : "off");
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { bridgeIsOn, setBridge } from "./bridge.ts";
 
 function say(text: string): void {
   // Every message here offers a way out. banner.ts pins the region to the bottom of the

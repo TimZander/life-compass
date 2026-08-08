@@ -169,6 +169,7 @@ describe("shipped client scripts", () => {
       "assets/js/answers.js",
       "assets/js/app.js",
       "assets/js/banner.js",
+      "assets/js/bridge.js",
       "assets/js/export.js",
       "assets/js/fields.js",
       "assets/js/import.js",
@@ -185,9 +186,24 @@ describe("shipped client scripts", () => {
     // disconnected from the entry module and still appear here — verified: replacing
     // app.ts's import of import.ts with local stubs left the whole suite green while the
     // restore control was wired to nothing.
+    // The assistant bridge is loaded on demand, not with the page. It reaches the prompt
+    // generator and through it the whole question schema — 94 kB raw, 19 kB gzipped — and the
+    // feature is off by default, so a static import made every reader pay for a feature most
+    // of them decline, on every page including the 404 and every decision record. `bridge.ts`
+    // exists so the "is it on" question can be answered without pulling any of that in.
+    const eager = modules.find((module) => module.output === "assets/js/app.js");
+    assert.ok(eager !== undefined);
+    for (const deferred of ["agent", "prompt", "schema"]) {
+      assert.ok(
+        !eager.code.includes(`from "./${deferred}.js"`),
+        `app.js statically imports ${deferred}.js, which every reader then downloads`,
+      );
+    }
+    assert.ok(eager.code.includes('import("./agent.js")'), "the bridge is not loaded on demand");
+
     const entry = modules.find((module) => module.output === "assets/js/app.js");
     assert.ok(entry !== undefined, "no entry module was emitted");
-    for (const sibling of ["agent", "export", "import", "fields", "answers", "store", "banner", "sw-update"]) {
+    for (const sibling of ["bridge", "export", "import", "fields", "answers", "store", "banner", "sw-update"]) {
       assert.ok(
         entry.code.includes(`"./${sibling}.js"`),
         `app.js does not import ${sibling}.js, so that feature reaches no page`,
