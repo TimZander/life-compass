@@ -41,6 +41,11 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()) {
     async claim() {
       return true;
     },
+    merge: async (entries: ReadonlyMap<string, string>) => {
+      for (const [key, value] of entries) {
+        kept.set(key, value);
+      }
+    },
     replaceAll: async (entries: ReadonlyMap<string, string>) => {
       replacements.push(entries.size);
       kept.clear();
@@ -64,6 +69,7 @@ async function fileHolding(entries: ReadonlyMap<string, string>): Promise<string
     async claim() {
       return true;
     },
+    async merge() {},
     async replaceAll() {},
   };
   return serialise(await envelopeOf(source, WHEN));
@@ -701,6 +707,7 @@ describe("when things go wrong at the control", () => {
       async claim() {
         return true;
       },
+      async merge() {},
       async replaceAll() {},
     };
     wireRestore(page.document, answersSpy(), broken, options(log));

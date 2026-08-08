@@ -52,6 +52,9 @@ function recorder(initial: ReadonlyMap<string, string> = new Map()): Recorder {
       return initial;
     },
 
+    async merge() {
+      throw new Error("merge is not part of this scenario");
+    },
     async replaceAll() {
       // The autosave layer has no business replacing the whole store; if it ever calls
       // this, the test should say so rather than quietly succeed.

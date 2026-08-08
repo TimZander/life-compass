@@ -21,9 +21,17 @@ import type { Question, RepeatQuestion } from "../questions/types.ts";
 import { answerKey, orderKey, readOrder } from "./keys.ts";
 import { ASKS, WORKSHEETS } from "./schema.ts";
 
-/** The contract an assistant is asked to answer in — docs/decisions/0015. */
-const FORMAT = "life-compass/agent-answers";
-const VERSION = 1;
+/**
+ * The contract an assistant is asked to answer in — docs/decisions/0015.
+ *
+ * Exported so the reader that parses replies uses the same two values that the generator
+ * asked for. 0015 names two-copies-of-one-fact as the mistake behind 0009 · C6 and behind
+ * `keys.ts`'s `readOrder`/`answerKey` disagreement; a format string the writer and the reader
+ * each spell for themselves is that mistake with the round trip in between, where it would
+ * show up as replies that silently match nothing.
+ */
+export const FORMAT = "life-compass/agent-answers";
+export const VERSION = 1;
 
 /**
  * The `group` in the worked example, which the schema deliberately does not contain.

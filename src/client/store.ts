@@ -46,6 +46,23 @@ export type Store = {
    */
   claim(guard: string, entries: ReadonlyMap<string, string>): Promise<boolean>;
   /**
+   * Write several keys together in one transaction, leaving everything else alone.
+   *
+   * The merging counterpart to `replaceAll`, and it exists for the same reason that one
+   * gives: "never partially imports" is a property of the OPERATION or it is not a property
+   * at all. Assistant output (0015) touches a handful of keys across one or more groups, and
+   * writing them one at a time leaves a window where a failure produces a store that is
+   * neither what the reader had nor what they accepted — with nothing recording how far it
+   * got. That is the same window `replaceAll` was written to close, arriving by the merge
+   * path instead of the restore path.
+   *
+   * Unlike `claim` there is no guard: this is a deliberate act on answers the reader has just
+   * been shown and confirmed, not a first-write race between tabs. Unlike `replaceAll` it
+   * clears nothing, because assistant output is partial by construction and 0007 · C3 forbids
+   * an absent field from removing a stored one.
+   */
+  merge(entries: ReadonlyMap<string, string>): Promise<void>;
+  /**
    * Discard everything stored and put `entries` in its place, all in one transaction.
    *
    * The destructive half of #25. An import replaces rather than merges (0009 · C7), and
@@ -208,6 +225,23 @@ export function fromDatabase(database: IDBDatabase): Store {
           }
         }
         return true;
+      });
+    },
+
+    async merge(entries) {
+      await transact("readwrite", async (store) => {
+        for (const [key, value] of entries) {
+          // Same rule as everywhere else: an empty value is an absent answer, not an empty
+          // one. Nothing should reach here carrying one — 0015 refuses empty values in a
+          // block precisely so an assistant cannot express a delete through a format that
+          // says it has none — so this is the second line of that defence rather than the
+          // first, and it deletes rather than storing blankness if it is ever wrong.
+          if (value === "") {
+            store.delete(key);
+          } else {
+            store.put(value, key);
+          }
+        }
       });
     },
 

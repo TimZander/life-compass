@@ -165,6 +165,10 @@ describe("shipped client scripts", () => {
     // app.js wires them up in the next slice. Listing them rather than allowing "at
     // least these" keeps the check able to notice a module that should not be shipping.
     assert.deepEqual(modules.map((module) => module.output).sort(), [
+      // agent-answers.js reads assistant replies and is emitted before anything imports it —
+      // the paste surface is the next slice. It reaches the reader the way agent.js does, by
+      // dynamic import behind the opt-in, so precaching it costs a download and not a parse.
+      "assets/js/agent-answers.js",
       "assets/js/agent.js",
       "assets/js/answers.js",
       "assets/js/app.js",
