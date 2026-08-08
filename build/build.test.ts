@@ -17,7 +17,8 @@ import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion } from "./questions.ts";
-import { schemaSource } from "./schema.ts";
+import { schemaSource, schemaModuleIsCurrent, SCHEMA_MODULE } from "./schema.ts";
+import { checkSpecifiers } from "./client.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -140,12 +141,12 @@ describe("the stylesheet and the markup agreeing", () => {
 describe("the schema the client receives", () => {
   /** Read WORKSHEETS back out of a generated module, the way an importer would. */
   function worksheetsIn(code: string): unknown {
-    const found = /WORKSHEETS[^=]*= ([\s\S]*);\n$/.exec(code);
+    const found = /^export const WORKSHEETS[^=]*= ([\s\S]*);\n$/m.exec(code);
     assert.ok(found?.[1] !== undefined, "the schema module does not export WORKSHEETS");
     return JSON.parse(found[1]);
   }
 
-  it("schemaSource_Always_CarriesTheSameDefinitionsAsQuestionsJson", async () => {
+  it("build_RealSite_SchemaModuleAndQuestionsJsonCarryTheSameDefinitions", async () => {
     // Arrange — the agreement, not either side of it. Two artifacts describe the question
     // set: questions.json for anything outside the page, and the emitted module for the page
     // itself. Both come from one source, and this is what keeps that true — the shape of
@@ -162,7 +163,7 @@ describe("the schema the client receives", () => {
     assert.deepEqual(worksheetsIn(emitted), json.worksheets);
   });
 
-  it("schemaSource_Emitted_IsStrippedOfTheTypeImportThatCannotShip", async () => {
+  it("build_RealSite_EmitsASchemaModuleStrippedOfTheTypeImport", async () => {
     // Arrange — the module names `Worksheet` so it typechecks, and that type lives outside
     // the client tier. build/client.ts rewrites relative specifiers to `.js`, and
     // `../questions/index.js` is not a file the browser is ever served, so a value import
@@ -179,7 +180,7 @@ describe("the schema the client receives", () => {
     assert.ok(emitted.includes("export const WORKSHEETS"), "the emitted module exports nothing");
   });
 
-  it("schemaSource_Always_IsPrecachedSoTheBridgeWorksOffline", async () => {
+  it("build_RealSite_PrecachesTheSchemaModuleSoTheBridgeWorksOffline", async () => {
     // Arrange — the whole workbook is precached rather than a shell, and a schema the client
     // cannot read offline would make the agent bridge the one part of the site that needs the
     // network, in an application whose claim is that it needs none.
@@ -218,6 +219,78 @@ describe("the schema the client receives", () => {
     // import site.
     // Act & Assert
     assert.deepEqual(worksheetsIn(schemaSource([])), []);
+  });
+});
+
+describe("refusing a client graph the browser cannot load", () => {
+  it("checkSpecifiers_AnImportNothingEmits_Throws", () => {
+    // Arrange — the failure this exists for, and it shipped once. `buildClient` discovers
+    // modules by reading a directory, so a GENERATED module that was never written is not an
+    // error, it is simply absent from the list. Deleting src/client/schema.ts left the build
+    // emitting prompt.js importing ./schema.js, shipping it, and leaving it out of the
+    // precache — so cache.addAll succeeded and every gate passed on a dead client.
+    const modules = [
+      { output: "assets/js/app.js", code: 'import { x } from "./gone.js";\n' },
+      { output: "assets/js/keys.js", code: "export const x = 1;\n" },
+    ];
+
+    // Act & Assert
+    assert.throws(() => checkSpecifiers(modules), /imports \.\/gone\.js, which nothing emits/);
+  });
+
+  it("checkSpecifiers_EveryImportEmitted_DoesNotThrow", () => {
+    // Arrange — the ordinary case, including a specifier that climbs a directory, so the
+    // resolution is doing real path work rather than comparing strings.
+    const modules = [
+      { output: "assets/js/app.js", code: 'import { k } from "./keys.js";\n' },
+      { output: "assets/js/keys.js", code: 'import { s } from "../js/schema.js";\n' },
+      { output: "assets/js/schema.js", code: "export const s = 1;\n" },
+    ];
+
+    // Act & Assert
+    assert.doesNotThrow(() => checkSpecifiers(modules));
+  });
+
+  it("checkSpecifiers_BareSpecifiers_AreLeftAlone", () => {
+    // Arrange — negative case. Only relative specifiers name something this build emits; a
+    // bare one would be a dependency, which this tier does not have and must not start
+    // reporting as a missing file.
+    const modules = [{ output: "assets/js/app.js", code: 'import { z } from "node:path";\n' }];
+
+    // Act & Assert
+    assert.doesNotThrow(() => checkSpecifiers(modules));
+  });
+});
+
+describe("the generated schema module staying current", () => {
+  it("schemaModuleIsCurrent_Generated_IsTrue", async () => {
+    // Arrange — `pretest` regenerated it moments ago, so this is the ordinary state.
+    // Act & Assert
+    assert.equal(await schemaModuleIsCurrent(ROOT), true);
+  });
+
+  it("schemaModuleIsCurrent_Absent_IsFalse", async () => {
+    // Arrange — negative case, and the state of every fresh clone: the file is git-ignored.
+    // A missing file must read as "not current" rather than throwing, because `--check` uses
+    // this to decide an exit code in CI.
+    const empty = await mkdtemp(path.join(tmpdir(), "life-compass-nothing-"));
+    temporary.push(empty);
+
+    // Act & Assert
+    assert.equal(await schemaModuleIsCurrent(empty), false);
+  });
+
+  it("schemaModuleIsCurrent_Stale_IsFalse", async () => {
+    // Arrange — the drift `--check` exists to catch: someone edits src/questions and the
+    // generated file is left behind. Under `npm test` the pretest hook makes this
+    // unreachable, which is exactly why the check has to run as its own CI step.
+    const root = await mkdtemp(path.join(tmpdir(), "life-compass-stale-"));
+    temporary.push(root);
+    await mkdir(path.join(root, SCHEMA_MODULE, ".."), { recursive: true });
+    await writeFile(path.join(root, SCHEMA_MODULE), "export const WORKSHEETS = [];\n", "utf8");
+
+    // Act & Assert
+    assert.equal(await schemaModuleIsCurrent(root), false);
   });
 });
 

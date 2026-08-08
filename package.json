@@ -10,6 +10,8 @@
   "scripts": {
     "//schema": "The question definitions, written into src/client so the client can import them. Generated rather than committed, and rebuilt before every check — see build/schema.ts.",
     "schema": "node build/schema.ts",
+    "prepare": "npm run schema",
+    "schema:check": "node build/schema.ts --check",
     "prebuild": "npm run schema",
     "pretypecheck": "npm run schema",
     "pretest": "npm run schema",

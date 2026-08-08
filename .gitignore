@@ -21,6 +21,10 @@ Gemfile.lock
 # so Node, tsc and the browser all read one file. Rebuilt by the pre* npm hooks.
 src/client/schema.ts
 
+# Scratch modules. build/client.ts emits every .ts in src/client, so a stray probe
+# file ships to dist and enters the service worker's precache.
+src/client/__*.ts
+
 # Build output and tooling
 dist/
 node_modules/

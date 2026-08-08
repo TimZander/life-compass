@@ -124,9 +124,10 @@ match its group's kind is refused.
 says so as settled fact — "the client has no copy of the question set" — and identifies
 instance orders by shape for that reason. It cannot be fixed by fetching: 0007 · C1 keeps
 `connect-src 'none'`, which forbids the page requesting `/questions.json` at all. So the
-schema reaches the client as a **module the build emits** ([0012](0012-client-typescript-stripped-at-build-time.md)),
-loaded as script rather than fetched as data. Recorded here because both halves of the bridge
-depend on it and neither issue currently says so; the JSON stays for anything outside the page.
+schema reaches the client as a **module in the client tier**
+([0012](0012-client-typescript-stripped-at-build-time.md)), loaded as script rather than
+fetched as data. Recorded here because both halves of the bridge depend on it and neither
+issue currently says so; the JSON stays for anything outside the page.
 
 **Omitting a field means "leave it alone". An empty value is refused.** An assistant that has
 nothing for a field leaves it out. The distinction matters more here than it looks: `store.ts`
@@ -233,10 +234,25 @@ only where a permission is granted is a choice somebody else made.
 **C3.** Prompts carry instance identifiers even when no answers travel, so the reader sees
 UUIDs in the preview 0007 · 1 requires. Better that than a preview which is not what is sent.
 
-**C4.** The schema has to reach the client as an emitted module before either half of the
-bridge can validate anything. That is a prerequisite for
+**C4.** The schema has to reach the client as a module before either half of the bridge can
+validate anything. That is a prerequisite for
 [#67](https://github.com/TimZander/life-compass/issues/67) and
 [#68](https://github.com/TimZander/life-compass/issues/68), not a detail of them.
+
+**C4a.** *Added 2026-08-08.* Emitting it straight into `dist` does not work, and the first
+attempt did exactly that. A declaration file satisfied `tsc` while the only real JavaScript
+lived in the output, so nothing that runs from source — every test — could resolve the import
+at all; nothing imported it yet, so nothing noticed. It is **generated into the source tree**
+instead, git-ignored and rebuilt by npm hooks, which lets one file serve Node, the typechecker
+and the browser.
+
+The lesson worth keeping is not about hooks. Hooks are skippable — `node --run`, a direct
+`tsc`, `npm ci --ignore-scripts` — so the guarantee cannot live in them. It lives in
+`checkSpecifiers`, which refuses to emit a client module graph containing an import nothing
+satisfies. Before it, deleting the generated file produced a successful build, a shipped site
+whose client was dead, and a precache manifest that omitted the missing file so `cache.addAll`
+succeeded and the deploy smoke test read one fewer URL. Every gate passed. A generated file is
+only safe where something asserts its absence is a failure.
 
 **C5.** Reading a block cannot write, structurally, as in `import.ts` — the function that
 reads one has no store to reach. Applying several blocks across several groups is a different
