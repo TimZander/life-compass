@@ -104,26 +104,45 @@ async function wireAssistantBridge(): Promise<void> {
     return;
   }
 
-  {
+  try {
     const { wireAgentPage, wireQuestionControls } = bridge;
     wireAgentPage(document, storage);
     // The store is read when a panel OPENS, not now: a load-time snapshot misses everything
     // dictated this session, and misses the instance order a repeat mints on its first write.
     let opened: Promise<Store> | null = null;
     wireQuestionControls(document, storage, async () => {
+      // Answers are written on a debounce (up to five seconds), so without this a reader who
+      // dictates a chapter and taps straight away hands over the value from before their
+      // last pause. `flushAnswers` is set once the fields are bound; before that there is
+      // nothing pending to flush.
+      await flushAnswers?.();
       try {
-        // Answers are written on a debounce (up to five seconds), so without this a reader who
-        // dictates a chapter and taps straight away hands over the value from before their
-        // last pause. `flushAnswers` is set once the fields are bound; before that there is
-        // nothing pending to flush.
-        await flushAnswers?.();
         opened ??= openStore();
         return await (await opened).readAll();
-      } catch {
-        // Nothing to include is a worse prompt, not a broken one.
+      } catch (error) {
+        // Dropped so the next open can retry — a rejected promise left in `opened` would cache
+        // one bad moment for the rest of the session.
         opened = null;
-        return new Map<string, string>();
+        // Raised, not swallowed. This returned an empty Map, which the panel cannot tell apart
+        // from "nothing written yet": the reader ticked the box, watched the preview not
+        // change, and was told nothing. For a repeat it also drops every instance identifier,
+        // which 0015 · C3 forbids outright. The panel is the only surface that can say so, so
+        // the failure has to reach it.
+        throw error;
       }
+    });
+  } catch (error) {
+    // Its own message, distinct from the load failure above. Wrapping these calls in THAT
+    // catch is what reported a wiring bug as a loading bug and left /agent switchless with a
+    // console line blaming the loader. But leaving them bare — which is how that was fixed —
+    // meant a throw here reached nothing at all: `start()` is invoked as `void start()`, so it
+    // became an unhandled rejection with no banner and no console line, which is worse than
+    // the wrong message it replaced.
+    console.error("life-compass: the assistant controls could not be set up", error);
+    showBanner({
+      id: "agent",
+      text: "The assistant controls could not be set up. Reloading the page may fix it.",
+      actions: [{ label: "Dismiss", onSelect: () => dismissBanner("agent") }],
     });
   }
 }
@@ -153,6 +172,12 @@ function registerWorker(): void {
 }
 
 /**
+ * Set once the fields are bound, so the assistant panels can settle pending writes before
+ * reading. They run outside the store path and hold no reference to the `Answers` instance.
+ */
+let flushAnswers: (() => Promise<void>) | null = null;
+
+/**
  * Bind the page's blanks to on-device storage.
  *
  * Deliberately not awaited by anything: a page with no blanks, or a browser with storage
@@ -161,18 +186,12 @@ function registerWorker(): void {
  * where a reader would never see it (0008 makes what storage can and cannot promise
  * something the app has to say out loud).
  */
-/**
- * Set once the fields are bound, so the assistant panels can settle pending writes before
- * reading. They run outside the store path and hold no reference to the `Answers` instance.
- */
-let flushAnswers: (() => Promise<void>) | null = null;
-
 async function bindAnswerFields(): Promise<void> {
   if (!needsStore(document)) {
     return;
   }
   const store = await openStore();
-  const answers: ReturnType<typeof createAnswers> = createAnswers(store, {
+  const answers = createAnswers(store, {
     onFailure: () =>
       showBanner({
         id: "storage",

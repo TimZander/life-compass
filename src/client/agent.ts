@@ -61,15 +61,53 @@ export function wireAgentPage(document: Document, storage: Storage | null): void
   });
 }
 
-/** A short human name for a question, for the places a screen reader reads one out. */
-function nameFor(question: { readonly kind: string; readonly id: string }, group: string): string {
+/** Trim a line of its Markdown and cut it to something a screen reader will not read forever. */
+function clip(line: string): string {
+  const plain = line.replace(/[*_`>#]/g, "").trim();
+  return plain.length > 60 ? `${plain.slice(0, 57)}…` : plain;
+}
+
+/**
+ * A short human name for a question, for the places a screen reader reads one out.
+ *
+ * Ordered by what the reader can actually see, which is not what the schema calls the thing.
+ *
+ * A `repeat`'s label names one SLOT, not the question: day 2 has four separate groups whose
+ * label is "Value", because each renders "Value 1", "Value 2"… underneath a heading that is
+ * the real question. Preferring the label gave that page four identical buttons standing for
+ * four different things — and the same on rigorous day 2 (five) and day 1 (three).
+ *
+ * A `sentence` is the sentence. Everything else is named by the FIRST line of its ask, which
+ * is the heading printed directly above the control. This read the LAST line, which is the
+ * line nearest the anchor — usually the tail of a paragraph. All five of day 5's questions
+ * came out as "gap?", so the attribute added to stop a quarter of these buttons reading out
+ * an identifier had replaced unique identifiers with identical fragments: worse on the one
+ * axis it exists for. Across the workbook the three rules together take the pages carrying a
+ * duplicate name from nine to one.
+ */
+function nameFor(
+  question: { readonly kind: string; readonly id: string },
+  group: string,
+): string {
+  if (
+    question.kind === "sentence" &&
+    "template" in question &&
+    typeof question.template === "string" &&
+    question.template !== ""
+  ) {
+    // Gaps are spelled `{excess}` in the template. Read aloud the braces are noise, and
+    // dropping them alone inverts the sentence — "the world has enough excess" — so the gap
+    // is named as the gap it is.
+    return clip(question.template.replace(/\{[^}]*\}/g, "blank"));
+  }
+  const heading = (ASKS[group] ?? "").split("\n").find((line) => clip(line) !== "");
+  if (heading !== undefined) {
+    return clip(heading);
+  }
   if ("label" in question && typeof question.label === "string" && question.label !== "") {
     return question.label;
   }
-  const ask = (ASKS[group] ?? "").split("\n").filter((line) => line.trim() !== "");
-  const first = ask[ask.length - 1] ?? group;
-  const plain = first.replace(/[*_`>#]/g, "").trim();
-  return plain.length > 60 ? `${plain.slice(0, 57)}…` : plain;
+  return group;
 }
 
 /** Put text on the clipboard, or say why not. */
@@ -104,6 +142,13 @@ type Panel = {
 function panelFor(
   document: Document,
   group: string,
+  name: string,
+  // Passed in rather than looked up again. `wireQuestionControls` has already proved this
+  // group resolves before it builds a panel for it, so the second lookup could only ever
+  // succeed — and the `unknown-group` arm it guarded was unreachable code carrying a message
+  // no reader could ever be shown. A mutation sweep found it by deleting the arm with the
+  // suite green.
+  question: NonNullable<ReturnType<typeof findQuestion>>,
   readEntries: () => Promise<ReadonlyMap<string, string>>,
 ): Panel {
   const element = document.createElement("div");
@@ -122,7 +167,10 @@ function panelFor(
   preview.className = "agent-preview";
   preview.tabIndex = 0;
   preview.setAttribute("role", "region");
-  preview.setAttribute("aria-label", `The exact text that will be copied for ${group}`);
+  // The same name the button uses, for the same reason. This said "…for day5.career" — the
+  // raw identifier the button's own label goes to lengths to avoid, inside the panel that
+  // button opens.
+  preview.setAttribute("aria-label", `The exact text that will be copied for ${name}`);
 
   const copy = document.createElement("button");
   copy.type = "button";
@@ -134,6 +182,15 @@ function panelFor(
   // not a dialog on every copy — a confirmation each time trains people to dismiss it.
   note.textContent =
     "This is exactly what goes to your clipboard. Whatever you paste it into can keep it.";
+
+  const scrollNote = document.createElement("p");
+  scrollNote.className = "agent-scroll";
+  // ABOVE the preview, and only when there is something out of sight. It read "The whole
+  // message is below" from a position underneath the box, pointing at the consent sentence
+  // and the copy button rather than at the text it meant — and it said so even when the whole
+  // payload fitted, which on the shortest questions is most of the time.
+  scrollNote.textContent = "This is longer than the box — scroll inside it to read the rest.";
+  scrollNote.hidden = true;
 
   let shown: string | null = null;
   /**
@@ -163,30 +220,63 @@ function panelFor(
     const mine = (generation += 1);
     shown = null;
     copy.setAttribute("aria-disabled", "true");
-    const question = findQuestion(group);
-    if (question === undefined) {
-      preview.textContent = explain({ kind: "unknown-group", group });
-      return;
-    }
+    // Cleared, not left standing. `shown` covered the clipboard and this did not, so a reader
+    // who UNTICKED the box watched their own answers sit in the preview for the whole length
+    // of a store read — the checkbox saying one thing and the consent surface showing another,
+    // which is the defect `generation` exists to prevent, left in place on the surface 0007 · 1
+    // actually names. If the read never resolves it stayed there for good.
+    preview.textContent = "Working out what to copy…";
+    scrollNote.hidden = true;
     // Read BEFORE the await, not after. It happens to be correct today only because argument
     // evaluation runs left to right after the awaited call resolves — so hoisting this line,
     // which is the obvious readability edit, would silently invert the preview.
     const wanted = include.checked;
-    const entries = await readEntries();
+    let entries: ReadonlyMap<string, string>;
+    try {
+      entries = await readEntries();
+    } catch (error) {
+      if (mine !== generation) {
+        return;
+      }
+      // Said, not swallowed. This used to resolve to an empty Map inside app.ts, so a reader
+      // whose store would not open ticked the box, watched nothing change, and was told
+      // nothing — and for a repeat it is worse than missing words: the instance identifiers go
+      // too, which 0015 · C3 forbids and which produces exactly the reply the importer cannot
+      // accept. Refusing is the honest end of that, and 0008 asks for it out loud.
+      console.error("life-compass: the saved answers could not be read", error);
+      preview.textContent =
+        "Your saved answers could not be read just now, so there is nothing safe to copy yet. Reloading the page may fix it.";
+      return;
+    }
     if (mine !== generation) {
       return;
     }
-    const made = promptFor(group, priorFrom(question, entries, wanted));
-    if (!made.ok) {
-      preview.textContent = explain(made.refusal);
-      return;
+    try {
+      const made = promptFor(group, priorFrom(question, entries, wanted));
+      if (!made.ok) {
+        preview.textContent = explain(made.refusal);
+        return;
+      }
+      // `textContent`, never `innerHTML`: prior answers are the reader's own words, and a
+      // restored backup is words from a file. The one surface whose job is showing the literal
+      // payload must not be a surface that executes it.
+      preview.textContent = made.text;
+      shown = made.text;
+      copy.removeAttribute("aria-disabled");
+      // Measured, not assumed. Under jsdom every box is zero-sized, so both heights are 0 and
+      // the note stays hidden — which is what the test asserts, deliberately: whether a payload
+      // overflows is the one thing about this panel only a real layout can decide.
+      scrollNote.hidden = preview.scrollHeight <= preview.clientHeight;
+    } catch (error) {
+      // `promptFor` is not documented as throwing, but it reaches `answerKey`, which does:
+      // build/questions.ts records that a field id with an interior dot "passes through
+      // unremarked", and fields.ts guards that exact throw where this did not. Both callers
+      // `void` this function, so without a handler a throw went nowhere at all — an unhandled
+      // rejection, a preview stuck on "Working out what to copy…", and a copy button held
+      // disabled for the rest of the session with nothing said. 0008 forbids exactly that.
+      console.error("life-compass: the message could not be built", error);
+      preview.textContent = "This message could not be built. Reloading the page may fix it.";
     }
-    // `textContent`, never `innerHTML`: prior answers are the reader's own words, and a
-    // restored backup is words from a file. The one surface whose job is showing the literal
-    // payload must not be a surface that executes it.
-    preview.textContent = made.text;
-    shown = made.text;
-    copy.removeAttribute("aria-disabled");
   };
 
   include.addEventListener("change", () => {
@@ -206,11 +296,11 @@ function panelFor(
     copyToClipboard(shown);
   });
 
-  const scrollNote = document.createElement("p");
-  scrollNote.className = "agent-scroll";
-  scrollNote.textContent = "The whole message is below — scroll it to read all of it.";
-
-  element.append(includeLabel, preview, scrollNote, note, copy);
+  // Order is part of the contract, not a detail: the consent sentence and the control that
+  // acts on it come AFTER the payload they describe, so nothing asks the reader to agree to
+  // something they have not been shown yet (0007 · 1). Reversing this list left the copy
+  // button above the text it copies, with the suite green.
+  element.append(includeLabel, scrollNote, preview, note, copy);
   return { element, refresh };
 }
 
@@ -233,6 +323,7 @@ export function wireQuestionControls(
     return;
   }
 
+  const names = new Map<string, number>();
   for (const container of document.querySelectorAll("[data-question]")) {
     const group = container.getAttribute("data-question");
     if (group === null) {
@@ -257,14 +348,19 @@ export function wireQuestionControls(
     open.className = "agent-open";
     open.textContent = "Ask an assistant";
     // Named for its own question. A screen reader listing this page's buttons would otherwise
-    // find five identical "Ask an assistant" with nothing saying which is which (0001).
-    // `group` and `sentence` questions carry no label at all, so a quarter of these buttons
-    // read out a frozen identifier — "Ask an assistant about day5.career" — which is the
-    // problem this attribute was added to solve, not a solution to it. The ask's first line is
-    // what the reader sees on the page above it.
-    open.setAttribute("aria-label", `Ask an assistant about ${nameFor(question, group)}`);
+    // find five identical "Ask an assistant" with nothing saying which is which (0001) — see
+    // `nameFor` for where the name comes from and why the obvious sources are wrong.
+    //
+    // Then disambiguated within the page, because a good rule still leaves one honest tie:
+    // day 4 asks the same sentence twice on purpose. Two buttons reading identically is the
+    // same "which of these is which" by a different road, so the second one says which it is.
+    const base = nameFor(question, group);
+    const nth = (names.get(base) ?? 0) + 1;
+    names.set(base, nth);
+    const name = nth === 1 ? base : `${base} (${nth})`;
+    open.setAttribute("aria-label", `Ask an assistant about ${name}`);
 
-    const panel = panelFor(document, group, readEntries);
+    const panel = panelFor(document, group, name, question, readEntries);
     open.setAttribute("aria-controls", panel.element.id);
     open.setAttribute("aria-expanded", "false");
 

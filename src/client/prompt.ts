@@ -179,11 +179,20 @@ export function priorFrom(
  * second, valid-looking contract block naming a real group — and 0015's importer scans every
  * fence in a paste. So a reader who wrote about code, or who was fed something to write,
  * could hand back a prompt that imports answers to a question they were not looking at. The
- * backtick is the whole of the mechanism, so removing it is the whole of the fix; it happens
- * before the preview, so what 0007 · 1 shows is what is sent.
+ * backtick is the whole of the mechanism for THAT attack, and it happens before the preview,
+ * so what 0007 · 1 shows is what is sent.
+ *
+ * The newline is the other half, and it was missed. Every answer is interpolated into a
+ * Markdown list item, and answers are multi-line by construction — fields.ts treats `\n` as
+ * the common case, because these are dictated paragraphs. An answer whose second line begins
+ * "- id 'i2'" therefore closes the reader's own entry and opens a second one that looks
+ * exactly like a real instance, ahead of the real one. Indenting every continuation line
+ * keeps a multi-line answer inside the item it belongs to, so no line of a reader's prose can
+ * open a block of its own — which covers `-`, `*`, `#`, `>`, `1.` and a fence in one move,
+ * rather than one escape per character that happens to be special.
  */
-function neutralise(answer: string): string {
-  return answer.replace(/`/g, "'");
+function neutralise(answer: string, continuation = "    "): string {
+  return answer.replace(/`/g, "'").replace(/\r?\n/g, `\n${continuation}`);
 }
 
 function labelFor(question: Answerable, field: string): string {
@@ -271,7 +280,9 @@ function priorSection(question: Answerable, prior: Prior): string {
     }
   } else {
     for (const [field, value] of prior.fields) {
-      lines.push(`- ${labelFor(question, field)}: ${neutralise(value)}`);
+      // Two spaces, not four: these entries sit at the top level of the list rather than
+      // under an id, so the continuation has one less level to clear.
+      lines.push(`- ${labelFor(question, field)}: ${neutralise(value, "  ")}`);
     }
   }
 

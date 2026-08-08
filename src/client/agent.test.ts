@@ -443,6 +443,141 @@ describe("the copy control on a question", () => {
     assert.equal(written, document.querySelector(".agent-preview")?.textContent);
   });
 
+  it("wireQuestionControls_ACopyThatSucceeds_SaysSo", async () => {
+    // Arrange — the feature's primary action gave no assertion at all, so replacing the
+    // success handler with an empty function passed: the reader taps the one button this
+    // whole feature exists for and gets silence, indistinguishable from a failure.
+    const document = worksheet("day4.eulogy");
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { clipboard: { writeText: () => Promise.resolve() } },
+    });
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+
+    // Act
+    const buttons = [...document.querySelectorAll("button")];
+    (buttons.find((one) => one.textContent?.includes("Copy")) as HTMLElement).click();
+    await settle();
+
+    // Assert
+    const region = document.getElementById("banner-region");
+    assert.match(region?.textContent ?? "", /Copied/, "a successful copy says nothing");
+    assert.match(region?.textContent ?? "", /Dismiss/, "the message cannot be got rid of");
+  });
+
+  it("wireQuestionControls_ARebuildInFlight_DoesNotLeaveTheWithdrawnAnswerOnScreen", async () => {
+    // Arrange — the defect `generation` was added for, left standing on the other half of the
+    // promise. `shown` was cleared before the await so the CLIPBOARD could not send a stale
+    // payload; the preview was not, and 0007 · 1 makes the preview the consent surface. A
+    // reader who UNTICKS the box watches their own answers sit there for the length of a store
+    // read — and for good if it never resolves.
+    const WRITTEN = "That I showed up for the people who needed it.";
+    const entries = new Map([["day4.eulogy", WRITTEN]]);
+    let hold = false;
+    // A no-op rather than `null`: assigned only inside the executor below, TypeScript narrows
+    // a nullable to `never` at the call site and rejects it.
+    let release = (): void => {};
+    const document = worksheet("day4.eulogy");
+    wireQuestionControls(document, memoryStorage("on"), () => {
+      if (!hold) {
+        return Promise.resolve(entries as ReadonlyMap<string, string>);
+      }
+      return new Promise<ReadonlyMap<string, string>>((resolve) => {
+        release = () => resolve(entries);
+      });
+    });
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    const include = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    include.checked = true;
+    include.dispatchEvent(new window.Event("change") as unknown as Event);
+    await settle();
+    const preview = document.querySelector(".agent-preview") as HTMLElement;
+    assert.ok((preview.textContent ?? "").includes(WRITTEN), "the answer never got there");
+
+    // Act — untick, and hold the store read open so the rebuild cannot finish.
+    hold = true;
+    include.checked = false;
+    include.dispatchEvent(new window.Event("change") as unknown as Event);
+    await settle();
+
+    // Assert
+    assert.ok(
+      !(preview.textContent ?? "").includes(WRITTEN),
+      "the withdrawn answer stayed on the consent surface while the rebuild ran",
+    );
+    const copy = [...document.querySelectorAll("button")].find((one) =>
+      one.textContent?.includes("Copy"),
+    );
+    assert.equal(copy?.getAttribute("aria-disabled"), "true", "it could still be copied");
+    release();
+  });
+
+  it("wireQuestionControls_TheStoreRefusingToBeRead_SaysSoRatherThanShowingAThinnerPrompt", async () => {
+    // Arrange — negative case. This resolved to an empty Map inside app.ts, which the panel
+    // cannot tell apart from "nothing written yet": the reader ticked the box, watched the
+    // preview not change, and was told nothing. For a repeat it also drops every instance
+    // identifier, which 0015 · C3 forbids and which produces a reply the importer refuses.
+    const noisy = console.error;
+    console.error = (): void => {};
+    const document = worksheet("day4.eulogy");
+    wireQuestionControls(document, memoryStorage("on"), () =>
+      Promise.reject(new Error("the store would not open")),
+    );
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    console.error = noisy;
+
+    // Assert
+    const preview = document.querySelector(".agent-preview");
+    assert.match(preview?.textContent ?? "", /could not be read/, "the failure is silent");
+    const copy = [...document.querySelectorAll("button")].find((one) =>
+      one.textContent?.includes("Copy"),
+    );
+    assert.equal(copy?.getAttribute("aria-disabled"), "true", "a prompt nobody built is copyable");
+  });
+
+  it("wireQuestionControls_ThePanel_PutsThePayloadAheadOfTheConsentAndTheControl", async () => {
+    // Arrange — 0007 · 1 is an order as much as a list: nothing may ask the reader to agree to
+    // something they have not been shown. Reversing the append left the copy button above the
+    // text it copies with the suite green, and the scroll note pointed "below" from underneath
+    // the box it described.
+    const document = worksheet("day4.eulogy");
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    const panel = document.querySelector(".agent-panel") as HTMLElement;
+    const order = [...panel.children].map((child) =>
+      child.tagName === "BUTTON" ? "button" : (child.className || child.tagName.toLowerCase()),
+    );
+
+    // Assert
+    assert.deepEqual(order, ["label", "agent-scroll", "agent-preview", "agent-note", "button"]);
+  });
+
+  it("wireQuestionControls_APayloadThatFits_DoesNotClaimThereIsMoreBelow", async () => {
+    // Arrange — happy-dom has no layout (0014 · C3), so every box measures zero and the note
+    // stays hidden. That is the honest outcome to assert here: whether a payload overflows is
+    // the one property of this panel only a real device can decide, and the note used to be
+    // emitted unconditionally — telling a reader to scroll a box with nothing out of sight.
+    const document = worksheet("day4.eulogy");
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+
+    // Assert
+    const note = document.querySelector(".agent-scroll") as HTMLElement;
+    assert.equal(note.hidden, true, "it claims there is more to scroll when nothing overflows");
+  });
+
   it("wireQuestionControls_TheControl_IsShapedAndLabelledForSomebodyUsingIt", async () => {
     // Arrange — a table, because each of these was separately deletable with the suite green
     // and each is the kind of thing that reads as decoration until somebody is relying on it.
@@ -461,12 +596,23 @@ describe("the copy control on a question", () => {
 
     // Assert
     assert.ok((open.textContent ?? "").trim().length > 0, "the button has no visible label");
-    assert.match(open.getAttribute("aria-label") ?? "", /Eulogy/, "it is not named for its question");
+    assert.match(
+      open.getAttribute("aria-label") ?? "",
+      /The eulogy test/,
+      "it is not named for its question",
+    );
     assert.equal(open.getAttribute("aria-controls"), panel.id, "the panel is not associated");
     assert.equal(open.getAttribute("aria-expanded"), "true", "opening is not announced");
     assert.equal(preview.tagName, "PRE", "the payload loses its line breaks");
     assert.equal(preview.getAttribute("role"), "region", "the payload is not a landmark");
-    assert.ok((preview.getAttribute("aria-label") ?? "").length > 0, "the payload is unnamed");
+    // The name, not merely A name: `length > 0` accepted "x", and accepted the raw group id
+    // this region actually carried — "…copied for day4.eulogy" — inside the panel whose own
+    // button goes to lengths to avoid saying that.
+    assert.equal(
+      preview.getAttribute("aria-label"),
+      "The exact text that will be copied for 5. The eulogy test (10 min)",
+      "the payload region is unnamed, or named by its identifier",
+    );
     assert.equal(preview.tabIndex, 0, "a scrollable payload keyboard users cannot reach");
     assert.equal(copy.type, "button", "a submit button inside a form navigates the page away");
     const label = document.querySelector("label");
@@ -479,23 +625,96 @@ describe("the copy control on a question", () => {
     assert.equal(open.getAttribute("aria-expanded"), "false");
   });
 
-  it("wireQuestionControls_AGroupOrSentenceQuestion_IsNamedInWordsNotAnIdentifier", async () => {
-    // Arrange — `group` and `sentence` questions carry no label, so a quarter of the controls
-    // read out a frozen identifier to a screen reader: "Ask an assistant about day5.career".
-    // That is the problem the attribute was added to solve. Only a `single` was covered.
-    const document = worksheet("day5.career", "day4.enough_and_more_1");
+  /** The accessible names on a page, with the fixed prefix stripped. */
+  function namesOn(document: Document): string[] {
+    return [...document.querySelectorAll("button.agent-open")].map((one) =>
+      (one.getAttribute("aria-label") ?? "").replace("Ask an assistant about ", ""),
+    );
+  }
+
+  it("wireQuestionControls_AQuestionWithoutItsOwnLabel_IsNamedByTheHeadingAboveIt", async () => {
+    // Arrange — the ask's FIRST line, which is the heading printed directly above the control.
+    // This took the LAST line, the one nearest the anchor, which on day 5 is the tail of a
+    // paragraph the five questions share: all five announced "Ask an assistant about gap?".
+    // The check that was here — non-empty, and not the literal id — is satisfied by five
+    // identical fragments, so it certified the fix while the defect it named got worse.
+    const EXPECTED = ["Career", "Money", "Place"];
+    const document = worksheet("day5.career", "day5.money", "day5.place");
 
     // Act
     wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
-    const named = [...document.querySelectorAll("button.agent-open")].map(
-      (one) => one.getAttribute("aria-label") ?? "",
-    );
 
     // Assert
-    for (const label of named) {
-      assert.ok(label.length > 0, "a control has no accessible name");
-      assert.ok(!/day5\.career|day4\.enough_and_more_1/.test(label), `raw identifier: ${label}`);
-    }
+    assert.deepEqual(namesOn(document), EXPECTED);
+  });
+
+  it("wireQuestionControls_ARepeatQuestion_IsNotNamedByItsSlotLabel", async () => {
+    // Arrange — a repeat's `label` names one SLOT: day 2 renders "Value 1", "Value 2"… under
+    // four separate groups whose label is all four times "Value". Preferring the label gave
+    // that page four identical buttons standing for four different questions, and rigorous
+    // day 2 five. The heading is the thing that tells them apart.
+    const document = worksheet("day2.shortlist_ten", "day2.shortlist_five", "day2.ranked");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    const named = namesOn(document);
+
+    // Assert
+    assert.ok(!named.includes("Value"), `named by its slot label: ${named.join(" | ")}`);
+    assert.equal(named[0], "2. Narrow to 10 (10 min)");
+    assert.equal(new Set(named).size, named.length, `not distinct: ${named.join(" | ")}`);
+  });
+
+  it("wireQuestionControls_EveryQuestionOnOnePage_IsNamedDistinctly", async () => {
+    // Arrange — the whole purpose of the attribute (0001): a screen reader listing this page's
+    // buttons finds five "Ask an assistant" with nothing saying which is which. Distinctness
+    // was never asserted, which is how five identical names shipped.
+    const GROUPS = ["day5.career", "day5.money", "day5.place", "day5.people", "day5.time"];
+    const document = worksheet(...GROUPS);
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    const named = namesOn(document);
+
+    // Assert
+    assert.equal(named.length, GROUPS.length, "a question lost its control");
+    assert.equal(new Set(named).size, GROUPS.length, `not distinct: ${named.join(" | ")}`);
+  });
+
+  it("wireQuestionControls_TheSameSentenceAskedTwice_SaysWhichOfThemItIs", async () => {
+    // Arrange — day 4 asks one sentence twice on purpose, so the rule above ties honestly and
+    // the tie still has to be broken. A `sentence` is named by its own text, with the `{gap}`
+    // spelled out: dropping the braces alone inverts it — "the world has enough excess".
+    const SENTENCE = "The world has enough blank. It needs more blank.";
+    const SECOND = 2;
+    const document = worksheet("day4.enough_and_more_1", "day4.enough_and_more_2");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    const named = namesOn(document);
+
+    // Assert
+    assert.equal(named[0], SENTENCE);
+    assert.equal(named[1], `${SENTENCE} (${SECOND})`);
+  });
+
+  it("wireQuestionControls_AMarkdownOrOverlongHeading_IsStillReadableAloud", async () => {
+    // Arrange — negative case. The ask is Markdown source, so unstripped a screen reader reads
+    // "asterisk asterisk Patterns", and uncut the button's name is a 79-character heading.
+    // Both mutations survived: nothing asserted either.
+    const LONGEST = 60;
+    const ELLIPSIS = "…";
+    const document = worksheet("day1.drainers", "day1.patterns");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    const named = namesOn(document);
+
+    // Assert
+    assert.equal(named[0], "5 that drained you:", "the emphasis marks are read out");
+    assert.ok(!named.some((one) => /[*_`>#]/.test(one)), `markdown survived: ${named.join(" | ")}`);
+    assert.ok((named[1] ?? "").length <= LONGEST, `an unreadable name: ${named[1]}`);
+    assert.ok((named[1] ?? "").endsWith(ELLIPSIS), "the name is cut with nothing to signal it");
   });
 
   it("wireQuestionControls_APanelRebuilding_HoldsTheCopyUntilItHasSomethingToCopy", async () => {

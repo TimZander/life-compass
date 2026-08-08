@@ -167,6 +167,43 @@ describe("deciding whether to open a store", () => {
     assert.equal(controls, 1, "the question grew no copy control");
   });
 
+  it("app_TheStoreRefusingToOpen_LeavesThePanelSayingSoRatherThanQuietlyDroppingTheAnswers", async () => {
+    // Arrange — the `readEntries` callback had no test of any kind: flush-before-read, the
+    // memoised handle and the failure path all survived mutation. This is the failure path,
+    // and it is not hypothetical here — there is no IndexedDB in this environment, which is
+    // the same thing a reader meets with site data blocked or in private browsing.
+    //
+    // It used to resolve to an empty Map. The panel cannot tell that apart from "nothing
+    // written yet", so the reader ticked "include what I have already written", watched the
+    // preview not change, and was told nothing. For a repeat it silently drops every instance
+    // identifier as well, which 0015 · C3 forbids outright.
+    const SETTLE = 8;
+    const window = install(new Window({ url: "https://example.test/days/day-1-excavation" }), {});
+    window.localStorage.setItem("life-compass:assistant", "on");
+    window.document.body.innerHTML = pageBody(
+      null,
+      '<p class="q-single" data-question="day4.eulogy">x</p>',
+    );
+    const noise = console.error;
+    console.error = (): void => {};
+    try {
+      await start();
+      (window.document.querySelector("button.agent-open") as unknown as HTMLElement).click();
+      for (let turn = 0; turn < SETTLE; turn += 1) {
+        await Promise.resolve();
+      }
+    } finally {
+      console.error = noise;
+    }
+
+    // Act
+    const shown = window.document.querySelector(".agent-preview")?.textContent ?? "";
+    void window.close();
+
+    // Assert
+    assert.match(shown, /could not be read/, `the store failure was hidden: ${shown}`);
+  });
+
   it("app_APageOfProseOnly_DoesNothingAtAll", async () => {
     // Arrange — negative case, and the reason the gate exists. A decision record should not
     // prompt anybody about storage, and 0010 keeps it readable and printable with no script

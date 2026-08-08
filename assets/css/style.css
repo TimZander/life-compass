@@ -75,15 +75,10 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 /* Keeping a copy. Set apart from the worksheet by a rule and a tint rather than a border
    box, so it reads as a footer to the page's work and not as another question. It is
    `hidden` in the markup until the script confirms storage actually opens (0008). */
-.backup{margin:3.5em 0 0;padding:1.6em 0 0;border-top:1px solid var(--rule)}
-.backup h2{font-size:1.3rem;margin:0 0 .5em}
-.backup p{margin:0 0 .8em;font-size:.95rem}
-.backup-note{color:var(--muted);font-size:.86rem;font-style:italic}
 #backup-save{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
 #backup-save:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
 #backup-save:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 #backup-save[aria-disabled="true"]{opacity:.6;cursor:progress}
-.backup h3{font-size:1.05rem;margin:1.8em 0 .4em}
 /* The file input itself is replaced by its label, which is styled as a button — the native
    control renders differently on every platform and reads as "no file chosen" until one is,
    which is a status nobody asked for next to a destructive action. */
@@ -150,7 +145,7 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
    roughly a quarter was visible, inside a box whose own boundary was 1.10:1 against the page —
    so the reader could neither read the rest nor tell there was a rest. Taller, larger, and
    bounded by something visible. */
-.agent-preview{max-height:70vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92rem;line-height:1.55;padding:.8em .9em;margin:0 0 .5em;background:var(--bg);border:1px solid var(--muted);border-radius:4px}
+.agent-preview{max-height:70vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92rem;line-height:1.55;padding:.8em .9em;margin:0 0 .5em;background:var(--bg);border:1px solid var(--accent);border-radius:4px}
 /* Said plainly rather than left to an overlay scrollbar that appears only while scrolling. */
 .agent-scroll{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:0 0 .7em}
 .agent-preview:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
