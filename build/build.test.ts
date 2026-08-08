@@ -17,7 +17,7 @@ import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion } from "./questions.ts";
-import { schemaModule } from "./client.ts";
+import { schemaSource } from "./schema.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -138,34 +138,51 @@ describe("the stylesheet and the markup agreeing", () => {
 });
 
 describe("the schema the client receives", () => {
-  /** Read WORKSHEETS back out of the emitted module, the way the browser would. */
+  /** Read WORKSHEETS back out of a generated module, the way an importer would. */
   function worksheetsIn(code: string): unknown {
-    const found = /export const WORKSHEETS = ([\s\S]*);\n$/.exec(code);
+    const found = /WORKSHEETS[^=]*= ([\s\S]*);\n$/.exec(code);
     assert.ok(found?.[1] !== undefined, "the schema module does not export WORKSHEETS");
     return JSON.parse(found[1]);
   }
 
-  it("schemaModule_Always_CarriesTheSameDefinitionsAsQuestionsJson", async () => {
-    // Arrange — the agreement, not either side of it. Two artifacts now describe the
-    // question set: questions.json for anything outside the page, and this module for the
-    // page itself. They are generated from one source, and this is what keeps that true —
-    // the shape of check #57 shipped without, when two counts of one store disagreed.
+  it("schemaSource_Always_CarriesTheSameDefinitionsAsQuestionsJson", async () => {
+    // Arrange — the agreement, not either side of it. Two artifacts describe the question
+    // set: questions.json for anything outside the page, and the emitted module for the page
+    // itself. Both come from one source, and this is what keeps that true — the shape of
+    // check #57 shipped without, when two counts of one store disagreed.
     const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-"));
     temporary.push(out);
 
     // Act
     await build({ root: ROOT, out });
-    const module = await readFile(path.join(out, "assets/js/schema.js"), "utf8");
+    const emitted = await readFile(path.join(out, "assets/js/schema.js"), "utf8");
     const json = JSON.parse(await readFile(path.join(out, "questions.json"), "utf8"));
 
     // Assert
-    assert.deepEqual(worksheetsIn(module), json.worksheets);
+    assert.deepEqual(worksheetsIn(emitted), json.worksheets);
   });
 
-  it("schemaModule_Always_IsPrecachedSoTheBridgeWorksOffline", async () => {
-    // Arrange — the whole workbook is precached rather than a shell, and a schema the
-    // client cannot read offline would make the agent bridge the one part of the site that
-    // needs the network — in an application whose claim is that it needs none.
+  it("schemaSource_Emitted_IsStrippedOfTheTypeImportThatCannotShip", async () => {
+    // Arrange — the module names `Worksheet` so it typechecks, and that type lives outside
+    // the client tier. build/client.ts rewrites relative specifiers to `.js`, and
+    // `../questions/index.js` is not a file the browser is ever served, so a value import
+    // would 404 the whole module. `import type` is what makes it disappear before it ships.
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-emit-"));
+    temporary.push(out);
+
+    // Act
+    await build({ root: ROOT, out });
+    const emitted = await readFile(path.join(out, "assets/js/schema.js"), "utf8");
+
+    // Assert
+    assert.ok(!emitted.includes("../questions/"), "the emitted module imports something unserved");
+    assert.ok(emitted.includes("export const WORKSHEETS"), "the emitted module exports nothing");
+  });
+
+  it("schemaSource_Always_IsPrecachedSoTheBridgeWorksOffline", async () => {
+    // Arrange — the whole workbook is precached rather than a shell, and a schema the client
+    // cannot read offline would make the agent bridge the one part of the site that needs the
+    // network, in an application whose claim is that it needs none.
     const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-sw-"));
     temporary.push(out);
 
@@ -180,13 +197,12 @@ describe("the schema the client receives", () => {
     assert.ok(precached.has("/assets/js/schema.js"), "the schema module is not precached");
   });
 
-  it("schemaModule_EveryWorksheet_ReachesTheClient", async () => {
+  it("schemaSource_EveryWorksheet_ReachesTheClient", async () => {
     // Arrange — a module that parsed but carried half the workbook would satisfy the
     // agreement above only if questions.json were wrong in the same way. This asks the
     // definitions themselves.
     // Act
-    const module = schemaModule(WORKSHEETS);
-    const carried = worksheetsIn(module.code) as { source: string }[];
+    const carried = worksheetsIn(schemaSource(WORKSHEETS)) as { source: string }[];
 
     // Assert
     assert.deepEqual(
@@ -195,16 +211,13 @@ describe("the schema the client receives", () => {
     );
   });
 
-  it("schemaModule_NoWorksheets_StillEmitsAModuleThatParses", async () => {
-    // Arrange — negative case. An empty set is not a reason to emit something the browser
-    // cannot load: a syntax error here takes down whatever imports it, and build/client.ts
-    // carries a comment about that exact failure being hard to trace from the import site.
-    // Act
-    const module = schemaModule([]);
-
-    // Assert
-    assert.deepEqual(worksheetsIn(module.code), []);
-    assert.equal(module.output, "assets/js/schema.js");
+  it("schemaSource_NoWorksheets_StillProducesAModuleThatParses", async () => {
+    // Arrange — negative case. An empty set is no reason to write something that cannot be
+    // loaded: build/client.ts carries a comment about a syntax error here being a harder
+    // failure to trace than a thrown error, because every export becomes undefined at the
+    // import site.
+    // Act & Assert
+    assert.deepEqual(worksheetsIn(schemaSource([])), []);
   });
 });
 
@@ -552,7 +565,6 @@ describe("build", () => {
       "index.html",
       "one.html",
       "questions.json",
-      "schema.js",
       "sw.js",
       "thing.txt",
     ]);

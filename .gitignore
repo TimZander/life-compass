@@ -17,6 +17,10 @@ _site/
 .jekyll-metadata
 Gemfile.lock
 
+# Generated: the question definitions, written into the client tier by build/schema.ts
+# so Node, tsc and the browser all read one file. Rebuilt by the pre* npm hooks.
+src/client/schema.ts
+
 # Build output and tooling
 dist/
 node_modules/

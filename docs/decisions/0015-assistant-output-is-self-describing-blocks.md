@@ -259,6 +259,15 @@ groups; and it must not embed an example block in this format, because a reader 
 prompt back — a plausible mis-tap moments after copying it — would otherwise be handing the
 importer a correctly-named block that is not a reply.
 
+**C8a.** *Added 2026-08-08.* C8's third constraint — no example block in the contract format
+— is relaxed to say *how* rather than forbid. Assistants follow an example far more reliably
+than a description of JSON in prose, and a prompt that produces malformed replies fails the
+reader more often than a mis-tap does. So the prompt carries a complete example whose `group`
+is a name the schema does not contain. It teaches the shape, and a reader who pastes the
+prompt back gets a loud refusal — a group not in the schema is already a refusal kind (C6) —
+rather than an example silently imported as their answers. The safeguard C8 asked for is kept;
+the cost to output quality is not.
+
 **C9.** A group with no answers stored still has a usable prompt: no identifiers travel, and
 every instance comes back new. The first exchange with an assistant is the common case, not
 the edge one, and it must not be the awkward path.
