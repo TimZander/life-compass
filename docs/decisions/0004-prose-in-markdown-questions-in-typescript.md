@@ -98,3 +98,21 @@ ways caught what it was written for. It did not catch a sentence gap with no fie
 field with no gap, a repeated gap name, a duplicate field id, an empty question, or a
 straight apostrophe in generated text — each invisible in the built page, each now its own
 build failure in `checkSchema`.
+
+**C8. The prose has to be read back, because the split hid the question from everything but
+the page.** *Added 2026-08-08.* This record put a question's words in Markdown and its
+identity in TypeScript. That is right for rendering a blank beside its own paragraph, and it
+leaves the definitions knowing a label and not an ask — invisible until something had to
+state a question somewhere else. A generated assistant prompt for `day4.eulogy` said "Eulogy"
+and nothing more, while the Markdown two lines above asked the real question; 50 of the 113
+questions are singles whose whole self-description is a label, so five of Day 5's read
+identically.
+
+The prose is now read back off the page at build time and carried in the schema, rather than
+restated in TypeScript — one copy, so it cannot drift from what the reader is looking at. The
+split this record chose stays intact; what it cost is repaired. Because the rule is
+structural — the content since the nearest anchor, heading or list boundary — rather than
+textual, it can meet a worksheet shape it has not seen, so the build refuses when any
+question's ask comes out empty. That is what makes a wrong rule loud rather than plausible,
+and both halves were needed: seven questions came out empty on the first attempt and one on
+the second, each in a shape the rule had not met.

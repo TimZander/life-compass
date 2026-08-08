@@ -16,7 +16,8 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
-import { renderQuestion } from "./questions.ts";
+import { renderQuestion, loadSchema } from "./questions.ts";
+import { render } from "./markdown.ts";
 import { checkSpecifiers } from "./client.ts";
 
 /** Every page the site is expected to publish. */
@@ -134,6 +135,156 @@ describe("the stylesheet and the markup agreeing", () => {
       !css.includes("#restore-go[disabled]"),
       "the stylesheet still targets an attribute the markup never sets",
     );
+  });
+});
+
+describe("the prose that introduces a question", () => {
+  /** Render one page's worth of Markdown and read back what each anchor claimed. */
+  function asksIn(markdown: string): Map<string, string> {
+    const schema = loadSchema(WORKSHEETS);
+    const rendered = render(markdown, "fixture.md", {
+      questions: schema.byId,
+      urls: new Map<string, string>(),
+      assets: new Set<string>(),
+    });
+    return new Map(rendered.asks);
+  }
+
+  const ANCHOR_ONE = "<!-- questions: day1.chapters -->";
+  const ANCHOR_TWO = "<!-- questions: day1.peaks -->";
+
+  it("render_AProseParagraphAboveTheAnchor_IsTheAsk", () => {
+    // Arrange — the ordinary shape, and the one that makes the feature work at all: the
+    // definitions carry a label, docs/decisions/0004 keeps the question itself in Markdown.
+    const ASK = "What did you love doing at ten that you no longer do?";
+
+    // Act
+    const asks = asksIn(`${ASK}\n\n${ANCHOR_ONE}\n`);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), ASK);
+  });
+
+  it("render_AnAnchorNestedInAListItem_TakesTheItemAndNotTheListAboveIt", () => {
+    // Arrange — Day 4 asks three questions as bullets with the anchor indented under each.
+    const MINE = "**Who do you want to be useful to?** Be specific.";
+    const markdown = `- Something else entirely.\n\n- ${MINE}\n\n  ${ANCHOR_ONE}\n`;
+
+    // Act
+    const asks = asksIn(markdown);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), MINE);
+  });
+
+  it("render_AListAboveTheAnchor_IsNotCollected", () => {
+    // Arrange — negative case, and a real failure this rule had. The rigorous Day 3 lists
+    // History and Spending as bullets, then introduces the calendar in its own paragraph.
+    // Walking back across the list collected the bullet about spending as though it
+    // introduced the calendar — a plausible-looking ask that was simply the wrong question.
+    const MINE = "**Calendar:**";
+    const markdown = `- **Spending:** what do you spend on without resentment?\n\n${MINE}\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const asks = asksIn(markdown);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), MINE);
+  });
+
+  it("render_ConsecutiveAnchors_ShareTheLeadInAboveThem", () => {
+    // Arrange — Day 4 puts one instruction above four sentence questions in a row. The
+    // second has nothing between it and the first, and an empty ask would be worse than a
+    // shared one.
+    const LEAD = "Finish these sentences (multiple times if needed):";
+
+    // Act
+    const asks = asksIn(`${LEAD}\n\n${ANCHOR_ONE}\n\n${ANCHOR_TWO}\n`);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), LEAD);
+    assert.equal(asks.get("day1.peaks"), LEAD);
+  });
+
+  it("render_AnAnchorBelowAnother_SeesTheAnchorAndNotTheQuestionItBecame", () => {
+    // Arrange — the subtlest failure this had. The render pass REPLACES an anchor's content
+    // with the markup it generated, and the ask was being read in that same pass, so a
+    // question could not recognise the anchor above it — already rewritten — and walked
+    // straight through into the previous question's lead-in. It read as a plausible ask.
+    const FIRST = "**History:** what do you return to?";
+    const SECOND = "**Calendar:**";
+
+    // Act
+    const asks = asksIn(`${FIRST}\n\n${ANCHOR_ONE}\n\n${SECOND}\n\n${ANCHOR_TWO}\n`);
+
+    // Assert
+    assert.equal(asks.get("day1.peaks"), SECOND, "it reached past the anchor above it");
+    assert.equal(asks.get("day1.chapters"), FIRST);
+  });
+
+  it("render_AHeadingBetweenTheProseAndTheAnchor_IsCarriedAsTheSubject", () => {
+    // Arrange — Day 5 asks one question five times under `### Career`, `### Money` and so
+    // on. Without the heading all five read identically; with only the heading none of them
+    // says what to ask. Both halves are needed, which is why both are asserted.
+    const LEAD = "For each dimension ask: is my setup aligned?";
+    const markdown = `${LEAD}\n\n### Money\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.includes("Money"), "the heading naming the subject is missing");
+    assert.ok(ask.includes(LEAD), "the prose that asks the question is missing");
+  });
+
+  it("render_AQuotedExampleBelowTheInstruction_IsKeptWithIt", () => {
+    // Arrange — Day 1 puts the instruction in a paragraph and an example in a blockquote
+    // beneath it, and Day 4 quotes a format with a bulleted example. A list inside a quote
+    // is part of the example rather than a sibling of the question, and treating it as a
+    // boundary left one question with no ask at all.
+    const INSTRUCTION = "Divide your life into chapters.";
+    const markdown = `${INSTRUCTION}\n\n> Example:\n>\n> - "The garage-band years"\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.includes(INSTRUCTION), "the instruction was dropped");
+    assert.ok(ask.includes("garage-band"), "the quoted example was treated as a boundary");
+  });
+
+  it("buildPages_RealContent_EveryQuestionHasAnAsk", async () => {
+    // Arrange — the property that matters, over the whole workbook rather than one shape.
+    // Seven questions came out empty on the first attempt and one on the second, each time
+    // in a shape the rule had not met.
+    const result = await site();
+
+    // Act
+    const missing = [...result.schema.byId.keys()].filter(
+      (id) => (result.asks.get(id) ?? "").trim() === "",
+    );
+
+    // Assert
+    assert.deepEqual(missing, []);
+  });
+
+  it("buildPages_AQuestionWithNoProseAnywhere_IsReported", async () => {
+    // Arrange — negative case. The rule is structural, so a worksheet written in a shape it
+    // has not seen can yield nothing, and nothing is the half that would otherwise be silent.
+    // A bare anchor with no prose and no heading above it is that case: a heading alone would
+    // supply an ask, which is the fallback working rather than the failure being tested.
+    const root = await fixture({ "README.md": `${ANCHOR_ONE}\n` });
+
+    // Act
+    const result = await buildPages({ root, worksheets: WORKSHEETS });
+    const reported = result.problems
+      .filter((problem) => problem.kind === "questionless-ask")
+      // Whole identifier, not a substring: `rday1.chapters` contains `day1.chapters`, and an
+      // earlier version of this test passed on the wrong question because of it.
+      .map((problem) => problem.detail.split(" ")[0]);
+
+    // Assert
+    assert.ok(reported.includes("day1.chapters"), "a question with no prose was not reported");
   });
 });
 
