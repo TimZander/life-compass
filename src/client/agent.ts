@@ -20,6 +20,7 @@
  */
 
 import { promptFor, priorFrom, findQuestion, explain } from "./prompt.ts";
+import { ASKS } from "./schema.ts";
 import { showBanner, dismissBanner } from "./banner.ts";
 import { bridgeIsOn, setBridge } from "./bridge.ts";
 
@@ -58,6 +59,17 @@ export function wireAgentPage(document: Document, storage: Storage | null): void
         : "Copy buttons are off. The worksheets are unchanged.",
     );
   });
+}
+
+/** A short human name for a question, for the places a screen reader reads one out. */
+function nameFor(question: { readonly kind: string; readonly id: string }, group: string): string {
+  if ("label" in question && typeof question.label === "string" && question.label !== "") {
+    return question.label;
+  }
+  const ask = (ASKS[group] ?? "").split("\n").filter((line) => line.trim() !== "");
+  const first = ask[ask.length - 1] ?? group;
+  const plain = first.replace(/[*_`>#]/g, "").trim();
+  return plain.length > 60 ? `${plain.slice(0, 57)}…` : plain;
 }
 
 /** Put text on the clipboard, or say why not. */
@@ -110,7 +122,7 @@ function panelFor(
   preview.className = "agent-preview";
   preview.tabIndex = 0;
   preview.setAttribute("role", "region");
-  preview.setAttribute("aria-label", "The exact text that will be copied");
+  preview.setAttribute("aria-label", `The exact text that will be copied for ${group}`);
 
   const copy = document.createElement("button");
   copy.type = "button";
@@ -124,6 +136,18 @@ function panelFor(
     "This is exactly what goes to your clipboard. Whatever you paste it into can keep it.";
 
   let shown: string | null = null;
+  /**
+   * Which rebuild is current.
+   *
+   * Two can overlap — open the panel, tick, untick — and without this the one that RESOLVES
+   * last wins rather than the one that STARTED last, so an older store read can paint over a
+   * newer preview. `shown` is cleared while one is in flight so a copy taken mid-rebuild
+   * cannot send the previous payload: with the checkbox just ticked the reader would believe
+   * their answers travelled when they did not, and with it just unticked the answers they
+   * removed would still be on the clipboard. 0007 · 1 makes the preview and the clipboard one
+   * value; a window where the checkbox disagrees with both is the same defect in time.
+   */
+  let generation = 0;
 
   /**
    * Rebuild from the store as it stands now, not as it stood at page load.
@@ -136,17 +160,25 @@ function panelFor(
    * none of them. Repeats are 334 of the 447 blanks.
    */
   const refresh = async (): Promise<void> => {
+    const mine = (generation += 1);
+    shown = null;
+    copy.setAttribute("aria-disabled", "true");
     const question = findQuestion(group);
     if (question === undefined) {
       preview.textContent = explain({ kind: "unknown-group", group });
-      shown = null;
       return;
     }
-    const prior = priorFrom(question, await readEntries(), include.checked);
-    const made = promptFor(group, prior);
+    // Read BEFORE the await, not after. It happens to be correct today only because argument
+    // evaluation runs left to right after the awaited call resolves — so hoisting this line,
+    // which is the obvious readability edit, would silently invert the preview.
+    const wanted = include.checked;
+    const entries = await readEntries();
+    if (mine !== generation) {
+      return;
+    }
+    const made = promptFor(group, priorFrom(question, entries, wanted));
     if (!made.ok) {
       preview.textContent = explain(made.refusal);
-      shown = null;
       return;
     }
     // `textContent`, never `innerHTML`: prior answers are the reader's own words, and a
@@ -154,6 +186,7 @@ function panelFor(
     // payload must not be a surface that executes it.
     preview.textContent = made.text;
     shown = made.text;
+    copy.removeAttribute("aria-disabled");
   };
 
   include.addEventListener("change", () => {
@@ -164,13 +197,20 @@ function panelFor(
     // Copies exactly what is on screen rather than rebuilding. 0007 · 1 means the preview and
     // the clipboard are ONE value; building it twice makes them two that usually agree.
     if (shown === null) {
-      say("There is nothing to copy for this question — the panel above says why.");
+      // `aria-disabled` rather than `disabled`: a disabled element cannot hold focus, so
+      // disabling the button somebody has just activated drops them to the document body
+      // mid-flow. The same reasoning as the restore control in export.ts.
+      say("Still working out what to copy — try again in a moment.");
       return;
     }
     copyToClipboard(shown);
   });
 
-  element.append(includeLabel, preview, note, copy);
+  const scrollNote = document.createElement("p");
+  scrollNote.className = "agent-scroll";
+  scrollNote.textContent = "The whole message is below — scroll it to read all of it.";
+
+  element.append(includeLabel, preview, scrollNote, note, copy);
   return { element, refresh };
 }
 
@@ -218,8 +258,11 @@ export function wireQuestionControls(
     open.textContent = "Ask an assistant";
     // Named for its own question. A screen reader listing this page's buttons would otherwise
     // find five identical "Ask an assistant" with nothing saying which is which (0001).
-    const named = question.kind === "single" || question.kind === "repeat" ? question.label : group;
-    open.setAttribute("aria-label", `Ask an assistant about ${named}`);
+    // `group` and `sentence` questions carry no label at all, so a quarter of these buttons
+    // read out a frozen identifier — "Ask an assistant about day5.career" — which is the
+    // problem this attribute was added to solve, not a solution to it. The ask's first line is
+    // what the reader sees on the page above it.
+    open.setAttribute("aria-label", `Ask an assistant about ${nameFor(question, group)}`);
 
     const panel = panelFor(document, group, readEntries);
     open.setAttribute("aria-controls", panel.element.id);

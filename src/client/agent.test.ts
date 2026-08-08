@@ -477,6 +477,52 @@ describe("the copy control on a question", () => {
     assert.equal(open.getAttribute("aria-expanded"), "false");
   });
 
+  it("wireQuestionControls_AGroupOrSentenceQuestion_IsNamedInWordsNotAnIdentifier", async () => {
+    // Arrange — `group` and `sentence` questions carry no label, so a quarter of the controls
+    // read out a frozen identifier to a screen reader: "Ask an assistant about day5.career".
+    // That is the problem the attribute was added to solve. Only a `single` was covered.
+    const document = worksheet("day5.career", "day4.enough_and_more_1");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    const named = [...document.querySelectorAll("button.agent-open")].map(
+      (one) => one.getAttribute("aria-label") ?? "",
+    );
+
+    // Assert
+    for (const label of named) {
+      assert.ok(label.length > 0, "a control has no accessible name");
+      assert.ok(!/day5\.career|day4\.enough_and_more_1/.test(label), `raw identifier: ${label}`);
+    }
+  });
+
+  it("wireQuestionControls_APanelRebuilding_HoldsTheCopyUntilItHasSomethingToCopy", async () => {
+    // Arrange — the store read is asynchronous, so between opening the panel and the payload
+    // arriving there is a window where the previous payload was still copyable. With the
+    // checkbox just ticked the reader believes their answers travelled when they did not;
+    // just unticked, the answers they removed are still on the clipboard. 0007 · 1 makes the
+    // preview and the clipboard one value, and this is that promise across time.
+    const document = worksheet("day4.eulogy");
+    let release: (value: ReadonlyMap<string, string>) => void = () => {};
+    const slow = (): Promise<ReadonlyMap<string, string>> =>
+      new Promise<ReadonlyMap<string, string>>((resolve) => {
+        release = resolve;
+      });
+    wireQuestionControls(document, memoryStorage("on"), slow);
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    const copy = [...document.querySelectorAll("button")].find((one) =>
+      one.textContent?.includes("Copy"),
+    ) as HTMLElement;
+
+    // Assert — held while in flight, released once the payload is on screen.
+    assert.equal(copy.getAttribute("aria-disabled"), "true", "the copy was live before the text");
+    release(new Map());
+    await settle();
+    assert.equal(copy.getAttribute("aria-disabled"), null, "the copy stayed held after arriving");
+  });
+
   it("wireQuestionControls_TheCopyControl_CarriesOnePlainSentenceAboutWhereItGoes", async () => {
     // Arrange — 0007 · 3 and · 4: one sentence at the control, said once, rather than a
     // confirmation on every copy that trains people to dismiss it.

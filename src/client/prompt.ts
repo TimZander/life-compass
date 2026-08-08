@@ -51,6 +51,15 @@ export type Generated =
 export type PriorInstance = {
   readonly id: string;
   readonly fields: ReadonlyMap<string, string>;
+  /**
+   * Whether anything is stored under it — which is not the same as whether it is being sent.
+   *
+   * Identifiers travel whether or not answers do (0015 · C3), so with answers withheld every
+   * instance arrives with an empty map. Without this flag they were all announced as "nothing
+   * written yet", which tells the assistant something untrue about a question the reader has
+   * already answered, and invites it to ask again for words they have deliberately not shared.
+   */
+  readonly written: boolean;
 };
 
 /**
@@ -119,15 +128,20 @@ export function priorFrom(
     const instances: PriorInstance[] = [];
     for (const id of order.instances) {
       const fields = new Map<string, string>();
-      if (includeAnswers) {
-        for (const field of question.fields) {
-          const value = entries.get(answerKey(question.id, id, field.id));
-          if (value !== undefined && value !== "") {
-            fields.set(field.id, value);
-          }
+      let written = false;
+      for (const field of question.fields) {
+        const value = entries.get(answerKey(question.id, id, field.id));
+        if (value === undefined || value === "") {
+          continue;
+        }
+        written = true;
+        // Read either way, carried only when asked for: the reader's opt-in governs the
+        // words, not whether this instance is known to exist.
+        if (includeAnswers) {
+          fields.set(field.id, value);
         }
       }
-      instances.push({ id, fields });
+      instances.push({ id, fields, written });
     }
     return { for: "instances", instances };
   }
@@ -244,7 +258,11 @@ function priorSection(question: Answerable, prior: Prior): string {
       // back with. Skipping the empty ones is what made a half-finished group un-importable.
       lines.push(`- id \`${neutralise(instance.id)}\``);
       if (instance.fields.size === 0) {
-        lines.push("  - (nothing written yet — ask me about this one)");
+        lines.push(
+          instance.written
+            ? "  - (I have answered this one already, and have not shared it with you here)"
+            : "  - (nothing written yet — ask me about this one)",
+        );
         continue;
       }
       for (const [field, value] of instance.fields) {

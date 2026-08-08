@@ -326,6 +326,27 @@ describe("answers the reader already has", () => {
     }
   });
 
+  it("priorFrom_AnswersWithheld_SaysSoRatherThanClaimingNothingIsWritten", () => {
+    // Arrange — identifiers travel whether or not answers do (0015 · C3), so with the answers
+    // opt-in off every instance arrives with an empty map. Announcing all of them as "nothing
+    // written yet" tells the assistant something untrue about a question the reader HAS
+    // answered, and invites it to ask again for words they deliberately did not share.
+    const entries = new Map<string, string>([
+      ["day1.chapters", JSON.stringify(["answered-1", "empty-2"])],
+      ["day1.chapters.answered-1.title", "Something I wrote and kept back"],
+    ]);
+    const question = findQuestion("day1.chapters");
+    assert.ok(question !== undefined);
+
+    // Act
+    const text = textFor("day1.chapters", priorFrom(question, entries, false));
+
+    // Assert
+    assert.ok(!text.includes("Something I wrote"), "a withheld answer travelled");
+    assert.match(text, /answered this one already/i, "an answered instance is called empty");
+    assert.match(text, /nothing written yet/i, "an empty instance is not called empty");
+  });
+
   it("priorFrom_AnswersNotAskedFor_StillCarriesTheIdentifiers", () => {
     // Arrange — 0015 · C3's actual words: an identifier is structure rather than content, so
     // it does not wait on a decision about content. Withholding ids with the answers is what
@@ -355,7 +376,7 @@ describe("answers the reader already has", () => {
     // reference 0011 was written to prevent and 0013 rejected outright.
     const ID = "5f1c8e2a-9b7d-4c31-8a0e-2f6d1b4c7e35";
     const WRITTEN = "The garage-band years";
-    const prior: Prior = { for: "instances", instances: [{ id: ID, fields: new Map([["title", WRITTEN]]) }] };
+    const prior: Prior = { for: "instances", instances: [{ id: ID, fields: new Map([["title", WRITTEN]]), written: new Map([["title", WRITTEN]]).size > 0 }] };
 
     // Act
     const text = textFor("day1.chapters", prior);
@@ -370,7 +391,7 @@ describe("answers the reader already has", () => {
     // Arrange — negative case, and reachable: 0013 mints identifiers on first write, so a
     // repeat with an order and no answers under it is an ordinary state. The version this
     // replaces emitted the heading over blank space.
-    const prior: Prior = { for: "instances", instances: [{ id: "abc", fields: new Map() }] };
+    const prior: Prior = { for: "instances", instances: [{ id: "abc", fields: new Map(), written: new Map().size > 0 }] };
 
     // Act
     const text = textFor("day1.chapters", prior);
@@ -447,7 +468,7 @@ describe("refusals", () => {
     // Arrange — negative case. A caller handing a repeat's answers to a question that has no
     // instances has read the store wrongly; the version this replaces rendered them anyway,
     // as a flat list implying one instance.
-    const prior: Prior = { for: "instances", instances: [{ id: "a", fields: new Map([["x", "y"]]) }] };
+    const prior: Prior = { for: "instances", instances: [{ id: "a", fields: new Map([["x", "y"]]), written: new Map([["x", "y"]]).size > 0 }] };
 
     // Act
     const made = promptFor("day4.eulogy", prior);
