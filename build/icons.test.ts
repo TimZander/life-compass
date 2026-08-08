@@ -156,13 +156,13 @@ describe("hashedName", () => {
 
     // Act & Assert — an unstable name would change the manifest on every build, which
     // makes a browser's update check meaningless in the other direction.
-    assert.equal(hashedName("icons/x", "png", content), hashedName("icons/x", "png", content));
+    assert.equal(hashedName("icons/x", content), hashedName("icons/x", content));
   });
 
   it("hashedName_DifferentContent_Differs", () => {
     // Act
-    const one = hashedName("icons/x", "png", Buffer.from("one"));
-    const two = hashedName("icons/x", "png", Buffer.from("two"));
+    const one = hashedName("icons/x", Buffer.from("one"));
+    const two = hashedName("icons/x", Buffer.from("two"));
 
     // Assert
     assert.notEqual(one, two);
@@ -174,7 +174,7 @@ describe("hashedName", () => {
     const BASE = "icons/icon-512";
 
     // Act
-    const named = hashedName(BASE, "png", Buffer.from("bytes"));
+    const named = hashedName(BASE, Buffer.from("bytes"));
 
     // Assert
     assert.match(named, new RegExp(`^${BASE}\\.[0-9a-f]{${DIGEST_LENGTH}}\\.png$`));

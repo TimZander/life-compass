@@ -19,6 +19,7 @@ import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion } from "./questions.ts";
 import { icons } from "./icons.ts";
+import { renderManifest } from "./manifest.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -134,6 +135,25 @@ describe("the stylesheet and the markup agreeing", () => {
       !css.includes("#restore-go[disabled]"),
       "the stylesheet still targets an attribute the markup never sets",
     );
+  });
+
+  it("styleSheet_TheManifestColours_AreTheColoursTheStylesheetPaints", async () => {
+    // Arrange — the same two colours are declared in three places: the manifest (which the
+    // OS paints an installed app's chrome and splash with), the layout's theme-color meta
+    // tag, and the stylesheet's custom properties. The manifest and the layout are held
+    // together by sharing a constant since #62; the stylesheet cannot import TypeScript, so
+    // this is what holds the third copy. Drift shows as an installed app whose chrome does
+    // not match the paper directly below it — obvious on a device, invisible in a diff.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const declared = JSON.parse(renderManifest());
+
+    // Act — read the palette back out of the stylesheet.
+    const accent = /--accent:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
+    const paper = /--bg:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
+
+    // Assert
+    assert.equal(declared.theme_color, accent, "theme_color is not the stylesheet's --accent");
+    assert.equal(declared.background_color, paper, "background_color is not the --bg painted");
   });
 });
 

@@ -175,16 +175,19 @@ export type Icon = {
  * build/serviceworker.ts. This is a cache-busting name, not a security claim: the cost of
  * a collision is a stale icon, and 32 bits against a set of three is not a risk worth
  * spending URL length on.
+ *
+ * `.png` is written in rather than passed, because every caller is an icon and a parameter
+ * with one possible value is a decision nobody made.
  */
-export function hashedName(base: string, extension: string, content: Buffer): string {
+export function hashedName(base: string, content: Buffer): string {
   const digest = createHash("sha256").update(content).digest("hex").slice(0, 8);
-  return `${base}.${digest}.${extension}`;
+  return `${base}.${digest}.png`;
 }
 
 /** Draw one icon and name it after what was drawn. */
 function icon(base: string, size: number, coverage: number, purpose: Icon["purpose"]): Icon {
   const png = drawIcon(size, coverage);
-  return { output: hashedName(base, "png", png), size, purpose, png };
+  return { output: hashedName(base, png), size, purpose, png };
 }
 
 let cached: readonly Icon[] | undefined;

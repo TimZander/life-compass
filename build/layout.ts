@@ -24,6 +24,13 @@ const SITE_TITLE = "Life Compass";
 const SITE_DESCRIPTION =
   "A five-day investigation into what matters most in your life. Your answers stay in this browser.";
 
+/**
+ * The copper accent, which the browser paints its chrome with. It is also the manifest's
+ * `theme_color` and the stylesheet's `--accent`: one colour, and an installed app whose
+ * OS chrome did not match the paper below it would be the visible sign of them drifting.
+ */
+const THEME_COLOR = "#9a6b3f";
+
 /** Escape text destined for an HTML text node or a double-quoted attribute. */
 function escapeHtml(value: string): string {
   return value
@@ -116,7 +123,7 @@ export function layout(content: string, pageTitle: string | null, isBackupPage: 
   <meta name="description" content="${escapeHtml(SITE_DESCRIPTION)}">
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#9a6b3f">
+  <meta name="theme-color" content="${THEME_COLOR}">
   <link rel="icon" href="${faviconHref()}" type="image/png">
   <!-- The installed app opens standalone, so the OS chrome takes its colour from here
        and the page is the only thing on screen. Matching the paper the pages are drawn
@@ -142,4 +149,7 @@ ${nav}
 `;
 }
 
-export { SITE_TITLE, documentTitle };
+// Exported because the manifest declares the same three things about the app, and two
+// copies of a sentence are two sentences (#62). The colour the stylesheet paints with is
+// a third copy that cannot import TypeScript; build.test.ts holds that one instead.
+export { SITE_TITLE, SITE_DESCRIPTION, THEME_COLOR, documentTitle };

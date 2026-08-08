@@ -17,26 +17,24 @@
  */
 
 import { icons, type Icon } from "./icons.ts";
-
-const NAME = "Life Compass";
+import { SITE_DESCRIPTION, SITE_TITLE, THEME_COLOR } from "./layout.ts";
 
 /**
- * Kept identical to the layout's meta description. Both are the first thing somebody sees
- * about the app before they have read a word of it — in a browser's install dialog here,
- * in a search result there.
+ * The name, the description and the accent come from the layout rather than being written
+ * again here. They are the same three things said twice — in a browser's install dialog
+ * from this file, in a `<meta>` tag and a `<title>` from that one — and a comment claiming
+ * the copies are identical is not what keeps them identical.
+ *
+ * The background colour has no counterpart in the layout; it is the paper the stylesheet
+ * paints, which cannot import TypeScript. build.test.ts holds that pair together instead.
  */
-const DESCRIPTION =
-  "A five-day investigation into what matters most in your life. Your answers stay in this browser.";
-
-/** The warm paper the pages are drawn on, and the copper accent. From the site's palette. */
 const BACKGROUND_COLOR = "#f6f4ee";
-const THEME_COLOR = "#9a6b3f";
 
 export function renderManifest(set: readonly Icon[] = icons()): string {
   const manifest = {
-    name: NAME,
-    short_name: NAME,
-    description: DESCRIPTION,
+    name: SITE_TITLE,
+    short_name: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     start_url: "/",
     id: "/",
     scope: "/",
