@@ -17,6 +17,10 @@ _site/
 .jekyll-metadata
 Gemfile.lock
 
+# Generated: the question definitions and their asks, written into the client tier by
+# build/schema.ts so Node, tsc and the browser all read one file.
+src/client/schema.ts
+
 # Scratch modules. build/client.ts emits every .ts in src/client, so a stray probe
 # file ships to dist and enters the service worker's precache.
 src/client/__*.ts

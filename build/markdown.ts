@@ -240,21 +240,45 @@ function askAt(tokens: readonly Token[], anchorIndexes: ReadonlySet<number>, anc
   return [heading, ...prose].filter((part) => part !== "").join("\n\n");
 }
 
-export function render(markdown: string, source: string, context: RenderContext): RenderResult {
+/**
+ * Every question this Markdown anchors, and the prose that introduces each.
+ *
+ * Parses its own token stream rather than sharing `render`'s. That costs one extra parse per
+ * worksheet and buys the thing that went wrong first: `render` REPLACES an anchor's content
+ * with the question it generated, so reading asks from a stream mid-rewrite let a question
+ * walk through the anchor above it — already rewritten, no longer recognisable — into the
+ * previous question's lead-in. Here nothing has been rewritten, so it cannot arise.
+ */
+export function asksIn(markdown: string): ReadonlyMap<string, string> {
   const tokens = md.parse(markdown, {});
-  // Before anything is rewritten below: where the anchors are, in the untouched stream.
   const anchorIndexes = new Set<number>();
+  const ids = new Map<number, string>();
   for (let at = 0; at < tokens.length; at += 1) {
     const token = tokens[at];
-    if (token?.type === "html_block" && ANCHOR.test(token.content.trim())) {
+    if (token?.type !== "html_block") {
+      continue;
+    }
+    const match = ANCHOR.exec(token.content.trim());
+    if (match !== null) {
       anchorIndexes.add(at);
+      ids.set(at, match[1] ?? "");
     }
   }
+
+  const asks = new Map<string, string>();
+  for (const [at, id] of ids) {
+    asks.set(id, askAt(tokens, anchorIndexes, at));
+  }
+  return asks;
+}
+
+export function render(markdown: string, source: string, context: RenderContext): RenderResult {
+  const tokens = md.parse(markdown, {});
+  const asks = asksIn(markdown);
   const slug = createSlugger();
   const links: ResolvedLink[] = [];
   const headingIds: string[] = [];
   const anchors: string[] = [];
-  const asks = new Map<string, string>();
   const taskMarkers: string[] = [];
   const fillMarkup: string[] = [];
   let title: string | null = null;
@@ -276,7 +300,6 @@ export function render(markdown: string, source: string, context: RenderContext)
       if (match !== null) {
         const id = match[1] ?? "";
         anchors.push(id);
-        asks.set(id, askAt(tokens, anchorIndexes, i));
         const question = context.questions.get(id);
         // An unresolvable anchor is reported by the build rather than thrown here;
         // leaving the comment in place keeps the failure legible in the output too.
