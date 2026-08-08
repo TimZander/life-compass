@@ -83,6 +83,7 @@ function install(window: Window, session: Session): Window {
 async function run(body: string, session: Session = {}): Promise<{
   readonly banner: string;
   readonly remaining: Record<string, string>;
+  readonly agentVisible: boolean;
 }> {
   const window = install(new Window({ url: "https://example.test/backup" }), session);
   window.document.body.innerHTML = body;
@@ -101,7 +102,7 @@ async function run(body: string, session: Session = {}): Promise<{
     remaining: { ...(window as unknown as { seen: Record<string, string> }).seen },
     // Read before the window closes: some decisions this module makes are visible only as
     // markup, and asserting on a banner cannot see them.
-    agentVisible: window.document.getElementById("agent")?.hidden === false,
+    agentVisible: window.document.querySelector("#agent:not([hidden])") !== null,
   };
   void window.close();
   return result;
