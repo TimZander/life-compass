@@ -10,6 +10,7 @@ import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers } from "./fields.ts";
 import { needsStore, saveBackup, wireBackup } from "./export.ts";
+import { wireAgentPage, wireQuestionControls } from "./agent.ts";
 
 /** Where a just-completed restore leaves its count, to be reported after the reload. */
 const RESTORED_KEY = "life-compass:restored";
@@ -114,6 +115,13 @@ async function bindAnswerFields(): Promise<void> {
       void answers.flush();
     }
   });
+
+  // The assistant bridge. Its page carries the opt-in; the worksheets carry the buttons, and
+  // only when the reader has turned them on (docs/decisions/0007, #67). The store is read
+  // once here and handed over, so a copy control never opens a second read on a page that
+  // may be mid-dictation.
+  wireAgentPage(document, window.localStorage);
+  wireQuestionControls(document, window.localStorage, await store.readAll());
 
   wireBackup(document, answers, store, {
     onHandedOver: (filename) =>

@@ -17,7 +17,7 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { before, describe, it } from "node:test";
-import { layout } from "../../build/layout.ts";
+import { layout, type Tools } from "../../build/layout.ts";
 
 type Session = { throws?: boolean; seed?: Record<string, string> };
 
@@ -105,8 +105,8 @@ async function run(body: string, session: Session = {}): Promise<{
 }
 
 /** The body of a real built page, so these run against what the build actually emits. */
-function pageBody(isBackupPage: boolean, content = "<p>prose</p>"): string {
-  const html = layout(content, "A page", isBackupPage);
+function pageBody(tools: Tools, content = "<p>prose</p>"): string {
+  const html = layout(content, "A page", tools);
   return html.slice(html.indexOf("<main"), html.indexOf("</body>"));
 }
 
@@ -116,7 +116,7 @@ describe("deciding whether to open a store", () => {
     // backup page has none, and so the page whose only purpose is the backup controls
     // returned before opening anything and revealed neither.
     // Act
-    const result = await run(pageBody(true));
+    const result = await run(pageBody("backup"));
 
     // Assert — it got as far as storage, and told the reader when storage was not there.
     assert.ok(
@@ -130,7 +130,7 @@ describe("deciding whether to open a store", () => {
     // prompt anybody about storage, and 0010 keeps it readable and printable with no script
     // having run.
     // Act
-    const result = await run(pageBody(false));
+    const result = await run(pageBody(null));
 
     // Assert
     assert.equal(result.banner, "", "a page of prose was given a storage message");
@@ -147,7 +147,7 @@ describe("reporting a restore that happened before this load", () => {
     // storage-failure message: this environment has no IndexedDB, and the banner region
     // shows the last message given to it. Which is itself worth knowing — a restore
     // confirmed and then followed by a storage failure shows only the failure.
-    const result = await run(pageBody(false), { seed: { "life-compass:restored": "7" } });
+    const result = await run(pageBody(null), { seed: { "life-compass:restored": "7" } });
 
     // Assert — said once, and cleared so it is not repeated on every later page.
     assert.ok(
@@ -160,7 +160,7 @@ describe("reporting a restore that happened before this load", () => {
   it("app_ASingleRestoredAnswer_IsCountedInTheSingular", async () => {
     // Arrange & Act — negative case for the pluralisation, which is in the sentence a
     // reader reads immediately after an irreversible action.
-    const result = await run(pageBody(false), { seed: { "life-compass:restored": "1" } });
+    const result = await run(pageBody(null), { seed: { "life-compass:restored": "1" } });
 
     // Assert
     assert.ok(result.banner.includes("Restored 1 answer "), result.banner);
@@ -173,7 +173,7 @@ describe("reporting a restore that happened before this load", () => {
     // explaining any of it. A rare-event confirmation disabling the whole application for
     // the readers most likely to hit it.
     // Act
-    const result = await run(pageBody(true), { throws: true });
+    const result = await run(pageBody("backup"), { throws: true });
 
     // Assert — it carried on to the storage attempt rather than stopping at the flag.
     assert.ok(

@@ -165,6 +165,7 @@ describe("shipped client scripts", () => {
     // app.js wires them up in the next slice. Listing them rather than allowing "at
     // least these" keeps the check able to notice a module that should not be shipping.
     assert.deepEqual(modules.map((module) => module.output).sort(), [
+      "assets/js/agent.js",
       "assets/js/answers.js",
       "assets/js/app.js",
       "assets/js/banner.js",
@@ -186,7 +187,7 @@ describe("shipped client scripts", () => {
     // restore control was wired to nothing.
     const entry = modules.find((module) => module.output === "assets/js/app.js");
     assert.ok(entry !== undefined, "no entry module was emitted");
-    for (const sibling of ["export", "import", "fields", "answers", "store", "banner", "sw-update"]) {
+    for (const sibling of ["agent", "export", "import", "fields", "answers", "store", "banner", "sw-update"]) {
       assert.ok(
         entry.code.includes(`"./${sibling}.js"`),
         `app.js does not import ${sibling}.js, so that feature reaches no page`,
@@ -371,7 +372,7 @@ describe("banner surface", () => {
     // the change, so creating it on demand and filling it in the same task is routinely
     // missed. 0001 makes that a defect rather than a nicety.
     // Act
-    const html = layout("<p>x</p>", "Page", true);
+    const html = layout("<p>x</p>", "Page", "backup");
 
     // Assert
     assert.ok(html.includes('<div id="banner-region" aria-live="polite"></div>'));

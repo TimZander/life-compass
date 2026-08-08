@@ -334,7 +334,7 @@ after(() => {
  * renaming an id shipped a control that only logged to the console, past a green suite.
  */
 function realControl(): string {
-  const html = layout("<p>prose</p>", "Backup", true);
+  const html = layout("<p>prose</p>", "Backup", "backup");
   const match = /<section class="tools" id="restore"[\s\S]*?<\/section>/.exec(html);
   assert.ok(match !== null, "the build no longer emits a restore control");
   return match[0];

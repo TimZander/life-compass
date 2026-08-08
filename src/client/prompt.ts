@@ -18,6 +18,7 @@
  */
 
 import type { Question, RepeatQuestion } from "../questions/types.ts";
+import { answerKey, orderKey, readOrder } from "./keys.ts";
 import { ASKS, WORKSHEETS } from "./schema.ts";
 
 /** The contract an assistant is asked to answer in — docs/decisions/0015. */
@@ -74,6 +75,70 @@ export function findQuestion(group: string): Question | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Assemble a group's stored answers into the shape a prompt can carry.
+ *
+ * This is the seam where an interface designed without its caller usually turns out not to
+ * fit, so it lives beside the type it produces and is tested against real stored keys rather
+ * than against an idea of them.
+ *
+ * A repeat's answers hang off instance identifiers whose order is itself a stored value
+ * (0013), and an unreadable order is not an empty one — `keys.ts` refuses the whole order
+ * rather than dropping entries, because dropping shifts every later instance up a slot. So an
+ * unreadable order yields no prior at all: better to interview from scratch than to hand an
+ * assistant identifiers that will not match on the way back.
+ *
+ * Returns `undefined` when there is nothing written, which is what keeps 0007 · 2's
+ * default-off honest — an empty section is not an opt-in with nothing in it.
+ */
+export function priorFrom(
+  question: Question,
+  entries: ReadonlyMap<string, string>,
+): Prior | undefined {
+  if (question.kind === "checklist") {
+    return undefined;
+  }
+
+  if (question.kind === "repeat") {
+    const order = readOrder(entries.get(orderKey(question.id)));
+    if (order.kind !== "order") {
+      return undefined;
+    }
+    const instances: PriorInstance[] = [];
+    for (const id of order.instances) {
+      const fields = new Map<string, string>();
+      for (const field of question.fields) {
+        const value = entries.get(answerKey(question.id, id, field.id));
+        if (value !== undefined && value !== "") {
+          fields.set(field.id, value);
+        }
+      }
+      instances.push({ id, fields });
+    }
+    return instances.some((instance) => instance.fields.size > 0)
+      ? { for: "instances", instances }
+      : undefined;
+  }
+
+  const fields = new Map<string, string>();
+  if (question.kind === "single") {
+    // A single has no field segment: its answer is stored under the question identifier
+    // itself. Keyed by that here so the label lookup has something to find.
+    const value = entries.get(question.id);
+    if (value !== undefined && value !== "") {
+      fields.set(question.id, value);
+    }
+  } else {
+    for (const field of question.fields) {
+      const value = entries.get(`${question.id}.${field.id}`);
+      if (value !== undefined && value !== "") {
+        fields.set(field.id, value);
+      }
+    }
+  }
+  return fields.size > 0 ? { for: "fields", fields } : undefined;
 }
 
 /**

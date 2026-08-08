@@ -124,3 +124,18 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .banner-primary:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
 .banner-action:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
 @media(max-width:540px){.banner{margin:0 .6rem .6rem}}
+
+/* The assistant bridge (#67). Absent entirely unless the reader opted in, so none of this
+   applies to a worksheet by default. */
+.agent-open{display:block;margin:.4em 0 0;font-family:var(--sans);font-size:.82rem;padding:.35em .9em;border-radius:6px;border:1px solid var(--rule);background:transparent;color:var(--muted);cursor:pointer}
+.agent-open:hover{border-color:var(--accent);color:var(--ink)}
+.agent-open:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+.agent-panel{margin:.6em 0 1.2em;padding:.9em 1em;border:1px solid var(--rule);border-radius:6px;background:var(--quote-bg)}
+.agent-panel label{display:block;font-family:var(--sans);font-size:.88rem;margin-bottom:.6em}
+/* 0007 · 1 wants the literal payload shown. On a phone that means it has to scroll rather
+   than run off the side of the page, and wrap rather than force the article to. */
+.agent-preview{max-height:22em;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.8rem;line-height:1.5;padding:.7em .8em;margin:0 0 .6em;background:var(--bg);border:1px solid var(--rule);border-radius:4px}
+.agent-preview:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
+.agent-note{font-family:var(--sans);font-size:.82rem;color:var(--muted);margin:0 0 .7em}
+.agent-panel button{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+.agent-panel button:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}

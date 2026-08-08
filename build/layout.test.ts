@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 /** Whether the page has anything to answer; the caller decides from the schema. */
-const ANSWERABLE = true;
+const ANSWERABLE = "backup";
 import { documentTitle, layout, SITE_TITLE } from "./layout.ts";
 import { COMPASS_ROSE } from "./icons.ts";
 
@@ -77,7 +77,7 @@ describe("the backup and restore controls", () => {
     // missing, so a rename ships a control that silently is not there. Nothing pinned the
     // restore ids at all: renaming any of them left the whole suite green.
     // Act
-    const html = layout("<p>body</p>", "Backup", true);
+    const html = layout("<p>body</p>", "Backup", "backup");
 
     // Assert
     for (const id of REQUIRED) {
@@ -89,7 +89,7 @@ describe("the backup and restore controls", () => {
     // Arrange — a control visible before the client can work is one somebody presses and
     // watches do nothing; a Replace button live on page load is worse than that.
     // Act
-    const html = layout("<p>body</p>", "Backup", true);
+    const html = layout("<p>body</p>", "Backup", "backup");
 
     // Assert
     assert.ok(/<section class="tools" id="backup"[^>]*\shidden>/.test(html), "backup not hidden");
@@ -105,7 +105,7 @@ describe("the backup and restore controls", () => {
     // Arrange — the one irreversible action in the application. The warning is the reason
     // the confirmation is more than a button.
     // Act
-    const html = layout("<p>body</p>", "Backup", true);
+    const html = layout("<p>body</p>", "Backup", "backup");
 
     // Assert
     assert.ok(html.includes("only way back"), "no warning that there is no way back");
@@ -117,7 +117,7 @@ describe("the backup and restore controls", () => {
     // every worksheet: export covers the whole store, and at the foot of Day 3 it read as
     // "back up Day 3".
     // Act
-    const html = layout('<p><span class="fill" data-field="t.a">___</span></p>', "A worksheet", false);
+    const html = layout('<p><span class="fill" data-field="t.a">___</span></p>', "A worksheet", null);
 
     // Assert
     for (const id of REQUIRED) {
@@ -132,7 +132,7 @@ describe("the wordmark", () => {
     // that resemble each other — build/icons.ts rasterises the same coordinates. Nothing
     // else holds them together, so this fails if either is edited alone.
     const COORDS_PER_POINT = 2;
-    const html = layout("<p>body</p>", null, false);
+    const html = layout("<p>body</p>", null, null);
 
     // Act — read the coordinates back out of the rendered wordmark.
     const path = /class="wm-mark"[^>]*>\s*<path d="([^"]+)"/.exec(html);
