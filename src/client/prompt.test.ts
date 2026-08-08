@@ -63,8 +63,8 @@ describe("what the assistant is asked to do", () => {
     const text = textFor("day1.chapters");
 
     // Assert
-    assert.match(text, /one question per message/i);
-    assert.match(text, /wait for my answer/i);
+    assert.match(text, /one question per\s+message/i);
+    assert.match(text, /wait for my\s+answer/i);
   });
 
   it("promptFor_Always_SaysToCollectEveryNamedPartAndToAskForOneByName", () => {
@@ -82,7 +82,7 @@ describe("what the assistant is asked to do", () => {
     const text = textFor("day1.chapters");
 
     // Assert
-    assert.match(text, /ask for it by name/i);
+    assert.match(text, /ask for it by\s+name/i);
   });
 
   it("promptFor_Always_AsksForMyWordsRatherThanAnImprovementOfThem", () => {
@@ -92,8 +92,109 @@ describe("what the assistant is asked to do", () => {
     const text = textFor("day1.chapters");
 
     // Assert
-    assert.match(text, /do not invent answers/i);
-    assert.match(text, /my own words/i);
+    assert.match(text, /do not invent\s+answers/i);
+    assert.match(text, /my own\s+words/i);
+  });
+});
+
+describe("the instructions the prompt is carrying", () => {
+  /**
+   * Every line the prompt exists to deliver, and what breaks without it.
+   *
+   * A mutation sweep found each of these deletable with the suite green — including the
+   * follow-up rule, which the module's own header calls "the part I cannot do alone", and
+   * the two lines the importer's contract depends on. Pinned as a table because they are one
+   * class of failure: prose that is load-bearing and looks decorative.
+   */
+  const LOAD_BEARING: readonly (readonly [pattern: RegExp, because: string])[] = [
+    [/one question per\s+message/i, "otherwise five questions arrive in one message (0001)"],
+    [/wait for my\s+answer/i, "the interview becomes a form read aloud"],
+    [/follow up when an answer is\s+thin/i, "the assistant stops probing, which is its whole value"],
+    [/ask for it by\s+name/i, "it infers a part instead of asking — seen in a real interview"],
+    [/do not invent\s+answers/i, "0007 · C3: nothing may be written on the reader's behalf"],
+    [/my own\s+words/i, "0001's premise is that the reader's own reflection is what is kept"],
+    [/say so and offer me the\s+block/i, "without a stop condition the interview never ends"],
+    // \s+ rather than a space throughout: the prompt is hard-wrapped, so a line break can
+    // fall anywhere inside a phrase and an exact-space pattern would fail on the wrapping
+    // rather than on the meaning.
+    [/the only fenced\s+block/i, "0015 scans every fence; a second one is imported too"],
+    [/plain text on one\s+line/i, "a newline inside a JSON string is invalid on the way back"],
+    [/leave that key\s*\n?\s*out entirely/i, "an empty value deletes a stored answer"],
+    [/never send an empty\s+string/i, "the same, said the other way round"],
+  ];
+
+  it("promptFor_Always_CarriesEveryInstructionItDependsOn", () => {
+    // Act
+    const text = textFor("day1.chapters");
+
+    // Assert
+    for (const [pattern, because] of LOAD_BEARING) {
+      assert.match(text, pattern, `missing: ${because}`);
+    }
+  });
+
+  it("promptFor_ARepeatWithPriorAnswers_AsksForEveryIdBack", () => {
+    // Arrange — the instruction that fixes the un-importable reply found in a real interview.
+    // Added one day and deletable the next, until this.
+    const entries = new Map<string, string>([["day1.chapters", JSON.stringify(["a-1", "b-2"])]]);
+    const question = findQuestion("day1.chapters");
+    assert.ok(question !== undefined);
+
+    // Act
+    const text = textFor("day1.chapters", priorFrom(question, entries, true));
+
+    // Assert
+    assert.match(text, /Return \*\*every\*\* id above/);
+    assert.match(text, /nothing written yet/i, "an empty slot is not marked as one");
+  });
+
+  it("promptFor_TheExampleBlock_AsksForTheFormatAndVersion0015Specifies", () => {
+    // Arrange — the literals from the record, not from this module's own constants: a test
+    // that reads the constant it is checking proves only that the constant equals itself.
+    // #68's importer will be pinned to the same two literals, and that is the tie between
+    // them until a shared module exists.
+    const FORMAT = "life-compass/agent-answers";
+    const VERSION = 1;
+
+    // Act
+    const fenced = /```\n([\s\S]*?)\n```/.exec(textFor("day1.chapters"));
+    assert.ok(fenced?.[1] !== undefined, "there is no example block");
+    const example = JSON.parse(fenced[1]);
+
+    // Assert
+    assert.equal(example.format, FORMAT);
+    assert.equal(example.version, VERSION);
+    assert.equal(typeof example.version, "number", "a string version is refused on the way back");
+  });
+
+  it("promptFor_ARepeatOfTenSlots_AsksForTenAndNotAFixedFive", () => {
+    // Arrange — `slotsFor` returning a constant 5 passed every test, because every repeat
+    // asserted against happened to have five slots.
+    const question = findQuestion("rday2.generated");
+    const slots = question?.kind === "repeat" ? question.min : 0;
+    assert.ok(slots > 5, "the fixture group no longer has more than five slots");
+
+    // Act
+    const text = textFor("rday2.generated");
+
+    // Assert
+    assert.ok(text.includes(`Ask about ${slots} of them`), `it did not ask for ${slots}`);
+  });
+
+  it("promptFor_EveryFieldListed_CarriesTheKeyToReturnItUnder", () => {
+    // Arrange — the labels tell an assistant what to ask; the keys tell it what to answer
+    // under. Dropping the keys left the labels, which reads fine and produces a reply keyed on
+    // invented names.
+    const question = findQuestion("day1.chapters");
+    assert.ok(question?.kind === "repeat");
+
+    // Act
+    const text = textFor("day1.chapters");
+
+    // Assert
+    for (const field of question.fields) {
+      assert.ok(text.includes(`key \`${field.id}\``), `${field.id} is listed without its key`);
+    }
   });
 });
 
@@ -168,7 +269,7 @@ describe("the shape the answers come back in", () => {
 
     // Assert
     assert.match(text, /leave that key\s*\n?\s*out entirely/i);
-    assert.match(text, /never send an empty string/i);
+    assert.match(text, /never send an empty\s+string/i);
   });
 
   it("promptFor_TheWorkedExample_NamesAGroupThatCannotBeImported", () => {

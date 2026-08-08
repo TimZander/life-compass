@@ -104,21 +104,24 @@ export function schemaSource(
  * and it runs FIRST, from `pretest` and `pretypecheck`, so it would be the copy every check
  * then agreed with.
  */
-export async function writeSchemaModule(root: string): Promise<void> {
-  const problems = checkSchema(loadSchema(WORKSHEETS));
+export async function writeSchemaModule(
+  root: string,
+  worksheets: readonly Worksheet[] = WORKSHEETS,
+): Promise<void> {
+  const problems = checkSchema(loadSchema(worksheets));
   if (problems.length > 0) {
     const detail = problems.map((problem) => `  ${problem}`).join("\n");
     throw new Error(`refusing to write the client schema; the definitions are broken:\n${detail}`);
   }
 
-  const destination = path.join(root, SCHEMA_MODULE);
-  // The target is inside the SOURCE tree and git-ignored, so a mistaken path here destroys
-  // something unrecoverable rather than something a rebuild replaces. build/build.ts guards
-  // its own `rm` the same way, and for the same reason.
-  if (!destination.endsWith(path.join("src", "client", "schema.ts"))) {
-    throw new Error(`refusing to write the client schema to ${destination}`);
-  }
-  await writeFile(destination, schemaSource(WORKSHEETS, await collectAsks(root)), "utf8");
+  // The asks are read from this root's own Markdown BEFORE anything is written, which is what
+  // makes a wrong root fail loudly rather than quietly: it cannot find the worksheets, and it
+  // says which one it wanted. An earlier version guarded the destination path instead, by
+  // checking it ended in `src/client/schema.ts` — which it always does, since that is appended
+  // to whatever root it was given. A guard that cannot fail is worse than none, because it
+  // reads as protection.
+  const asks = await collectAsks(root);
+  await writeFile(path.join(root, SCHEMA_MODULE), schemaSource(worksheets, asks), "utf8");
 }
 
 if (process.argv[1] !== undefined && import.meta.filename === path.resolve(process.argv[1])) {

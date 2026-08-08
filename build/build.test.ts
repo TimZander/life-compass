@@ -254,6 +254,62 @@ describe("the prose that introduces a question", () => {
     assert.ok(ask.includes("garage-band"), "the quoted example was treated as a boundary");
   });
 
+  it("render_TheNearestHeading_IsTheSubjectAndNotTheOneAboveIt", () => {
+    // Arrange — the mutation that matters here, and the one the code comment beside it
+    // describes: taking the furthest heading instead of the nearest makes all five of Day 5's
+    // questions read identically, which is the defect the heading rule was added to fix. A
+    // single-heading fixture cannot tell the two apart, so this one has both.
+    const LEAD = "For each dimension ask: is my setup aligned?";
+    const markdown = `## The five dimensions\n\n${LEAD}\n\n### Money\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.includes("Money"), "the nearest heading is missing");
+    assert.ok(!ask.includes("The five dimensions"), "it reached past to the section heading");
+    assert.ok(ask.includes(LEAD), "the prose that asks the question is missing");
+  });
+
+  it("render_TheHeading_ComesBeforeTheProseItIntroduces", () => {
+    // Arrange — order is meaning here. "Money / For each dimension ask…" is a subject and its
+    // question; reversed, it is a question with a stray word after it.
+    const LEAD = "For each dimension ask: is my setup aligned?";
+
+    // Act
+    const ask = asksIn(`${LEAD}\n\n### Money\n\n${ANCHOR_ONE}\n`).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.indexOf("Money") < ask.indexOf(LEAD), "the subject arrives after the question");
+  });
+
+  it("render_SeveralBlocks_KeepTheirOrderAndStaySeparate", () => {
+    // Arrange — Day 1 puts the instruction first and an example beneath it. Reversed, the
+    // example reads as the instruction; run together on one line, both read as neither.
+    const FIRST = "Divide your life into chapters.";
+    const SECOND = "Example: the garage-band years.";
+
+    // Act
+    const ask = asksIn(`${FIRST}\n\n${SECOND}\n\n${ANCHOR_ONE}\n`).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.indexOf(FIRST) < ask.indexOf(SECOND), "the blocks came back reversed");
+    assert.ok(ask.includes(`${FIRST}\n\n${SECOND}`), "the blocks were run together");
+  });
+
+  it("render_AnOrderedListAboveTheAnchor_IsABoundaryLikeABulletList", () => {
+    // Arrange — bullet lists and list items were both pinned; ordered lists were not, and a
+    // numbered list is how several worksheets lay out their steps.
+    const MINE = "**Calendar:**";
+    const markdown = `1. A numbered step that is not this question.\n\n${MINE}\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.equal(ask, MINE);
+  });
+
   it("buildPages_RealContent_EveryQuestionHasAnAsk", async () => {
     // Arrange — the property that matters, over the whole workbook rather than one shape.
     // Seven questions came out empty on the first attempt and one on the second, each time
