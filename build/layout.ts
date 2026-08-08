@@ -6,7 +6,13 @@
  * template emitted, and keeping them identical is what made the rewrite's output
  * diffable against the site it replaced. Document-relative paths would be equally
  * correct; there is simply no longer any reason to change.
+ *
+ * The favicon is the one URL here that is asked for rather than written down. Its name
+ * carries a digest of the drawing, so writing it out would be a copy of something that
+ * moves — which is the drift #62 is about.
  */
+
+import { faviconHref } from "./icons.ts";
 
 const SITE_TITLE = "Life Compass";
 
@@ -111,7 +117,7 @@ export function layout(content: string, pageTitle: string | null, isBackupPage: 
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#9a6b3f">
-  <link rel="icon" href="/icons/icon-192.png" type="image/png">
+  <link rel="icon" href="${faviconHref()}" type="image/png">
   <!-- The installed app opens standalone, so the OS chrome takes its colour from here
        and the page is the only thing on screen. Matching the paper the pages are drawn
        on keeps the seam between them invisible. -->

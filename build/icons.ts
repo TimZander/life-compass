@@ -13,6 +13,7 @@
  * coordinates are lifted directly from the SVG path in the layout.
  */
 
+import { createHash } from "node:crypto";
 import { crc32, deflateSync } from "node:zlib";
 
 /**
@@ -154,12 +155,37 @@ export function drawIcon(size: number, coverage: number): Buffer {
 }
 
 export type Icon = {
-  /** Path within the output, e.g. `icons/icon-192.png`. */
+  /** Path within the output, e.g. `icons/icon-192.a1b2c3d4.png`. */
   readonly output: string;
   readonly size: number;
   readonly purpose: "any" | "maskable";
   readonly png: Buffer;
 };
+
+/**
+ * Name an icon after its own bytes.
+ *
+ * The reason is #62: the manifest names fixed paths, so #61 changed the drawing and left
+ * `manifest.webmanifest` byte-identical. The manifest is what a browser watches to decide
+ * whether an installed app's identity has changed, and it had nothing to notice — an
+ * installed app kept the old mark. With the digest in the filename the manifest cannot
+ * help but change when the drawing does.
+ *
+ * Eight hex characters, matching the shape `cacheVersion` already uses in
+ * build/serviceworker.ts. This is a cache-busting name, not a security claim: the cost of
+ * a collision is a stale icon, and 32 bits against a set of three is not a risk worth
+ * spending URL length on.
+ */
+export function hashedName(base: string, extension: string, content: Buffer): string {
+  const digest = createHash("sha256").update(content).digest("hex").slice(0, 8);
+  return `${base}.${digest}.${extension}`;
+}
+
+/** Draw one icon and name it after what was drawn. */
+function icon(base: string, size: number, coverage: number, purpose: Icon["purpose"]): Icon {
+  const png = drawIcon(size, coverage);
+  return { output: hashedName(base, "png", png), size, purpose, png };
+}
 
 let cached: readonly Icon[] | undefined;
 
@@ -171,14 +197,26 @@ let cached: readonly Icon[] | undefined;
  */
 export function icons(): readonly Icon[] {
   cached ??= [
-    { output: "icons/icon-192.png", size: 192, purpose: "any", png: drawIcon(192, 0.7) },
-    { output: "icons/icon-512.png", size: 512, purpose: "any", png: drawIcon(512, 0.7) },
-    {
-      output: "icons/icon-maskable-512.png",
-      size: 512,
-      purpose: "maskable",
-      png: drawIcon(512, 0.5),
-    },
+    icon("icons/icon-192", 192, 0.7, "any"),
+    icon("icons/icon-512", 512, 0.7, "any"),
+    icon("icons/icon-maskable-512", 512, 0.5, "maskable"),
   ];
   return cached;
+}
+
+/**
+ * The icon the document links as its favicon, as a root-absolute URL.
+ *
+ * The layout asks for this rather than writing the path itself. A tab's favicon is cached
+ * separately from an installed app's icon and goes stale the same way, so the two want the
+ * same digest — and a literal in the layout is exactly the drift #62 is about.
+ */
+export function faviconHref(): string {
+  const [smallest] = [...icons()]
+    .filter((icon) => icon.purpose === "any")
+    .sort((a, b) => a.size - b.size);
+  if (smallest === undefined) {
+    throw new Error("no non-maskable icon to link as the favicon");
+  }
+  return `/${smallest.output}`;
 }

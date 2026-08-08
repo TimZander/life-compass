@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import { inflateSync } from "node:zlib";
-import { drawIcon, encodePng, icons } from "./icons.ts";
+import { drawIcon, encodePng, faviconHref, hashedName, icons } from "./icons.ts";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Hex characters of sha256 kept in a filename. Cache-busting, not a security claim. */
+const DIGEST_LENGTH = 8;
 
 describe("encodePng", () => {
   it("encodePng_ValidPixels_StartsWithThePngSignature", () => {
@@ -93,6 +97,87 @@ describe("icons", () => {
       assert.equal(icon.png.readUInt32BE(16), icon.size, icon.output);
       assert.equal(icon.png.readUInt32BE(20), icon.size, icon.output);
     }
+  });
+
+  it("icons_EveryOutput_IsNamedAfterItsOwnBytes", () => {
+    // Arrange — #62. The name is what makes the manifest change when the drawing does, so
+    // the digest in it has to be OF the drawing rather than merely present in the name.
+    const DIGEST = /\.([0-9a-f]{8})\.png$/;
+
+    // Act & Assert
+    for (const icon of icons()) {
+      const found = DIGEST.exec(icon.output);
+      assert.ok(found?.[1] !== undefined, `${icon.output} carries no digest`);
+      const expected = createHash("sha256").update(icon.png).digest("hex").slice(0, DIGEST_LENGTH);
+      assert.equal(found[1], expected, icon.output);
+    }
+  });
+
+  it("icons_TwoIconsOfTheSameSize_DoNotShareAName", () => {
+    // Arrange — negative case. icon-512 and icon-maskable-512 are the same size and differ
+    // only in the drawing; if the name came from anything but the bytes they would collide
+    // and one would silently overwrite the other in the output directory.
+    // Act
+    const names = new Set(icons().map((icon) => icon.output));
+
+    // Assert
+    assert.equal(names.size, icons().length);
+  });
+});
+
+describe("faviconHref", () => {
+  it("faviconHref_Always_NamesAnIconThatWasGenerated", () => {
+    // Act
+    const href = faviconHref();
+
+    // Assert — a favicon pointing at a path nothing writes is a 404 on every page.
+    assert.ok(icons().some((icon) => `/${icon.output}` === href), href);
+  });
+
+  it("faviconHref_Always_PrefersTheSmallestNonMaskableIcon", () => {
+    // Arrange — negative case. A maskable icon is drawn small inside a safe zone for
+    // platforms that crop it; used as a tab favicon, nothing crops it and the mark appears
+    // marooned in padding at 16px.
+    const SMALLEST = 192;
+
+    // Act
+    const chosen = icons().find((icon) => `/${icon.output}` === faviconHref());
+
+    // Assert
+    assert.equal(chosen?.purpose, "any");
+    assert.equal(chosen?.size, SMALLEST);
+  });
+});
+
+describe("hashedName", () => {
+  it("hashedName_SameContent_IsStable", () => {
+    // Arrange
+    const content = Buffer.from("the same bytes");
+
+    // Act & Assert — an unstable name would change the manifest on every build, which
+    // makes a browser's update check meaningless in the other direction.
+    assert.equal(hashedName("icons/x", "png", content), hashedName("icons/x", "png", content));
+  });
+
+  it("hashedName_DifferentContent_Differs", () => {
+    // Act
+    const one = hashedName("icons/x", "png", Buffer.from("one"));
+    const two = hashedName("icons/x", "png", Buffer.from("two"));
+
+    // Assert
+    assert.notEqual(one, two);
+  });
+
+  it("hashedName_Always_KeepsTheBaseAndExtensionEitherSideOfTheDigest", () => {
+    // Arrange — the extension is what makes Pages serve it as an image rather than a
+    // download, and the base is what makes the file recognisable in a directory listing.
+    const BASE = "icons/icon-512";
+
+    // Act
+    const named = hashedName(BASE, "png", Buffer.from("bytes"));
+
+    // Assert
+    assert.match(named, new RegExp(`^${BASE}\\.[0-9a-f]{${DIGEST_LENGTH}}\\.png$`));
   });
 });
 
