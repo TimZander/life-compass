@@ -286,7 +286,6 @@ export function promptFor(group: string, prior?: Prior): Generated {
     `  Never list several questions at once.\n` +
     `- Follow up when an answer is thin. Ask for a specific memory, decision or moment rather\n` +
     `  than a general belief — that is the part I cannot do alone.\n` +
-    `- Start on the first thing below. I know what I came here for, so no warm-up question.\n` +
     `- Each answer has named parts, listed below. Make sure you have every one before moving\n` +
     `  on, and if what I said does not cover a part, **ask for it by name**. Do not infer it\n` +
     `  from something I said about a different part.\n` +

@@ -68,16 +68,21 @@ describe("what the assistant is asked to do", () => {
   });
 
   it("promptFor_Always_SaysToCollectEveryNamedPartAndToAskForOneByName", () => {
-    // Arrange — from the first real interview. The assistant opened vaguely, asked what the
-    // chapter was about, could not get a title out of the answer, and had to come back for
-    // it. The parts were listed but nothing said to work through them, so it inferred where
-    // it should have asked.
+    // Arrange — from the first real interview. Asked what the chapter was about, the
+    // assistant could not get a title out of the answer and had to come back for it. The
+    // parts were listed but nothing said to work through them, so it inferred where it
+    // should have asked.
+    //
+    // Note what is deliberately NOT asserted: that it opens on the question. An earlier
+    // version of this told it to skip the warm-up, which was wrong — the warm-up is what
+    // makes this an interview rather than a form read aloud, and the interview is the thing
+    // an assistant is here for (0007's context: shaping a rambling answer is the value, not
+    // transcribing a tidy one).
     // Act
     const text = textFor("day1.chapters");
 
     // Assert
     assert.match(text, /ask for it by name/i);
-    assert.match(text, /no warm-up question/i);
   });
 
   it("promptFor_Always_AsksForMyWordsRatherThanAnImprovementOfThem", () => {
