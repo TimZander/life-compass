@@ -138,6 +138,30 @@ describe("the copy control on a question", () => {
     assert.equal(document.querySelectorAll("button.agent-open").length, 2);
   });
 
+  it("wireQuestionControls_TheControl_SitsAboveTheQuestionRatherThanAfterIt", () => {
+    // Arrange — found on a device. Appended, the control landed after every field, so on
+    // Day 1's five chapters a reader met it having already written by hand the thing it
+    // offered to help with. It is also the only valid placement: `q-group`, `q-checklist`
+    // and one shape of `q-repeat` are `<ul>`/`<ol>`, whose only permitted children are list
+    // items, so a button inside them is markup no parser has to keep where it was put.
+    const document = worksheet("day1.chapters");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), new Map());
+    const control = document.querySelector("button.agent-open");
+    const question = document.querySelector("[data-question]");
+
+    // Assert
+    assert.ok(control !== null && question !== null);
+    assert.equal(question.previousElementSibling?.className, "agent-panel", "the panel is misplaced");
+    assert.ok(!question.contains(control), "the control is inside the question's own element");
+    assert.equal(
+      control.compareDocumentPosition(question) & 4,
+      4,
+      "the control does not come before the question",
+    );
+  });
+
   it("wireQuestionControls_AChecklist_GetsNoControl", () => {
     // Arrange — 0015 keeps checklists out of the contract, so a button there could only
     // produce a refusal. Skipped rather than offered and then refused.

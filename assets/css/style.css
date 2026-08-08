@@ -127,8 +127,10 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 
 /* The assistant bridge (#67). Absent entirely unless the reader opted in, so none of this
    applies to a worksheet by default. */
-.agent-open{display:block;margin:.4em 0 0;font-family:var(--sans);font-size:.82rem;padding:.35em .9em;border-radius:6px;border:1px solid var(--rule);background:transparent;color:var(--muted);cursor:pointer}
-.agent-open:hover{border-color:var(--accent);color:var(--ink)}
+/* Legible rather than discreet. The first device pass could not find this button: muted text
+   on a hairline border reads as disabled next to the worksheet's own contrast. */
+.agent-open{display:block;margin:.2em 0 .8em;font-family:var(--sans);font-size:.86rem;font-weight:600;padding:.45em 1em;border-radius:6px;border:1px solid var(--accent);background:var(--quote-bg);color:var(--accent-dark);cursor:pointer}
+.agent-open:hover{background:var(--accent);color:#fff}
 .agent-open:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 .agent-panel{margin:.6em 0 1.2em;padding:.9em 1em;border:1px solid var(--rule);border-radius:6px;background:var(--quote-bg)}
 .agent-panel label{display:block;font-family:var(--sans);font-size:.88rem;margin-bottom:.6em}

@@ -192,6 +192,12 @@ export function wireQuestionControls(
     });
     open.setAttribute("aria-expanded", "false");
 
-    container.append(open, panel);
+    // BEFORE the question, not inside it. Appending put the control after every field —
+    // on Day 1's chapters that is below all five, so a reader met it having already written
+    // by hand the thing it offered to help with. It is also the only valid place for it:
+    // `q-group`, `q-checklist` and one shape of `q-repeat` are `<ul>`/`<ol>`, whose only
+    // permitted children are list items, so a button inside them is markup no parser is
+    // obliged to keep where it was put.
+    container.before(open, panel);
   }
 }
