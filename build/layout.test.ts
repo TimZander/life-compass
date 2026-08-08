@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-/** Whether the page has anything to answer; the caller decides from the schema. */
-const ANSWERABLE = "backup";
+/** Which page-specific controls the layout is asked for; build.ts decides from the source. */
+const WITH_BACKUP_TOOLS = "backup";
 import { documentTitle, layout, SITE_TITLE } from "./layout.ts";
 import { COMPASS_ROSE } from "./icons.ts";
 
@@ -47,7 +47,7 @@ describe("layout", () => {
     const pageTitle = '<script>"x"';
 
     // Act
-    const result = layout("<p>body</p>", pageTitle, ANSWERABLE);
+    const result = layout("<p>body</p>", pageTitle, WITH_BACKUP_TOOLS);
 
     // Assert
     assert.ok(result.includes("&lt;script&gt;&quot;x&quot; · Life Compass"));

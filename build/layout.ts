@@ -162,8 +162,9 @@ function agentTools(): string {
   return `
 <section class="tools" id="agent" aria-labelledby="agent-heading" hidden>
   <h2 id="agent-heading">Answer by talking, with an assistant</h2>
-  <p>With this on, every question grows a button that copies it — as a written brief — for you
-  to paste into an assistant of your choosing. It interviews you; you bring the answers back.</p>
+  <p>With this on, nearly every question grows a button that copies it — as a written brief —
+  for you to paste into an assistant of your choosing. It interviews you by voice. Bringing the
+  answers back is not built yet.</p>
   <p><strong>Nothing is sent from this app.</strong> It has no way to send anything. What
   reaches an assistant is what you paste into it, and you see exactly that text before you
   copy it.</p>

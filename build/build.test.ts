@@ -69,6 +69,8 @@ const NAV_HREFS: readonly string[] = [
   "/rigorous/",
   "/with-a-partner",
   "/optional-add-ons",
+  "/backup",
+  "/agent",
   "/docs/decisions/",
 ];
 
