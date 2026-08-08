@@ -17,7 +17,7 @@ import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion } from "./questions.ts";
-import { schemaModule } from "./client.ts";
+import { checkSpecifiers } from "./client.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -137,74 +137,43 @@ describe("the stylesheet and the markup agreeing", () => {
   });
 });
 
-describe("the schema the client receives", () => {
-  /** Read WORKSHEETS back out of the emitted module, the way the browser would. */
-  function worksheetsIn(code: string): unknown {
-    const found = /export const WORKSHEETS = ([\s\S]*);\n$/.exec(code);
-    assert.ok(found?.[1] !== undefined, "the schema module does not export WORKSHEETS");
-    return JSON.parse(found[1]);
-  }
+describe("refusing a client graph the browser cannot load", () => {
+  it("checkSpecifiers_AnImportNothingEmits_Throws", () => {
+    // Arrange — the failure this exists for, and it shipped once. `buildClient` discovers
+    // modules by reading a directory, so a GENERATED module that was never written is not an
+    // error, it is simply absent from the list. Deleting src/client/schema.ts left the build
+    // emitting prompt.js importing ./schema.js, shipping it, and leaving it out of the
+    // precache — so cache.addAll succeeded and every gate passed on a dead client.
+    const modules = [
+      { output: "assets/js/app.js", code: 'import { x } from "./gone.js";\n' },
+      { output: "assets/js/keys.js", code: "export const x = 1;\n" },
+    ];
 
-  it("schemaModule_Always_CarriesTheSameDefinitionsAsQuestionsJson", async () => {
-    // Arrange — the agreement, not either side of it. Two artifacts now describe the
-    // question set: questions.json for anything outside the page, and this module for the
-    // page itself. They are generated from one source, and this is what keeps that true —
-    // the shape of check #57 shipped without, when two counts of one store disagreed.
-    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-"));
-    temporary.push(out);
-
-    // Act
-    await build({ root: ROOT, out });
-    const module = await readFile(path.join(out, "assets/js/schema.js"), "utf8");
-    const json = JSON.parse(await readFile(path.join(out, "questions.json"), "utf8"));
-
-    // Assert
-    assert.deepEqual(worksheetsIn(module), json.worksheets);
+    // Act & Assert
+    assert.throws(() => checkSpecifiers(modules), /imports \.\/gone\.js, which nothing emits/);
   });
 
-  it("schemaModule_Always_IsPrecachedSoTheBridgeWorksOffline", async () => {
-    // Arrange — the whole workbook is precached rather than a shell, and a schema the
-    // client cannot read offline would make the agent bridge the one part of the site that
-    // needs the network — in an application whose claim is that it needs none.
-    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-sw-"));
-    temporary.push(out);
+  it("checkSpecifiers_EveryImportEmitted_DoesNotThrow", () => {
+    // Arrange — the ordinary case, including a specifier that climbs a directory, so the
+    // resolution is doing real path work rather than comparing strings.
+    const modules = [
+      { output: "assets/js/app.js", code: 'import { k } from "./keys.js";\n' },
+      { output: "assets/js/keys.js", code: 'import { s } from "../js/schema.js";\n' },
+      { output: "assets/js/schema.js", code: "export const s = 1;\n" },
+    ];
 
-    // Act
-    await build({ root: ROOT, out });
-    const worker = await readFile(path.join(out, "sw.js"), "utf8");
-    const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
-    assert.ok(match?.[1] !== undefined);
-    const precached = new Set(JSON.parse(match[1]) as string[]);
-
-    // Assert
-    assert.ok(precached.has("/assets/js/schema.js"), "the schema module is not precached");
+    // Act & Assert
+    assert.doesNotThrow(() => checkSpecifiers(modules));
   });
 
-  it("schemaModule_EveryWorksheet_ReachesTheClient", async () => {
-    // Arrange — a module that parsed but carried half the workbook would satisfy the
-    // agreement above only if questions.json were wrong in the same way. This asks the
-    // definitions themselves.
-    // Act
-    const module = schemaModule(WORKSHEETS);
-    const carried = worksheetsIn(module.code) as { source: string }[];
+  it("checkSpecifiers_BareSpecifiers_AreLeftAlone", () => {
+    // Arrange — negative case. Only relative specifiers name something this build emits; a
+    // bare one would be a dependency, which this tier does not have and must not start
+    // reporting as a missing file.
+    const modules = [{ output: "assets/js/app.js", code: 'import { z } from "node:path";\n' }];
 
-    // Assert
-    assert.deepEqual(
-      carried.map((worksheet) => worksheet.source).sort(),
-      WORKSHEETS.map((worksheet) => worksheet.source).sort(),
-    );
-  });
-
-  it("schemaModule_NoWorksheets_StillEmitsAModuleThatParses", async () => {
-    // Arrange — negative case. An empty set is not a reason to emit something the browser
-    // cannot load: a syntax error here takes down whatever imports it, and build/client.ts
-    // carries a comment about that exact failure being hard to trace from the import site.
-    // Act
-    const module = schemaModule([]);
-
-    // Assert
-    assert.deepEqual(worksheetsIn(module.code), []);
-    assert.equal(module.output, "assets/js/schema.js");
+    // Act & Assert
+    assert.doesNotThrow(() => checkSpecifiers(modules));
   });
 });
 
@@ -552,7 +521,6 @@ describe("build", () => {
       "index.html",
       "one.html",
       "questions.json",
-      "schema.js",
       "sw.js",
       "thing.txt",
     ]);

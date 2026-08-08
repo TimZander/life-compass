@@ -124,9 +124,10 @@ match its group's kind is refused.
 says so as settled fact — "the client has no copy of the question set" — and identifies
 instance orders by shape for that reason. It cannot be fixed by fetching: 0007 · C1 keeps
 `connect-src 'none'`, which forbids the page requesting `/questions.json` at all. So the
-schema reaches the client as a **module the build emits** ([0012](0012-client-typescript-stripped-at-build-time.md)),
-loaded as script rather than fetched as data. Recorded here because both halves of the bridge
-depend on it and neither issue currently says so; the JSON stays for anything outside the page.
+schema reaches the client as a **module in the client tier**
+([0012](0012-client-typescript-stripped-at-build-time.md)), loaded as script rather than
+fetched as data. Recorded here because both halves of the bridge depend on it and neither
+issue currently says so; the JSON stays for anything outside the page.
 
 **Omitting a field means "leave it alone". An empty value is refused.** An assistant that has
 nothing for a field leaves it out. The distinction matters more here than it looks: `store.ts`
@@ -167,8 +168,11 @@ appear". Day 1's chapters are min 5 / max 8, so bounding at `max` would let an a
 for "5–8 chapters" return eight and store three chapters of dictated words that nothing on the
 page will ever show.
 
-So the ceiling is the rendered slot count, not `max`, until Q2 is answered. Excess instances
-are refused rather than truncated — truncating is the silent loss this rule exists to prevent.
+So the ceiling is the rendered slot count, not `max`, until Q2 is answered — which is
+[#74](https://github.com/TimZander/life-compass/issues/74)'s job, and this bound is standing
+in for it rather than describing what the workbook should do. A worksheet asking for "5–8
+chapters" means the reader decides. Excess instances are refused rather than truncated —
+truncating is the silent loss this rule exists to prevent.
 The prompt generator asks for the rendered count rather than the worksheet's range, so the
 refusal is a backstop rather than an ordinary outcome.
 
@@ -230,10 +234,26 @@ only where a permission is granted is a choice somebody else made.
 **C3.** Prompts carry instance identifiers even when no answers travel, so the reader sees
 UUIDs in the preview 0007 · 1 requires. Better that than a preview which is not what is sent.
 
-**C4.** The schema has to reach the client as an emitted module before either half of the
-bridge can validate anything. That is a prerequisite for
+**C4.** The schema has to reach the client as a module before either half of the bridge can
+validate anything. That is a prerequisite for
 [#67](https://github.com/TimZander/life-compass/issues/67) and
 [#68](https://github.com/TimZander/life-compass/issues/68), not a detail of them.
+
+**C4a.** *Added 2026-08-08.* Emitting it straight into `dist` does not work, and the first
+attempt did exactly that: a declaration file satisfied `tsc` while the only real JavaScript
+lived in the output, so nothing that runs from source — every test — could resolve the import
+at all. Nothing imported it yet, so nothing noticed. It has been removed again rather than
+replaced, because a module the client cannot use is worth less than nothing while it is also
+36 kB of precache; it returns with its first consumer, generated somewhere Node, the
+typechecker and the browser all read one file.
+
+The lesson that did ship is not about where the file goes. It is that a generated file is
+only safe where something asserts its absence is a failure. Hooks cannot be that — `node
+--run`, a direct `tsc`, `npm ci --ignore-scripts` and a symlinked checkout all skip them —
+so `checkSpecifiers` in `build/client.ts` refuses to emit a client module graph containing an
+import nothing satisfies. Before it, deleting the generated file produced a successful build,
+a shipped site whose client was dead, and a precache manifest that omitted the missing file so
+`cache.addAll` succeeded and the deploy smoke test read one fewer URL. Every gate passed.
 
 **C5.** Reading a block cannot write, structurally, as in `import.ts` — the function that
 reads one has no store to reach. Applying several blocks across several groups is a different
@@ -258,6 +278,15 @@ rendered slot count rather than the worksheet's range; it offers no copy control
 groups; and it must not embed an example block in this format, because a reader who pastes the
 prompt back — a plausible mis-tap moments after copying it — would otherwise be handing the
 importer a correctly-named block that is not a reply.
+
+**C8a.** *Added 2026-08-08.* C8's third constraint — no example block in the contract format
+— is relaxed to say *how* rather than forbid. Assistants follow an example far more reliably
+than a description of JSON in prose, and a prompt that produces malformed replies fails the
+reader more often than a mis-tap does. So the prompt carries a complete example whose `group`
+is a name the schema does not contain. It teaches the shape, and a reader who pastes the
+prompt back gets a loud refusal — a group not in the schema is already a refusal kind (C6) —
+rather than an example silently imported as their answers. The safeguard C8 asked for is kept;
+the cost to output quality is not.
 
 **C9.** A group with no answers stored still has a usable prompt: no identifiers travel, and
 every instance comes back new. The first exchange with an assistant is the common case, not

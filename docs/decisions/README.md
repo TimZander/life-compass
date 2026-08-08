@@ -49,6 +49,10 @@ the middle, how an orphaned instance is surfaced — and with it a retired group
 order, which is JSON the orphan surface would otherwise present to the reader as their
 own prose — and what the registry must record for a stored key to be readable back.
 
+[#74](https://github.com/TimZander/life-compass/issues/74) is where Q2 gets answered rather
+than noted again: a repeat should hold as many instances as the reader has, up to `max`, and
+three groups currently invite a range they cannot deliver.
+
 [0015](0015-assistant-output-is-self-describing-blocks.md) answers none of those four and
 opens a new route into Q2. Until now an over-long instance order could only come from a
 worksheet edit; an import can produce one too, so 0015 bounds new instances at the rendered
