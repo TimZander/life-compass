@@ -60,5 +60,9 @@ silently overwrite something the user wrote themselves.
 build produces something the importer can either recognise or reject cleanly — rather
 than half-parse.
 
+**C4a.** *Added 2026-08-07.* C4 is discharged by
+[0015](0015-assistant-output-is-self-describing-blocks.md), which records the block's shape,
+its version rule, and what an importer does with one it cannot read.
+
 **C5.** This is the one place data leaves the device, and it does so because the user
 chose it. That is the correct place for that decision to sit.
