@@ -16,7 +16,7 @@ import type { ResolvedLink } from "./links.ts";
 import { checkRegistry, checkSchema, loadSchema, type Schema } from "./questions.ts";
 import { checkHeaders, parseHeaders } from "./headers.ts";
 import { icons } from "./icons.ts";
-import { buildClient } from "./client.ts";
+import { buildClient, schemaModule } from "./client.ts";
 import { renderServiceWorker, type PrecacheEntry } from "./serviceworker.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
@@ -384,7 +384,13 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
   // Client modules are emitted rather than copied — the one thing on the site that is not
   // served exactly as it is committed. They join the precache here so the cache version
   // covers the code that shipped rather than the TypeScript it came from.
-  for (const module of await buildClient(root)) {
+  //
+  // The schema module is generated rather than discovered, so it is appended here rather
+  // than inside `buildClient`, which reads a directory. It travels the same path as the
+  // rest from this point on — written, precached, and covered by the cache version — since
+  // it is a module the browser loads like any other (docs/decisions/0015).
+  const clientModules = [...(await buildClient(root)), schemaModule(result.schema.worksheets)];
+  for (const module of clientModules) {
     const destination = path.join(out, module.output);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, module.code, "utf8");

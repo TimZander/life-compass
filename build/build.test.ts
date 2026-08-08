@@ -17,6 +17,7 @@ import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion } from "./questions.ts";
+import { schemaModule } from "./client.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
@@ -133,6 +134,77 @@ describe("the stylesheet and the markup agreeing", () => {
       !css.includes("#restore-go[disabled]"),
       "the stylesheet still targets an attribute the markup never sets",
     );
+  });
+});
+
+describe("the schema the client receives", () => {
+  /** Read WORKSHEETS back out of the emitted module, the way the browser would. */
+  function worksheetsIn(code: string): unknown {
+    const found = /export const WORKSHEETS = ([\s\S]*);\n$/.exec(code);
+    assert.ok(found?.[1] !== undefined, "the schema module does not export WORKSHEETS");
+    return JSON.parse(found[1]);
+  }
+
+  it("schemaModule_Always_CarriesTheSameDefinitionsAsQuestionsJson", async () => {
+    // Arrange — the agreement, not either side of it. Two artifacts now describe the
+    // question set: questions.json for anything outside the page, and this module for the
+    // page itself. They are generated from one source, and this is what keeps that true —
+    // the shape of check #57 shipped without, when two counts of one store disagreed.
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-"));
+    temporary.push(out);
+
+    // Act
+    await build({ root: ROOT, out });
+    const module = await readFile(path.join(out, "assets/js/schema.js"), "utf8");
+    const json = JSON.parse(await readFile(path.join(out, "questions.json"), "utf8"));
+
+    // Assert
+    assert.deepEqual(worksheetsIn(module), json.worksheets);
+  });
+
+  it("schemaModule_Always_IsPrecachedSoTheBridgeWorksOffline", async () => {
+    // Arrange — the whole workbook is precached rather than a shell, and a schema the
+    // client cannot read offline would make the agent bridge the one part of the site that
+    // needs the network — in an application whose claim is that it needs none.
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-schema-sw-"));
+    temporary.push(out);
+
+    // Act
+    await build({ root: ROOT, out });
+    const worker = await readFile(path.join(out, "sw.js"), "utf8");
+    const match = /const PRECACHE = (\[[\s\S]*?\]);/.exec(worker);
+    assert.ok(match?.[1] !== undefined);
+    const precached = new Set(JSON.parse(match[1]) as string[]);
+
+    // Assert
+    assert.ok(precached.has("/assets/js/schema.js"), "the schema module is not precached");
+  });
+
+  it("schemaModule_EveryWorksheet_ReachesTheClient", async () => {
+    // Arrange — a module that parsed but carried half the workbook would satisfy the
+    // agreement above only if questions.json were wrong in the same way. This asks the
+    // definitions themselves.
+    // Act
+    const module = schemaModule(WORKSHEETS);
+    const carried = worksheetsIn(module.code) as { source: string }[];
+
+    // Assert
+    assert.deepEqual(
+      carried.map((worksheet) => worksheet.source).sort(),
+      WORKSHEETS.map((worksheet) => worksheet.source).sort(),
+    );
+  });
+
+  it("schemaModule_NoWorksheets_StillEmitsAModuleThatParses", async () => {
+    // Arrange — negative case. An empty set is not a reason to emit something the browser
+    // cannot load: a syntax error here takes down whatever imports it, and build/client.ts
+    // carries a comment about that exact failure being hard to trace from the import site.
+    // Act
+    const module = schemaModule([]);
+
+    // Assert
+    assert.deepEqual(worksheetsIn(module.code), []);
+    assert.equal(module.output, "assets/js/schema.js");
   });
 });
 
@@ -480,6 +552,7 @@ describe("build", () => {
       "index.html",
       "one.html",
       "questions.json",
+      "schema.js",
       "sw.js",
       "thing.txt",
     ]);
