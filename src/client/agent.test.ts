@@ -53,6 +53,18 @@ function hostileStorage(): Storage {
   } as unknown as Storage;
 }
 
+/** Let the panel's asynchronous rebuild settle. It reads the store when it opens. */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 4; turn += 1) {
+    await Promise.resolve();
+  }
+}
+
+/** Panels read the store when they open, so a test hands over a reader rather than a map. */
+function entriesFrom(entries: ReadonlyMap<string, string>): () => Promise<ReadonlyMap<string, string>> {
+  return () => Promise.resolve(entries);
+}
+
 /** The live region the layout emits, so banner messages have somewhere to go. */
 const REGION = '<div id="banner-region" role="status" aria-live="polite"></div>';
 
@@ -121,7 +133,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day4.eulogy");
 
     // Act
-    wireQuestionControls(document, memoryStorage(), new Map());
+    wireQuestionControls(document, memoryStorage(), entriesFrom(new Map()));
 
     // Assert
     assert.equal(document.querySelectorAll("button").length, 0);
@@ -132,7 +144,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day4.eulogy", "day1.patterns");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), new Map());
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
 
     // Assert
     assert.equal(document.querySelectorAll("button.agent-open").length, 2);
@@ -147,7 +159,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day1.chapters");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), new Map());
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
     const control = document.querySelector("button.agent-open");
     const question = document.querySelector("[data-question]");
 
@@ -169,21 +181,22 @@ describe("the copy control on a question", () => {
     const document = worksheet(checklist);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), new Map());
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
 
     // Assert
     assert.equal(document.querySelectorAll("button.agent-open").length, 0);
   });
 
-  it("wireQuestionControls_Opened_ShowsTheLiteralPayloadIncludingTheQuestion", () => {
+  it("wireQuestionControls_Opened_ShowsTheLiteralPayloadIncludingTheQuestion", async () => {
     // Arrange — 0007 · 1 wants the exact text previewed, not a description of it. The
     // question itself being in there is what #75 made possible and what the whole feature is
     // for; before it, this preview would have read "A single answer: **Eulogy**".
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), new Map());
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
     const preview = document.querySelector(".agent-preview")?.textContent ?? "";
 
     // Assert
@@ -208,8 +221,9 @@ describe("the copy control on a question", () => {
         },
       },
     });
-    wireQuestionControls(document, memoryStorage("on"), new Map());
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
     (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
 
     // Act
     const buttons = [...document.querySelectorAll("button")];
@@ -221,20 +235,22 @@ describe("the copy control on a question", () => {
     assert.ok(written.length > 0, "nothing was copied");
   });
 
-  it("wireQuestionControls_PriorAnswers_AreOffUntilAskedFor", () => {
+  it("wireQuestionControls_PriorAnswers_AreOffUntilAskedFor", async () => {
     // Arrange — 0007 · 2. Generating a prompt for one question must never quietly bundle
     // what the reader wrote elsewhere, and the default has to be off rather than a setting
     // somebody has to find.
     const WRITTEN = "That I showed up for the people who needed it.";
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), new Map([["day4.eulogy", WRITTEN]]));
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map([["day4.eulogy", WRITTEN]])));
     (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
 
     // Act
     const before = document.querySelector(".agent-preview")?.textContent ?? "";
     const include = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
     include.checked = true;
     include.dispatchEvent(new window.Event("change") as unknown as Event);
+    await settle();
     const after = document.querySelector(".agent-preview")?.textContent ?? "";
 
     // Assert
@@ -242,12 +258,13 @@ describe("the copy control on a question", () => {
     assert.ok(after.includes(WRITTEN), "opting in did not include the answer");
   });
 
-  it("wireQuestionControls_TheCopyControl_CarriesOnePlainSentenceAboutWhereItGoes", () => {
+  it("wireQuestionControls_TheCopyControl_CarriesOnePlainSentenceAboutWhereItGoes", async () => {
     // Arrange — 0007 · 3 and · 4: one sentence at the control, said once, rather than a
     // confirmation on every copy that trains people to dismiss it.
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), new Map());
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
     (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
 
     // Act
     const note = document.querySelector(".agent-note")?.textContent ?? "";

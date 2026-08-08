@@ -109,7 +109,11 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 #restore-cancel{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--rule);background:transparent;color:var(--ink);cursor:pointer;margin-left:.5em}
 #restore-go:focus-visible,#restore-cancel:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* A printed worksheet has no button to press. */
-@media print{.backup{display:none}}
+/* Keyed on the ids, not the class: the layout emits <section class="tools" id="backup">, so
+   every `.backup` rule in this file — including the print rule this replaces — has been dead
+   since the controls moved onto their own page in #25. Noticed while adding the assistant
+   equivalent below. */
+@media print{#backup,#restore{display:none}}
 
 /* Banner: one strip for what the app needs to tell you about itself.
    Fixed, so appearing never reflows the page under someone who is reading or typing —
@@ -141,3 +145,9 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .agent-note{font-family:var(--sans);font-size:.82rem;color:var(--muted);margin:0 0 .7em}
 .agent-panel button{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
 .agent-panel button:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+/* A printed worksheet has no button to press, and 0010 · C3 asks for the absence of form
+   controls on paper. Without this an opted-in reader prints an "Ask an assistant" button above
+   every question — and any panel left open prints its own controls plus a preview that
+   `max-height` silently truncates, which is the failure the textarea print rule above exists
+   to fix. */
+@media print{.agent-open,.agent-panel{display:none}}

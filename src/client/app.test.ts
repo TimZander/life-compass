@@ -142,6 +142,31 @@ describe("deciding whether to open a store", () => {
     assert.equal(result.agentVisible, true, "the assistant page shipped with its switch hidden");
   });
 
+  it("app_AWorksheetWithTheBridgeOn_GrowsAControlOnEveryQuestion", async () => {
+    // Arrange — the decision, not the wiring. Deleting the `wireQuestionControls` call from
+    // `start` left all 401 tests green: the eight tests for that module call it directly, so
+    // none of them could notice that nothing calls it. That is the shape of the defect this
+    // page already shipped once, one layer up — the wiring is tested, the decision to wire is
+    // not.
+    const window = install(new Window({ url: "https://example.test/days/day-1-excavation" }), {});
+    window.localStorage.setItem("life-compass:assistant", "on");
+    window.document.body.innerHTML = pageBody(null, '<p class="q-single" data-question="day4.eulogy">x</p>');
+    const noise = console.error;
+    console.error = () => {};
+    try {
+      await start();
+    } finally {
+      console.error = noise;
+    }
+
+    // Act
+    const controls = window.document.querySelectorAll("button.agent-open").length;
+    void window.close();
+
+    // Assert
+    assert.equal(controls, 1, "the question grew no copy control");
+  });
+
   it("app_APageOfProseOnly_DoesNothingAtAll", async () => {
     // Arrange — negative case, and the reason the gate exists. A decision record should not
     // prompt anybody about storage, and 0010 keeps it readable and printable with no script

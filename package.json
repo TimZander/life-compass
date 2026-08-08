@@ -10,7 +10,6 @@
   "scripts": {
     "//schema": "The question definitions and their asks, written into src/client so the client can import them. Generated rather than committed; checkSpecifiers in build/client.ts is what guarantees it exists, not these hooks.",
     "schema": "node build/schema.ts",
-    "schema:check": "node build/schema.ts --check",
     "prepare": "npm run schema",
     "prebuild": "npm run schema",
     "pretypecheck": "npm run schema",

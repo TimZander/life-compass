@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ASKS } from "./schema.ts";
-import { explain, findQuestion, promptFor, type Prior } from "./prompt.ts";
+import { explain, findQuestion, priorFrom, promptFor, type Prior } from "./prompt.ts";
 
 /** A prompt, or a failed assertion saying why there wasn't one. */
 function textFor(group: string, prior?: Prior): string {
@@ -196,6 +196,56 @@ describe("answers the reader already has", () => {
 
     // Assert
     assert.ok(!text.includes("What I have already written"));
+  });
+
+  it("priorFrom_ARepeat_CarriesEveryIdInTheOrderEvenWithNothingWrittenUnderIt", () => {
+    // Arrange — found by running a real interview. Only the ANSWERED instances carried ids,
+    // so a half-finished group sent two for a question asking for five. The assistant
+    // answered all five correctly and echoed both ids exactly — three simply had no id to
+    // carry. Against a store whose order already holds five (0013 mints them all on first
+    // write) those three are minted again and appended: eight instances against a five-slot
+    // page, refused by 0015 · C6. The commonest journey there is — "I started this by hand,
+    // help me finish" — produced a reply the importer could not accept.
+    //
+    // 0015 · C3 said this already: identifiers travel "even when no answers travel".
+    const ids = ["aaaa-1", "bbbb-2", "cccc-3", "dddd-4", "eeee-5"];
+    const entries = new Map<string, string>([["day1.chapters", JSON.stringify(ids)]]);
+    entries.set("day1.chapters.aaaa-1.title", "The garage-band years");
+    const question = findQuestion("day1.chapters");
+    assert.ok(question !== undefined);
+
+    // Act
+    const prior = priorFrom(question, entries, true);
+    const text = textFor("day1.chapters", prior);
+
+    // Assert
+    assert.equal(prior?.for === "instances" ? prior.instances.length : 0, ids.length);
+    for (const id of ids) {
+      assert.ok(text.includes(id), `${id} did not travel`);
+    }
+  });
+
+  it("priorFrom_AnswersNotAskedFor_StillCarriesTheIdentifiers", () => {
+    // Arrange — 0015 · C3's actual words: an identifier is structure rather than content, so
+    // it does not wait on a decision about content. Withholding ids with the answers is what
+    // produced the defect above, one opt-in state over.
+    const ids = ["aaaa-1", "bbbb-2"];
+    const entries = new Map<string, string>([
+      ["day1.chapters", JSON.stringify(ids)],
+      ["day1.chapters.aaaa-1.title", "A private thing"],
+    ]);
+    const question = findQuestion("day1.chapters");
+    assert.ok(question !== undefined);
+
+    // Act
+    const prior = priorFrom(question, entries, false);
+    const text = textFor("day1.chapters", prior);
+
+    // Assert
+    for (const id of ids) {
+      assert.ok(text.includes(id), `${id} did not travel`);
+    }
+    assert.ok(!text.includes("A private thing"), "an answer travelled without being asked for");
   });
 
   it("promptFor_PriorInstances_CarryTheirIdentityAndNotTheirPosition", () => {

@@ -22,8 +22,11 @@
  * graph containing an import nothing satisfies. Missing means a failed build rather than a
  * shipped site whose client is dead.
  *
- * `--check` regenerates to memory and compares, so CI can fail on a file that drifted from
- * the definitions rather than only on one that is absent.
+ * There is no drift check, and there was one until this was reviewed: `npm ci` runs `prepare`,
+ * which regenerates the file immediately before any check could compare it, and the file is
+ * git-ignored so no committed copy exists to drift. It could not fail. What actually guards
+ * this is `checkSpecifiers`, which refuses to emit a client graph importing a module nothing
+ * wrote.
  */
 
 import { readFile, writeFile } from "node:fs/promises";
@@ -118,27 +121,7 @@ export async function writeSchemaModule(root: string): Promise<void> {
   await writeFile(destination, schemaSource(WORKSHEETS, await collectAsks(root)), "utf8");
 }
 
-/** Whether what is on disk is what the definitions would produce right now. */
-export async function schemaModuleIsCurrent(root: string): Promise<boolean> {
-  try {
-    const onDisk = await readFile(path.join(root, SCHEMA_MODULE), "utf8");
-    return onDisk === schemaSource(WORKSHEETS, await collectAsks(root));
-  } catch {
-    return false;
-  }
-}
-
 if (process.argv[1] !== undefined && import.meta.filename === path.resolve(process.argv[1])) {
   const root = path.join(import.meta.dirname, "..");
-  if (process.argv.includes("--check")) {
-    if (!(await schemaModuleIsCurrent(root))) {
-      console.error(
-        `${SCHEMA_MODULE} is missing or does not match src/questions. Run \`npm run schema\`.`,
-      );
-      process.exit(1);
-    }
-    console.log(`ok  ${SCHEMA_MODULE} matches the definitions`);
-  } else {
-    await writeSchemaModule(root);
-  }
+  await writeSchemaModule(root);
 }

@@ -10,12 +10,12 @@ import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers } from "./fields.ts";
 import { needsStore, saveBackup, wireBackup } from "./export.ts";
-import { wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { preferences, wireAgentPage, wireQuestionControls } from "./agent.ts";
 
 /** Where a just-completed restore leaves its count, to be reported after the reload. */
 const RESTORED_KEY = "life-compass:restored";
 import { explain, wireRestore } from "./import.ts";
-import { openStore } from "./store.ts";
+import { openStore, type Store } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
 /**
@@ -40,7 +40,30 @@ export async function start(): Promise<void> {
   // /agent behind a check for blanks that page does not have — and shipped a page whose only
   // purpose is a switch, with the switch still hidden. That is the mistake this file's own
   // header records about the backup page, made again.
-  wireAgentPage(document, window.localStorage);
+  // `preferences()` guards the property access itself, which is what throws when a browser
+  // blocks site data — not the `getItem` beneath it. Unguarded here this would abort `start`
+  // before the fields were bound, which is the failure `confirmRecentRestore` below documents
+  // having already cost this application once.
+  wireAgentPage(document, preferences(window));
+  // The copy buttons, wired outside the store path for the same reason as the opt-in above.
+  // A prompt needs no stored answers unless the reader asks for them, so gating the control
+  // on a store that opened would take the only non-typing route through the workbook away
+  // from precisely the reader who cannot type — the storage failure and the accessibility
+  // need are uncorrelated, and 0001 makes the second one primary.
+  //
+  // The store is read when a panel OPENS, not now: a load-time snapshot misses everything
+  // dictated this session, and misses the instance order a repeat mints on its first write.
+  let opened: Promise<Store> | null = null;
+  wireQuestionControls(document, preferences(window), async () => {
+    try {
+      opened ??= openStore();
+      return await (await opened).readAll();
+    } catch {
+      // Nothing to include is a worse prompt, not a broken one.
+      opened = null;
+      return new Map<string, string>();
+    }
+  });
   try {
     await bindAnswerFields();
   } catch (error) {
@@ -122,10 +145,6 @@ async function bindAnswerFields(): Promise<void> {
     }
   });
 
-  // The copy buttons, on the pages that have questions. The store is read once here and
-  // handed over, so a control never opens a second read on a page that may be mid-dictation.
-  // The opt-in itself is wired in `start`, because it needs no store — see there.
-  wireQuestionControls(document, window.localStorage, await store.readAll());
 
   wireBackup(document, answers, store, {
     onHandedOver: (filename) =>

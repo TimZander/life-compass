@@ -399,6 +399,36 @@ describe("the decision records and their index", () => {
   });
 });
 
+describe("which page carries which controls", () => {
+  it("buildPages_RealContent_PutsTheAssistantOptInOnExactlyTheAssistantPage", async () => {
+    // Arrange — the decision, which nothing asserted. layout.test.ts proves `layout()` emits
+    // the section when told to; build.test.ts proved `agent.html` exists. Neither noticed that
+    // the build could stop telling it: replacing the AGENT_SOURCE arm with `null` shipped the
+    // page whose entire purpose is one switch, with no switch, past a green suite. This page
+    // has already shipped switchless once for a different reason.
+    const { pages } = await site();
+
+    // Act
+    const withOptIn = pages.filter((page) => page.html.includes('id="agent-on"'));
+
+    // Assert
+    assert.deepEqual(withOptIn.map((page) => page.url), ["/agent"]);
+  });
+
+  it("buildPages_RealContent_LeavesTheBackupControlsWhereTheyWere", async () => {
+    // Arrange — the same decision for the other page, and a regression guard on the parameter
+    // this branch changed from a boolean to a named union. A ternary that got either arm wrong
+    // would move the controls silently.
+    const { pages } = await site();
+
+    // Act
+    const withBackup = pages.filter((page) => page.html.includes('id="restore-file"'));
+
+    // Assert
+    assert.deepEqual(withBackup.map((page) => page.url), ["/backup"]);
+  });
+});
+
 describe("the backup page in a real build", () => {
   it("buildPages_RealContent_PutsTheToolsOnTheBackupPageAndNoOther", async () => {
     // Arrange — layout.test.ts proves the controls are emitted when asked for; nothing

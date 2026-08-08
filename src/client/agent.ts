@@ -20,7 +20,7 @@
  */
 
 import { promptFor, priorFrom, findQuestion, explain } from "./prompt.ts";
-import { showBanner } from "./banner.ts";
+import { showBanner, dismissBanner } from "./banner.ts";
 
 /**
  * Where the opt-in lives.
@@ -31,30 +31,63 @@ import { showBanner } from "./banner.ts";
  */
 const PREFERENCE = "life-compass:assistant";
 
-export function bridgeIsOn(storage: Storage): boolean {
+/**
+ * The preference store, or nothing.
+ *
+ * Reaching for `window.localStorage` is itself what throws when a browser blocks site data —
+ * not the `getItem` beneath it — so the access is guarded here rather than inside the
+ * functions that use it. app.ts records the same lesson about `sessionStorage`: unguarded, it
+ * aborted before the fields were bound, disabling the whole application for exactly the
+ * privacy-minded readers most likely to block storage. This is that mistake made a third time
+ * unless the access lives behind this function.
+ */
+export function preferences(from: Window): Storage | null {
   try {
+    return from.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function bridgeIsOn(storage: Storage | null): boolean {
+  if (storage === null) {
+    return false;
+  }
+  try {
+    // Compared against the exact value written, so anything else — a stale key, a value from
+    // some other tool, a half-written string — reads as off, which is the safe direction.
     return storage.getItem(PREFERENCE) === "on";
   } catch {
-    // Storage can throw outright — Safari in private browsing historically did. A bridge
-    // that cannot remember its setting is off, which is the safe direction for this one.
     return false;
   }
 }
 
-function setBridge(storage: Storage, on: boolean): void {
+/** Whether the preference was actually recorded. The caller has to know — see `wireAgentPage`. */
+function setBridge(storage: Storage | null, on: boolean): boolean {
+  if (storage === null) {
+    return false;
+  }
   try {
     storage.setItem(PREFERENCE, on ? "on" : "off");
+    return true;
   } catch {
-    showBanner({
-      id: "agent",
-      text: "This browser would not let the setting be saved, so it will be off again next time.",
-      actions: [],
-    });
+    return false;
   }
 }
 
+function say(text: string): void {
+  // Every message here offers a way out. banner.ts pins the region to the bottom of the
+  // viewport, so one without a Dismiss sits over whatever field is beneath it until something
+  // else happens to replace it — on a phone, mid-dictation, the interruption 0001 forbids.
+  showBanner({
+    id: "agent",
+    text,
+    actions: [{ label: "Dismiss", onSelect: () => dismissBanner("agent") }],
+  });
+}
+
 /** The opt-in on the assistant page. Absent on every other page, which is not an error. */
-export function wireAgentPage(document: Document, storage: Storage): void {
+export function wireAgentPage(document: Document, storage: Storage | null): void {
   const section = document.getElementById("agent");
   const toggle = document.getElementById("agent-on");
   if (section === null || !(toggle instanceof HTMLInputElement)) {
@@ -63,33 +96,73 @@ export function wireAgentPage(document: Document, storage: Storage): void {
   section.hidden = false;
   toggle.checked = bridgeIsOn(storage);
   toggle.addEventListener("change", () => {
-    setBridge(storage, toggle.checked);
-    showBanner({
-      id: "agent",
-      text: toggle.checked
+    // Conditional on the write having happened. Announcing "copy buttons are on" after a
+    // failed write tells the reader the opposite of the truth — and because the region holds
+    // one message at a time, it would also destroy the failure notice raised a line earlier.
+    if (!setBridge(storage, toggle.checked)) {
+      toggle.checked = bridgeIsOn(storage);
+      say("This browser would not let the setting be saved, so the buttons stay as they were.");
+      return;
+    }
+    say(
+      toggle.checked
         ? "Copy buttons are on. Open any worksheet and each question will have one."
         : "Copy buttons are off. The worksheets are unchanged.",
-      actions: [],
-    });
+    );
   });
 }
 
+/** Put text on the clipboard, or say why not. */
+function copyToClipboard(text: string): void {
+  // `navigator.clipboard` is undefined outside a secure context — which includes http:// on a
+  // LAN address, the way this project is device-tested — and reading `.writeText` off it
+  // throws SYNCHRONOUSLY, before any promise exists for a rejection handler to catch. The
+  // reader would tap the one button this feature exists for and get nothing whatsoever: no
+  // copy, no message, only an error in a console they will never open.
+  const clipboard = (navigator as Navigator & { clipboard?: Clipboard }).clipboard;
+  if (clipboard === undefined || typeof clipboard.writeText !== "function") {
+    say("This browser will not copy for us. The text is on screen — select it and copy it.");
+    return;
+  }
+  try {
+    clipboard.writeText(text).then(
+      () => say("Copied. Paste it into your assistant."),
+      () => say("The copy did not happen. The text is on screen — select it and copy it."),
+    );
+  } catch {
+    say("The copy did not happen. The text is on screen — select it and copy it.");
+  }
+}
+
+type Panel = {
+  readonly element: HTMLElement;
+  /** Rebuild the payload from the store as it is NOW, and show it. */
+  readonly refresh: () => Promise<void>;
+};
+
 /** Build the panel a question's button opens: the payload, in full, and what to do with it. */
-function panelFor(document: Document, group: string, entries: ReadonlyMap<string, string>): HTMLElement {
-  const panel = document.createElement("div");
-  panel.className = "agent-panel";
-  panel.hidden = true;
+function panelFor(
+  document: Document,
+  group: string,
+  readEntries: () => Promise<ReadonlyMap<string, string>>,
+): Panel {
+  const element = document.createElement("div");
+  element.className = "agent-panel";
+  // Dots are legal in an id and this is only ever used by `aria-controls`, never as a
+  // selector — `#agent-panel-day1.chapters` would parse as an id plus a class.
+  element.id = `agent-panel-${group}`;
+  element.hidden = true;
 
   const include = document.createElement("input");
   include.type = "checkbox";
-  include.id = `agent-prior-${group}`;
   const includeLabel = document.createElement("label");
-  includeLabel.htmlFor = include.id;
-  includeLabel.textContent = " Include what I have already written for this question";
+  includeLabel.append(include, document.createTextNode(" Include what I have already written"));
 
   const preview = document.createElement("pre");
   preview.className = "agent-preview";
   preview.tabIndex = 0;
+  preview.setAttribute("role", "region");
+  preview.setAttribute("aria-label", "The exact text that will be copied");
 
   const copy = document.createElement("button");
   copy.type = "button";
@@ -102,50 +175,55 @@ function panelFor(document: Document, group: string, entries: ReadonlyMap<string
   note.textContent =
     "This is exactly what goes to your clipboard. Whatever you paste it into can keep it.";
 
-  /** Rebuild the payload. One value, so the preview and the clipboard cannot disagree. */
-  const payload = (): string | null => {
+  let shown: string | null = null;
+
+  /**
+   * Rebuild from the store as it stands now, not as it stood at page load.
+   *
+   * A snapshot taken at load is wrong in both directions. A reader who edits an answer — or
+   * clears one they decided not to say — and then opts it in would hand an assistant the
+   * superseded text. And worse in practice: 0013 mints a repeat's instance order on the FIRST
+   * write, so in a first session that order does not exist at load, `priorFrom` finds nothing,
+   * and a reader who has just dictated five chapters gets a checkbox that silently includes
+   * none of them. Repeats are 334 of the 447 blanks.
+   */
+  const refresh = async (): Promise<void> => {
     const question = findQuestion(group);
     if (question === undefined) {
-      return null;
+      preview.textContent = explain({ kind: "unknown-group", group });
+      shown = null;
+      return;
     }
-    const prior = include.checked ? priorFrom(question, entries) : undefined;
+    const prior = priorFrom(question, await readEntries(), include.checked);
     const made = promptFor(group, prior);
     if (!made.ok) {
       preview.textContent = explain(made.refusal);
-      return null;
+      shown = null;
+      return;
     }
+    // `textContent`, never `innerHTML`: prior answers are the reader's own words, and a
+    // restored backup is words from a file. The one surface whose job is showing the literal
+    // payload must not be a surface that executes it.
     preview.textContent = made.text;
-    return made.text;
+    shown = made.text;
   };
 
   include.addEventListener("change", () => {
-    payload();
+    void refresh();
   });
 
   copy.addEventListener("click", () => {
-    const text = payload();
-    if (text === null) {
+    // Copies exactly what is on screen rather than rebuilding. 0007 · 1 means the preview and
+    // the clipboard are ONE value; building it twice makes them two that usually agree.
+    if (shown === null) {
+      say("There is nothing to copy for this question — the panel above says why.");
       return;
     }
-    // Writing the clipboard needs no permission, unlike reading it — which is why the paste
-    // side (#68) cannot be symmetric with this.
-    navigator.clipboard.writeText(text).then(
-      () => {
-        showBanner({ id: "agent", text: "Copied. Paste it into your assistant.", actions: [] });
-      },
-      () => {
-        showBanner({
-          id: "agent",
-          text: "This browser would not let the copy happen. The text is on screen — select it and copy it yourself.",
-          actions: [],
-        });
-      },
-    );
+    copyToClipboard(shown);
   });
 
-  panel.append(includeLabel, include, preview, note, copy);
-  includeLabel.prepend(include);
-  return panel;
+  element.append(includeLabel, preview, note, copy);
+  return { element, refresh };
 }
 
 /**
@@ -153,12 +231,15 @@ function panelFor(document: Document, group: string, entries: ReadonlyMap<string
  *
  * Built here rather than emitted by the build, so a reader who never opts in carries no extra
  * markup at all. Derived from `[data-question]`, which the build already puts on every
- * rendered group — so the buttons cannot drift from the questions that exist.
+ * rendered group — so the buttons cannot drift from the questions that exist. The selector is
+ * deliberately element-agnostic: a `single` is a `<p>`, a `group` and a `checklist` are
+ * `<ul>`, a `repeat` is a `<div>` or an `<ol>`, and matching on any one of those would leave
+ * most of the workbook with no control.
  */
 export function wireQuestionControls(
   document: Document,
-  storage: Storage,
-  entries: ReadonlyMap<string, string>,
+  storage: Storage | null,
+  readEntries: () => Promise<ReadonlyMap<string, string>>,
 ): void {
   if (!bridgeIsOn(storage)) {
     return;
@@ -169,9 +250,17 @@ export function wireQuestionControls(
     if (group === null) {
       continue;
     }
-    // 0015 keeps checklists out of the contract, so a control here would only produce a
-    // refusal. Skipped rather than offered and refused.
-    if (findQuestion(group)?.kind === "checklist") {
+    // 0015 keeps checklists out of the contract, so a control there could only produce a
+    // refusal. A group this build does not know is the same — reachable across a service
+    // worker activation, where a page can outlive the schema it was rendered against.
+    const question = findQuestion(group);
+    if (question === undefined || question.kind === "checklist") {
+      continue;
+    }
+    // Idempotent. Nothing calls this twice today, but it is exported, the tests call it
+    // directly, and #68's paste path will want to re-run it — and a second pass would give
+    // every question two controls whose panels share one id.
+    if (container.previousElementSibling?.classList.contains("agent-panel") === true) {
       continue;
     }
 
@@ -179,25 +268,31 @@ export function wireQuestionControls(
     open.type = "button";
     open.className = "agent-open";
     open.textContent = "Ask an assistant";
-    const panel = panelFor(document, group, entries);
+    // Named for its own question. A screen reader listing this page's buttons would otherwise
+    // find five identical "Ask an assistant" with nothing saying which is which (0001).
+    const named = question.kind === "single" || question.kind === "repeat" ? question.label : group;
+    open.setAttribute("aria-label", `Ask an assistant about ${named}`);
 
-    open.addEventListener("click", () => {
-      panel.hidden = !panel.hidden;
-      open.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
-      if (!panel.hidden) {
-        // Fill it on open rather than on load: building 113 payloads for a page nobody has
-        // asked anything of is work with no reader waiting for it.
-        panel.querySelector("input")?.dispatchEvent(new Event("change"));
-      }
-    });
+    const panel = panelFor(document, group, readEntries);
+    open.setAttribute("aria-controls", panel.element.id);
     open.setAttribute("aria-expanded", "false");
 
-    // BEFORE the question, not inside it. Appending put the control after every field —
-    // on Day 1's chapters that is below all five, so a reader met it having already written
-    // by hand the thing it offered to help with. It is also the only valid place for it:
+    open.addEventListener("click", () => {
+      const opening = panel.element.hidden;
+      panel.element.hidden = !opening;
+      open.setAttribute("aria-expanded", opening ? "true" : "false");
+      if (opening) {
+        // Built on open rather than on load: 113 payloads for a page nobody has asked
+        // anything of is work with no reader waiting for it.
+        void panel.refresh();
+      }
+    });
+
+    // BEFORE the question, not inside it. Appending put the control after every field — on
+    // Day 1's chapters that is below all five, so a reader met it having already written by
+    // hand the thing it offered to help with. It is also the only valid place for it:
     // `q-group`, `q-checklist` and one shape of `q-repeat` are `<ul>`/`<ol>`, whose only
-    // permitted children are list items, so a button inside them is markup no parser is
-    // obliged to keep where it was put.
-    container.before(open, panel);
+    // permitted children are list items.
+    container.before(open, panel.element);
   }
 }
