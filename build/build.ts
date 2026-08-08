@@ -40,6 +40,7 @@ export type ProblemKind =
   | "unrewritten-link"
   | "unresolved-question-anchor"
   | "unanchored-question"
+  | "questionless-ask"
   | "registry"
   | "schema"
   | "task-list"
@@ -58,6 +59,15 @@ export type BuildResult = {
   readonly assets: readonly string[];
   readonly problems: readonly BuildProblem[];
   readonly schema: Schema;
+  /**
+   * Question id -> the prose that introduces it on its page.
+   *
+   * The definitions know a question's identifier, label and fields and not what it asks,
+   * because docs/decisions/0004 keeps the prose in Markdown. Read back off the page here so
+   * that anything stating a question away from its worksheet — #67's prompt, and printing
+   * (0010) eventually — says what the reader was actually asked rather than a label.
+   */
+  readonly asks: ReadonlyMap<string, string>;
 };
 
 /**
@@ -222,6 +232,7 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
 
   const problems: BuildProblem[] = [];
   const built: BuiltPage[] = [];
+  const asks = new Map<string, string>();
   for (const page of pages) {
     const markdown = await readFile(path.join(root, page.source), "utf8");
     const rendered = render(markdown, page.source, context);
@@ -231,6 +242,9 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
     // from the output would be a second answer to the same question, free to drift.
     const isBackupPage = page.source === BACKUP_SOURCE;
     built.push({ ...page, html: layout(html, title, isBackupPage), title, links, headingIds, anchors });
+    for (const [id, ask] of rendered.asks) {
+      asks.set(id, ask);
+    }
     for (const marker of rendered.taskMarkers) {
       problems.push({
         kind: "task-list",
@@ -280,6 +294,21 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
 
   problems.push(...checkAnchors(built));
   problems.push(...checkQuestionAnchors(built, schema));
+
+  // A question with no ask is a question nothing outside its own page can state. The rule
+  // that reads the prose back off the page is structural rather than textual, so it can
+  // capture the wrong paragraph or none at all when a worksheet is written in a shape it has
+  // not seen — and capturing nothing is the half that would otherwise be silent. Seven
+  // questions came out empty on the first attempt, all of them under a heading.
+  for (const [id, question] of schema.byId) {
+    if ((asks.get(id) ?? "").trim() === "") {
+      problems.push({
+        kind: "questionless-ask",
+        source: [...schema.bySource].find(([, qs]) => qs.includes(question))?.[0] ?? id,
+        detail: `${id} has no prose introducing it; nothing outside the page could state it`,
+      });
+    }
+  }
   problems.push(
     ...checkSchema(schema).map((detail) => ({
       kind: "schema" as const,
@@ -335,7 +364,7 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
     })),
   );
 
-  return { pages: built, assets, problems, schema };
+  return { pages: built, assets, problems, schema, asks };
 }
 
 /** Render, verify, and write. `out` is an option so tests can build to a temp dir. */
@@ -372,7 +401,11 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 
   // The schema as data, so the assistant contract and the importer can key off the
   // same definitions the pages were rendered from rather than a second copy (#15).
-  const schemaJson = `${JSON.stringify({ worksheets: result.schema.worksheets }, null, 2)}\n`;
+  const schemaJson = `${JSON.stringify(
+    { worksheets: result.schema.worksheets, asks: Object.fromEntries(result.asks) },
+    null,
+    2,
+  )}\n`;
   await writeFile(path.join(out, "questions.json"), schemaJson, "utf8");
 
   // Everything the site serves, gathered as it is written so the service worker's
