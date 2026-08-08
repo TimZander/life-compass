@@ -36,6 +36,7 @@ every citation already written down.
 | [0012](0012-client-typescript-stripped-at-build-time.md) | Client code becomes TypeScript, stripped at build time | Accepted |
 | [0013](0013-instance-identity-for-rendered-slots.md) | Instance identity for slots the build renders | Accepted |
 | [0014](0014-a-dom-for-tests-only.md) | A DOM for tests, and only for tests | Accepted |
+| [0015](0015-assistant-output-is-self-describing-blocks.md) | Assistant output is self-describing blocks, one per question group | Proposed |
 
 ## Still open
 
