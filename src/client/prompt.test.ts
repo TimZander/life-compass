@@ -67,6 +67,19 @@ describe("what the assistant is asked to do", () => {
     assert.match(text, /wait for my answer/i);
   });
 
+  it("promptFor_Always_SaysToCollectEveryNamedPartAndToAskForOneByName", () => {
+    // Arrange — from the first real interview. The assistant opened vaguely, asked what the
+    // chapter was about, could not get a title out of the answer, and had to come back for
+    // it. The parts were listed but nothing said to work through them, so it inferred where
+    // it should have asked.
+    // Act
+    const text = textFor("day1.chapters");
+
+    // Assert
+    assert.match(text, /ask for it by name/i);
+    assert.match(text, /no warm-up question/i);
+  });
+
   it("promptFor_Always_AsksForMyWordsRatherThanAnImprovementOfThem", () => {
     // Arrange — paraphrase is the default behaviour of an assistant handed dictated speech,
     // and 0001's premise is that the reader's own reflection is what ends up in the workbook.
