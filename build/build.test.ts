@@ -41,6 +41,7 @@ const EXPECTED_PAGES: readonly string[] = [
   "docs/decisions/0012-client-typescript-stripped-at-build-time.html",
   "docs/decisions/0013-instance-identity-for-rendered-slots.html",
   "docs/decisions/0014-a-dom-for-tests-only.html",
+  "docs/decisions/0015-assistant-output-is-self-describing-blocks.html",
   "docs/decisions/index.html",
   "index.html",
   "one-page-anchor.html",
@@ -132,6 +133,76 @@ describe("the stylesheet and the markup agreeing", () => {
       !css.includes("#restore-go[disabled]"),
       "the stylesheet still targets an attribute the markup never sets",
     );
+  });
+});
+
+describe("the decision records and their index", () => {
+  /** Every record file, and the table rows in the index that name them. */
+  async function records(): Promise<{
+    files: string[];
+    listed: Map<string, string>;
+  }> {
+    const dir = path.join(ROOT, "docs/decisions");
+    const files = (await readdir(dir))
+      .filter((name) => /^\d{4}-.*\.md$/.test(name))
+      .sort();
+    const index = await readFile(path.join(dir, "README.md"), "utf8");
+    const listed = new Map<string, string>();
+    for (const row of index.split("\n")) {
+      // | [0009](0009-....md) | Title | Status |
+      const found = /^\|\s*\[\d{4}\]\(([^)]+)\)\s*\|[^|]*\|\s*([^|]+?)\s*\|/.exec(row);
+      if (found?.[1] !== undefined && found[2] !== undefined) {
+        listed.set(found[1], found[2]);
+      }
+    }
+    return { files, listed };
+  }
+
+  it("decisionRecords_EveryFile_IsListedInTheIndex", async () => {
+    // Arrange — the index table is how anyone finds a record; the nav points at the
+    // directory, not at individual pages. A record nobody links is a record nobody reads,
+    // and nothing until now would have noticed one shipping unlisted.
+    const { files, listed } = await records();
+
+    // Act
+    const missing = files.filter((name) => !listed.has(name));
+
+    // Assert
+    assert.deepEqual(missing, [], "decision records exist that the index does not list");
+  });
+
+  it("decisionRecords_EveryIndexRow_NamesAFileThatExists", async () => {
+    // Arrange — negative case, the other direction: a renamed or deleted record leaves a
+    // row pointing at nothing, and the build only checks links inside published pages.
+    const { files, listed } = await records();
+
+    // Act
+    const dangling = [...listed.keys()].filter((name) => !files.includes(name));
+
+    // Assert
+    assert.deepEqual(dangling, [], "the index lists records that do not exist");
+  });
+
+  it("decisionRecords_TheIndexStatus_MatchesTheRecordsOwn", async () => {
+    // Arrange — two copies of one fact, which is the failure 0015 itself is about. Six of
+    // the records are Proposed and the README's own clause governs when that changes, so a
+    // record promoted to Accepted in its own file and left Proposed in the table is the
+    // likely drift rather than an exotic one.
+    const { files, listed } = await records();
+    const disagreements: string[] = [];
+
+    // Act
+    for (const name of files) {
+      const body = await readFile(path.join(ROOT, "docs/decisions", name), "utf8");
+      const own = /^- \*\*Status:\*\*\s*(\S+)/m.exec(body)?.[1];
+      const row = listed.get(name);
+      if (own !== undefined && row !== undefined && own !== row) {
+        disagreements.push(`${name}: file says ${own}, index says ${row}`);
+      }
+    }
+
+    // Assert
+    assert.deepEqual(disagreements, []);
   });
 });
 
