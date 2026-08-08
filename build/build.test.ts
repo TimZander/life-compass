@@ -487,6 +487,67 @@ describe("which page carries which controls", () => {
   });
 });
 
+describe("the stylesheet and the assistant controls agreeing", () => {
+  /**
+   * Every `.agent-*` rule was independently deletable with the suite green — including whole
+   * rules — because nothing in the project asserts on this stylesheet except the one backup
+   * pair. Each declaration below carries a failure a reader would meet, which is the only
+   * reason to pin a stylesheet at all.
+   */
+  const REQUIRED: readonly (readonly [selector: string, declaration: string, because: string])[] = [
+    [".agent-open", "border", "the button reverts to a browser default nobody could find on a device"],
+    [".agent-open:focus-visible", "outline", "a keyboard reader cannot see where they are"],
+    [".tools", "border-left", "both tools sections merge into the prose around them"],
+    [".agent-preview", "max-height", "the payload expands and pushes the copy button off-screen"],
+    [".agent-preview", "overflow:auto", "the payload cannot be scrolled to read the rest of it"],
+    [".agent-preview", "white-space:pre-wrap", "the payload collapses into one unreadable line"],
+    [".agent-preview", "overflow-wrap:anywhere", "the payload runs off the side of a phone"],
+    [".agent-preview:focus-visible", "outline", "the scrollable region gives no focus indication"],
+    [".agent-note", "var(--ink)", "0007 · 3's one required sentence returns to 2.49:1 contrast"],
+  ];
+
+  /** The declarations inside one rule, by exact selector. */
+  function declarationsFor(css: string, selector: string): string {
+    // Comments stripped first: this stylesheet carries a long one above most rules, and a
+    // naive scan folds it into the selector it precedes.
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const bodies = [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((rule) => (rule[1] ?? "").trim() === selector)
+      .map((rule) => (rule[2] ?? "").replace(/\s+/g, ""));
+    return bodies.join(";");
+  }
+
+  it("styleSheet_TheAssistantControls_KeepTheDeclarationsAReaderDependsOn", async () => {
+    // Arrange
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act & Assert
+    for (const [selector, declaration, because] of REQUIRED) {
+      const body = declarationsFor(css, selector);
+      assert.ok(body !== "", `${selector} has no rule at all: ${because}`);
+      assert.ok(body.includes(declaration), `${selector} lost ${declaration}: ${because}`);
+    }
+  });
+
+  it("styleSheet_TheControls_DoNotPrint", async () => {
+    // Arrange — 0010 · C3 asks for the absence of form controls on paper, and this file's own
+    // history is the argument: the backup print rule was keyed on a class the markup never
+    // carried and was dead from #25 until this branch. A print rule that silently stops
+    // matching is the failure 0010 predicts by name.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act
+    const printed = /@media print\{([^}]*)\{display:none\}\}/g;
+    const hidden = [...css.matchAll(printed)].flatMap((match) => (match[1] ?? "").split(","));
+
+    // Assert — every selector named here must appear in the markup the build emits, which is
+    // what the dead `.backup` rule did not.
+    for (const selector of ["#backup", "#restore", "#agent", ".agent-open", ".agent-panel"]) {
+      assert.ok(hidden.includes(selector), `${selector} is not hidden in print`);
+    }
+  });
+});
+
 describe("the backup page in a real build", () => {
   it("buildPages_RealContent_PutsTheToolsOnTheBackupPageAndNoOther", async () => {
     // Arrange — layout.test.ts proves the controls are emitted when asked for; nothing

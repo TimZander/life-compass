@@ -126,6 +126,54 @@ describe("the backup and restore controls", () => {
   });
 });
 
+describe("the assistant page's controls", () => {
+  /**
+   * The backup section has four tests pinning its ids, its hidden state and its warning text.
+   * This one had none, and a sweep found every part of it deletable with the suite green: the
+   * `hidden` attribute, the heading, the `aria-labelledby` pointing at it, the `class` that
+   * carries its styling, the label around its checkbox, and the privacy claim the page exists
+   * to make. One of them turned the only control into a text input.
+   */
+  const AGENT = layout("<p>body</p>", "Assistant", "agent");
+
+  it("layout_TheAssistantPage_ShipsItsOptInHiddenForTheClientToReveal", () => {
+    // Arrange & Act & Assert — a control visible before the client can act on it is one
+    // somebody presses and watches do nothing, which is the reasoning the backup section's
+    // own docblock gives and which nothing was holding here.
+    assert.match(AGENT, /<section class="tools" id="agent"[^>]*hidden>/);
+  });
+
+  it("layout_TheOptIn_IsACheckboxInsideItsOwnLabel", () => {
+    // Arrange & Act & Assert — the switch is the page's entire purpose. As a `text` input it
+    // becomes an inert box, and banner.ts treats a focused text input as typing, so it would
+    // also defer every message the page tries to show.
+    assert.match(AGENT, /<label><input type="checkbox" id="agent-on">[^<]+<\/label>/);
+  });
+
+  it("layout_TheAssistantSection_IsNamedByItsOwnHeading", () => {
+    // Arrange & Act & Assert — `aria-labelledby` and the heading it points at are separately
+    // deletable, and either alone leaves the section unnamed to a screen reader.
+    assert.match(AGENT, /aria-labelledby="agent-heading"/);
+    assert.match(AGENT, /<h2 id="agent-heading">[^<]+<\/h2>/);
+  });
+
+  it("layout_TheAssistantSection_StatesThePrivacyClaimTheDecisionIsMadeOn", () => {
+    // Arrange & Act & Assert — docs/decisions/0007's whole argument is that the reader's
+    // choice is real because the application cannot transmit. That sentence disappearing from
+    // the page where the choice is made is not a cosmetic loss.
+    assert.match(AGENT, /Nothing is sent from this app/);
+  });
+
+  it("layout_APageWithNoTools_CarriesNeitherSection", () => {
+    // Arrange & Act — negative case: the sections belong to exactly one page each.
+    const plain = layout("<p>body</p>", "A worksheet", null);
+
+    // Assert
+    assert.ok(!plain.includes('id="agent"'), "the assistant controls leaked onto another page");
+    assert.ok(!plain.includes('id="backup"'), "the backup controls leaked onto another page");
+  });
+});
+
 describe("the wordmark", () => {
   it("layout_TheWordmarkPath_IsTheSameDrawingAsTheIcon", () => {
     // The installed icon and the page header must be one drawing rather than two shapes

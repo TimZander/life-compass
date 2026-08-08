@@ -465,6 +465,8 @@ describe("the copy control on a question", () => {
     assert.equal(open.getAttribute("aria-controls"), panel.id, "the panel is not associated");
     assert.equal(open.getAttribute("aria-expanded"), "true", "opening is not announced");
     assert.equal(preview.tagName, "PRE", "the payload loses its line breaks");
+    assert.equal(preview.getAttribute("role"), "region", "the payload is not a landmark");
+    assert.ok((preview.getAttribute("aria-label") ?? "").length > 0, "the payload is unnamed");
     assert.equal(preview.tabIndex, 0, "a scrollable payload keyboard users cannot reach");
     assert.equal(copy.type, "button", "a submit button inside a form navigates the page away");
     const label = document.querySelector("label");
@@ -521,6 +523,238 @@ describe("the copy control on a question", () => {
     release(new Map());
     await settle();
     assert.equal(copy.getAttribute("aria-disabled"), null, "the copy stayed held after arriving");
+  });
+
+  /** Point `navigator` at a clipboard of our choosing, or at none. */
+  function withClipboard(clipboard: unknown): void {
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { clipboard } });
+  }
+
+  /** Open a question's panel and hand back the copy button. */
+  async function opened(document: Document): Promise<HTMLElement> {
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    return [...document.querySelectorAll("button")].find((one) =>
+      one.textContent?.includes("Copy"),
+    ) as HTMLElement;
+  }
+
+  it("wireQuestionControls_NoClipboardApiAtAll_SaysSoRatherThanFailingSilently", async () => {
+    // Arrange — `navigator.clipboard` is undefined outside a secure context, which includes
+    // http:// on a LAN address: this project's own device-test path. Reading `.writeText` off
+    // it throws before any promise exists, so the reader taps the one button the feature is
+    // for and gets nothing at all. The guard existed and had no test.
+    const document = worksheet("day4.eulogy");
+    withClipboard(undefined);
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (await opened(document)).click();
+    await settle();
+
+    // Assert
+    assert.match(
+      document.getElementById("banner-region")?.textContent ?? "",
+      // The wording specific to "there is no clipboard API here", not the shared tail. Both
+      // failure messages end "select it and copy it", so asserting that could not tell the
+      // guard being deleted from the guard working.
+      /will not copy for us/i,
+      "a reader on an insecure origin was told nothing",
+    );
+  });
+
+  it("wireQuestionControls_AClipboardThatRefuses_SaysSoToo", async () => {
+    // Arrange — negative case by the other route: the API exists and the write is denied.
+    const document = worksheet("day4.eulogy");
+    withClipboard({ writeText: () => Promise.reject(new Error("denied")) });
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (await opened(document)).click();
+    await settle();
+
+    // Assert
+    assert.match(document.getElementById("banner-region")?.textContent ?? "", /did not happen/i);
+  });
+
+  it("wireQuestionControls_AClipboardThatThrows_IsCaughtRatherThanEscaping", async () => {
+    // Arrange — a synchronous throw from `writeText` itself, which is neither of the promise
+    // arms and would otherwise escape the click handler entirely.
+    const document = worksheet("day4.eulogy");
+    withClipboard({
+      writeText: () => {
+        throw new Error("NotAllowedError");
+      },
+    });
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act & Assert
+    const copy = await opened(document);
+    assert.doesNotThrow(() => copy.click());
+    await settle();
+    assert.match(document.getElementById("banner-region")?.textContent ?? "", /did not happen/i);
+  });
+
+  it("wireQuestionControls_TwoOverlappingRebuilds_ShowTheOneAskedForLast", async () => {
+    // Arrange — without a generation token the rebuild that RESOLVES last wins rather than the
+    // one that STARTED last. The direction that matters: the reader ticks "include", changes
+    // their mind and unticks, and the older read lands afterwards — putting the answers they
+    // just withdrew back into the payload they are about to hand over.
+    const WITHDRAWN = "An answer I decided not to share";
+    const document = worksheet("day4.eulogy");
+    const pending: ((value: ReadonlyMap<string, string>) => void)[] = [];
+    wireQuestionControls(document, memoryStorage("on"), () =>
+      new Promise<ReadonlyMap<string, string>>((resolve) => pending.push(resolve)),
+    );
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    const include = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+
+    // Act — tick (rebuild with answers), untick (rebuild without), then resolve them in the
+    // order that breaks it: the newer first, the older last.
+    include.checked = true;
+    include.dispatchEvent(new window.Event("change") as unknown as Event);
+    include.checked = false;
+    include.dispatchEvent(new window.Event("change") as unknown as Event);
+    await settle();
+    pending[2]?.(new Map([["day4.eulogy", WITHDRAWN]]));
+    await settle();
+    pending[1]?.(new Map([["day4.eulogy", WITHDRAWN]]));
+    await settle();
+
+    // Assert
+    const preview = document.querySelector(".agent-preview")?.textContent ?? "";
+    assert.ok(!preview.includes(WITHDRAWN), "a withdrawn answer was painted back by a stale read");
+  });
+
+  it("wireQuestionControls_TheCheckboxChangingMidRebuild_IsReadWhenTheRebuildBegan", async () => {
+    // Arrange — the state has to be read BEFORE the await, or a rebuild reflects whatever the
+    // checkbox happens to say when the store returns rather than what it said when the reader
+    // asked. It is correct today only because argument evaluation runs left to right, which is
+    // exactly the sort of accident a readability edit undoes.
+    const WRITTEN = "Something private";
+    const document = worksheet("day4.eulogy");
+    const pending: ((value: ReadonlyMap<string, string>) => void)[] = [];
+    wireQuestionControls(document, memoryStorage("on"), () =>
+      new Promise<ReadonlyMap<string, string>>((resolve) => pending.push(resolve)),
+    );
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+
+    // Act — the panel opened with the box unticked; tick it only while that read is in flight.
+    const include = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    include.checked = true;
+    pending[0]?.(new Map([["day4.eulogy", WRITTEN]]));
+    await settle();
+
+    // Assert — the rebuild that began unticked must not include the answer.
+    const preview = document.querySelector(".agent-preview")?.textContent ?? "";
+    assert.ok(!preview.includes(WRITTEN), "an answer travelled that was not asked for when asked");
+  });
+
+  it("wireQuestionControls_BeforeItIsOpened_AnnouncesItselfAsCollapsed", () => {
+    // Arrange — the shape test checks `aria-expanded` after opening, so the INITIAL value was
+    // deletable: a screen reader met a disclosure with no state at all until it had been
+    // pressed once, which is the press a reader makes to find out what it is.
+    const document = worksheet("day4.eulogy");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    assert.equal(
+      document.querySelector("button.agent-open")?.getAttribute("aria-expanded"),
+      "false",
+    );
+  });
+
+  it("wireQuestionControls_AQuestionThisBuildDoesNotKnow_IsSkippedWithTheRestIntact", () => {
+    // Arrange — reachable across a service worker activation, where a page can outlive the
+    // schema it was rendered against. Without the skip the lookup throws mid-loop, so every
+    // question AFTER the unknown one silently loses its control too.
+    const document = worksheet("day9.not_a_question", "day4.eulogy");
+
+    // Act & Assert
+    assert.doesNotThrow(() =>
+      wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map())),
+    );
+    assert.equal(
+      document.querySelectorAll("button.agent-open").length,
+      1,
+      "a question after an unknown one lost its control",
+    );
+  });
+
+  it("wireQuestionControls_RunTwice_DoesNotGiveOneQuestionTwoControls", () => {
+    // Arrange — nothing calls this twice today, but it is exported, every test here calls it
+    // directly, and #68's paste path will want to re-run it. A second pass gave each question
+    // two buttons whose panels shared an id, so `aria-controls` resolved to the wrong one.
+    const document = worksheet("day4.eulogy");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    assert.equal(document.querySelectorAll("button.agent-open").length, 1);
+    assert.equal(document.querySelectorAll(".agent-panel").length, 1);
+  });
+
+  it("wireQuestionControls_EveryPanel_HasAnIdentifierOfItsOwn", async () => {
+    // Arrange — one shared id makes every button's `aria-controls` resolve to the first panel,
+    // so a screen reader following the relationship lands on another question's payload.
+    const document = worksheet("day4.eulogy", "day1.patterns");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    const ids = [...document.querySelectorAll(".agent-panel")].map((one) => one.id);
+    const controls = [...document.querySelectorAll("button.agent-open")].map(
+      (one) => one.getAttribute("aria-controls") ?? "",
+    );
+
+    // Assert
+    assert.equal(new Set(ids).size, ids.length, "two panels share one id");
+    assert.deepEqual(controls, ids, "a button points at a panel that is not its own");
+  });
+
+  it("wireQuestionControls_ACopyTakenMidRebuild_SendsNothingRatherThanTheOldPayload", async () => {
+    // Arrange — the correctness half of the race guard. The affordance was pinned; this is the
+    // behaviour. With the checkbox just ticked, copying before the rebuild lands would send the
+    // payload WITHOUT the answers while the reader believes they travelled — and just unticked,
+    // it would send the answers they removed. 0007 · 1 makes the preview and the clipboard one
+    // value, and this is that promise while a rebuild is in flight.
+    const WRITTEN = "Something I did not mean to share";
+    const document = worksheet("day4.eulogy");
+    let written = "";
+    withClipboard({ writeText: (text: string) => { written = text; return Promise.resolve(); } });
+    let release: (value: ReadonlyMap<string, string>) => void = () => {};
+    const answers = new Map([["day4.eulogy", WRITTEN]]);
+    let first = true;
+    wireQuestionControls(document, memoryStorage("on"), () => {
+      if (first) {
+        first = false;
+        return Promise.resolve(answers);
+      }
+      return new Promise<ReadonlyMap<string, string>>((resolve) => {
+        release = resolve;
+      });
+    });
+    const copy = await opened(document);
+
+    // Act — start a second rebuild and try to copy before it resolves.
+    const include = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    include.checked = true;
+    include.dispatchEvent(new window.Event("change") as unknown as Event);
+    copy.click();
+    await settle();
+
+    // Assert
+    assert.equal(written, "", "a payload was copied while the panel was still rebuilding");
+    release(answers);
+    await settle();
+    copy.click();
+    await settle();
+    assert.ok(written.includes(WRITTEN), "the settled payload was never copyable");
   });
 
   it("wireQuestionControls_TheCopyControl_CarriesOnePlainSentenceAboutWhereItGoes", async () => {
