@@ -24,6 +24,9 @@ export const ROOT: string = path.join(import.meta.dirname, "..");
 
 /** The page that carries the backup and restore controls (#25). */
 export const BACKUP_SOURCE = "backup.md";
+
+/** The page that carries the assistant bridge and its opt-in (#67). */
+export const AGENT_SOURCE = "agent.md";
 export const OUT: string = path.join(ROOT, "dist");
 
 export type BuiltPage = Page & {
@@ -240,8 +243,9 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
     // The backup page is the one that carries the tools. Named by source rather than by
     // scanning the rendered HTML: the build knows which file it is reading, and deriving it
     // from the output would be a second answer to the same question, free to drift.
-    const isBackupPage = page.source === BACKUP_SOURCE;
-    built.push({ ...page, html: layout(html, title, isBackupPage), title, links, headingIds, anchors });
+    const tools =
+      page.source === BACKUP_SOURCE ? "backup" : page.source === AGENT_SOURCE ? "agent" : null;
+    built.push({ ...page, html: layout(html, title, tools), title, links, headingIds, anchors });
     for (const [id, ask] of rendered.asks) {
       asks.set(id, ask);
     }

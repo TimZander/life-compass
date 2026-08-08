@@ -572,7 +572,7 @@ describe("deciding whether a page needs the store at all", () => {
     // that had them. The backup page has none, so the entry module returned before opening
     // anything and both controls stayed hidden — a page whose only purpose is those
     // controls, offering neither.
-    window.document.body.innerHTML = layout("<p>prose</p>", "Backup", true);
+    window.document.body.innerHTML = layout("<p>prose</p>", "Backup", "backup");
 
     // Act & Assert
     assert.equal(needsStore(window.document as unknown as Document), true);
@@ -583,7 +583,7 @@ describe("deciding whether a page needs the store at all", () => {
     window.document.body.innerHTML = layout(
       '<p><span class="fill" data-field="t.a" data-label="A">___</span></p>',
       "A worksheet",
-      false,
+      null,
     );
 
     // Act & Assert
@@ -594,7 +594,7 @@ describe("deciding whether a page needs the store at all", () => {
     // Arrange — negative case, and the reason the check exists: a decision record should
     // not prompt anybody about storage, and 0010 keeps it readable and printable with no
     // script having run.
-    window.document.body.innerHTML = layout("<p>Just prose.</p>", "A record", false);
+    window.document.body.innerHTML = layout("<p>Just prose.</p>", "A record", null);
 
     // Act & Assert
     assert.equal(needsStore(window.document as unknown as Document), false);

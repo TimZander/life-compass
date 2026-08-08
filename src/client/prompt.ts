@@ -51,6 +51,15 @@ export type Generated =
 export type PriorInstance = {
   readonly id: string;
   readonly fields: ReadonlyMap<string, string>;
+  /**
+   * Whether anything is stored under it — which is not the same as whether it is being sent.
+   *
+   * Identifiers travel whether or not answers do (0015 · C3), so with answers withheld every
+   * instance arrives with an empty map. Without this flag they were all announced as "nothing
+   * written yet", which tells the assistant something untrue about a question the reader has
+   * already answered, and invites it to ask again for words they have deliberately not shared.
+   */
+  readonly written: boolean;
 };
 
 /**
@@ -119,15 +128,20 @@ export function priorFrom(
     const instances: PriorInstance[] = [];
     for (const id of order.instances) {
       const fields = new Map<string, string>();
-      if (includeAnswers) {
-        for (const field of question.fields) {
-          const value = entries.get(answerKey(question.id, id, field.id));
-          if (value !== undefined && value !== "") {
-            fields.set(field.id, value);
-          }
+      let written = false;
+      for (const field of question.fields) {
+        const value = entries.get(answerKey(question.id, id, field.id));
+        if (value === undefined || value === "") {
+          continue;
+        }
+        written = true;
+        // Read either way, carried only when asked for: the reader's opt-in governs the
+        // words, not whether this instance is known to exist.
+        if (includeAnswers) {
+          fields.set(field.id, value);
         }
       }
-      instances.push({ id, fields });
+      instances.push({ id, fields, written });
     }
     return { for: "instances", instances };
   }
@@ -165,11 +179,20 @@ export function priorFrom(
  * second, valid-looking contract block naming a real group — and 0015's importer scans every
  * fence in a paste. So a reader who wrote about code, or who was fed something to write,
  * could hand back a prompt that imports answers to a question they were not looking at. The
- * backtick is the whole of the mechanism, so removing it is the whole of the fix; it happens
- * before the preview, so what 0007 · 1 shows is what is sent.
+ * backtick is the whole of the mechanism for THAT attack, and it happens before the preview,
+ * so what 0007 · 1 shows is what is sent.
+ *
+ * The newline is the other half, and it was missed. Every answer is interpolated into a
+ * Markdown list item, and answers are multi-line by construction — fields.ts treats `\n` as
+ * the common case, because these are dictated paragraphs. An answer whose second line begins
+ * "- id 'i2'" therefore closes the reader's own entry and opens a second one that looks
+ * exactly like a real instance, ahead of the real one. Indenting every continuation line
+ * keeps a multi-line answer inside the item it belongs to, so no line of a reader's prose can
+ * open a block of its own — which covers `-`, `*`, `#`, `>`, `1.` and a fence in one move,
+ * rather than one escape per character that happens to be special.
  */
-function neutralise(answer: string): string {
-  return answer.replace(/`/g, "'");
+function neutralise(answer: string, continuation = "    "): string {
+  return answer.replace(/`/g, "'").replace(/\r?\n/g, `\n${continuation}`);
 }
 
 function labelFor(question: Answerable, field: string): string {
@@ -244,7 +267,11 @@ function priorSection(question: Answerable, prior: Prior): string {
       // back with. Skipping the empty ones is what made a half-finished group un-importable.
       lines.push(`- id \`${neutralise(instance.id)}\``);
       if (instance.fields.size === 0) {
-        lines.push("  - (nothing written yet — ask me about this one)");
+        lines.push(
+          instance.written
+            ? "  - (I have answered this one already, and have not shared it with you here)"
+            : "  - (nothing written yet — ask me about this one)",
+        );
         continue;
       }
       for (const [field, value] of instance.fields) {
@@ -253,7 +280,9 @@ function priorSection(question: Answerable, prior: Prior): string {
     }
   } else {
     for (const [field, value] of prior.fields) {
-      lines.push(`- ${labelFor(question, field)}: ${neutralise(value)}`);
+      // Two spaces, not four: these entries sit at the top level of the list rather than
+      // under an id, so the continuation has one less level to clear.
+      lines.push(`- ${labelFor(question, field)}: ${neutralise(value, "  ")}`);
     }
   }
 

@@ -10,11 +10,12 @@ import { confirmRecentUpdate, watchForUpdates } from "./sw-update.ts";
 import { createAnswers } from "./answers.ts";
 import { bindAnswers } from "./fields.ts";
 import { needsStore, saveBackup, wireBackup } from "./export.ts";
+import { bridgeIsOn, preferences } from "./bridge.ts";
 
 /** Where a just-completed restore leaves its count, to be reported after the reload. */
 const RESTORED_KEY = "life-compass:restored";
 import { explain, wireRestore } from "./import.ts";
-import { openStore } from "./store.ts";
+import { openStore, type Store } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
 
 /**
@@ -44,6 +45,106 @@ export async function start(): Promise<void> {
       actions: [{ label: "Dismiss", onSelect: () => dismissBanner() }],
     });
   }
+
+  // AFTER the fields are bound, and outside the store path.
+  //
+  // Outside, because the assistant opt-in needs no answers at all: gating it on `needsStore`
+  // put the whole of /agent behind a check for blanks that page does not have, and shipped a
+  // page whose only purpose is a switch with the switch still hidden — the mistake this
+  // file's own header records about the backup page, made again.
+  //
+  // After, because the bridge's import pulls the question schema with it, so going first made
+  // an opted-in reader wait on some 16 kB gzipped before a single blank became a textarea —
+  // the optional feature ahead of the dictation surface 0001 exists for. Still awaited, so
+  // what this function has done is done by the time it resolves.
+  await wireAssistantBridge();
+}
+
+/**
+ * Load the assistant bridge, but only for a reader who has something to do with it.
+ *
+ * A dynamic import, because the bridge reaches the prompt generator and through it the whole
+ * question schema — 94 kB raw, 19 kB gzipped. Statically imported, every reader paid that on
+ * every page including the 404 and every decision record, to run a feature that is off by
+ * default and that most of them will never turn on.
+ *
+ * Two reasons to load it: the reader has switched it on, or this is the page carrying the
+ * switch. `bridge.ts` answers the first without pulling any of it in, which is the whole
+ * reason that module exists separately.
+ *
+ * Outside the store path, like the opt-in it wires. Storage failing and needing to answer by
+ * voice are uncorrelated, and 0001 makes the second primary — gating the control on a store
+ * that opened would take the only non-typing route through the workbook away from precisely
+ * the reader who cannot type.
+ */
+async function wireAssistantBridge(): Promise<void> {
+  const storage = preferences(window);
+  const carriesTheSwitch = document.getElementById("agent") !== null;
+  if (!carriesTheSwitch && !bridgeIsOn(storage)) {
+    return;
+  }
+
+  let bridge: typeof import("./agent.ts");
+  try {
+    // ONLY the import. Wrapping the wiring calls too meant a throw inside either of them was
+    // swallowed and reported as a loading failure — which on /agent is a switchless page with
+    // a console line blaming the loader, the exact defect this branch has now fixed twice.
+    bridge = await import("./agent.ts");
+  } catch (error) {
+    // Said to the reader, not only to a console they will never open. Every other failure
+    // path in this file raises a banner, and for somebody who cannot type comfortably this
+    // was the route they came for — a worksheet with no buttons and no explanation is the
+    // silence 0008's doctrine exists to forbid.
+    console.error("life-compass: the assistant bridge could not be loaded", error);
+    showBanner({
+      id: "agent",
+      text: "The assistant controls could not be loaded. Reloading the page may fix it.",
+      actions: [{ label: "Dismiss", onSelect: () => dismissBanner("agent") }],
+    });
+    return;
+  }
+
+  try {
+    const { wireAgentPage, wireQuestionControls } = bridge;
+    wireAgentPage(document, storage);
+    // The store is read when a panel OPENS, not now: a load-time snapshot misses everything
+    // dictated this session, and misses the instance order a repeat mints on its first write.
+    let opened: Promise<Store> | null = null;
+    wireQuestionControls(document, storage, async () => {
+      // Answers are written on a debounce (up to five seconds), so without this a reader who
+      // dictates a chapter and taps straight away hands over the value from before their
+      // last pause. `flushAnswers` is set once the fields are bound; before that there is
+      // nothing pending to flush.
+      await flushAnswers?.();
+      try {
+        opened ??= openStore();
+        return await (await opened).readAll();
+      } catch (error) {
+        // Dropped so the next open can retry — a rejected promise left in `opened` would cache
+        // one bad moment for the rest of the session.
+        opened = null;
+        // Raised, not swallowed. This returned an empty Map, which the panel cannot tell apart
+        // from "nothing written yet": the reader ticked the box, watched the preview not
+        // change, and was told nothing. For a repeat it also drops every instance identifier,
+        // which 0015 · C3 forbids outright. The panel is the only surface that can say so, so
+        // the failure has to reach it.
+        throw error;
+      }
+    });
+  } catch (error) {
+    // Its own message, distinct from the load failure above. Wrapping these calls in THAT
+    // catch is what reported a wiring bug as a loading bug and left /agent switchless with a
+    // console line blaming the loader. But leaving them bare — which is how that was fixed —
+    // meant a throw here reached nothing at all: `start()` is invoked as `void start()`, so it
+    // became an unhandled rejection with no banner and no console line, which is worse than
+    // the wrong message it replaced.
+    console.error("life-compass: the assistant controls could not be set up", error);
+    showBanner({
+      id: "agent",
+      text: "The assistant controls could not be set up. Reloading the page may fix it.",
+      actions: [{ label: "Dismiss", onSelect: () => dismissBanner("agent") }],
+    });
+  }
 }
 
 function registerWorker(): void {
@@ -69,6 +170,12 @@ function registerWorker(): void {
   });
 }
 }
+
+/**
+ * Set once the fields are bound, so the assistant panels can settle pending writes before
+ * reading. They run outside the store path and hold no reference to the `Answers` instance.
+ */
+let flushAnswers: (() => Promise<void>) | null = null;
 
 /**
  * Bind the page's blanks to on-device storage.
@@ -106,6 +213,8 @@ async function bindAnswerFields(): Promise<void> {
   // Registered before `bindAnswers` is awaited, not after: binding reads the whole store,
   // and a reader who backgrounds the tab during that read is the same reader this handler
   // exists for.
+  flushAnswers = () => answers.flush();
+
   window.addEventListener("pagehide", () => {
     void answers.flush();
   });
@@ -114,6 +223,7 @@ async function bindAnswerFields(): Promise<void> {
       void answers.flush();
     }
   });
+
 
   wireBackup(document, answers, store, {
     onHandedOver: (filename) =>

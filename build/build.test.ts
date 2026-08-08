@@ -23,6 +23,7 @@ import { checkSpecifiers } from "./client.ts";
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
   "404.html",
+  "agent.html",
   "backup.html",
   "days/day-1-excavation.html",
   "days/day-2-values.html",
@@ -68,6 +69,8 @@ const NAV_HREFS: readonly string[] = [
   "/rigorous/",
   "/with-a-partner",
   "/optional-add-ons",
+  "/backup",
+  "/agent",
   "/docs/decisions/",
 ];
 
@@ -451,6 +454,131 @@ describe("the decision records and their index", () => {
 
     // Assert
     assert.deepEqual(disagreements, []);
+  });
+});
+
+describe("which page carries which controls", () => {
+  it("buildPages_RealContent_PutsTheAssistantOptInOnExactlyTheAssistantPage", async () => {
+    // Arrange — the decision, which nothing asserted. layout.test.ts proves `layout()` emits
+    // the section when told to; build.test.ts proved `agent.html` exists. Neither noticed that
+    // the build could stop telling it: replacing the AGENT_SOURCE arm with `null` shipped the
+    // page whose entire purpose is one switch, with no switch, past a green suite. This page
+    // has already shipped switchless once for a different reason.
+    const { pages } = await site();
+
+    // Act
+    const withOptIn = pages.filter((page) => page.html.includes('id="agent-on"'));
+
+    // Assert
+    assert.deepEqual(withOptIn.map((page) => page.url), ["/agent"]);
+  });
+
+  it("buildPages_RealContent_LeavesTheBackupControlsWhereTheyWere", async () => {
+    // Arrange — the same decision for the other page, and a regression guard on the parameter
+    // this branch changed from a boolean to a named union. A ternary that got either arm wrong
+    // would move the controls silently.
+    const { pages } = await site();
+
+    // Act
+    const withBackup = pages.filter((page) => page.html.includes('id="restore-file"'));
+
+    // Assert
+    assert.deepEqual(withBackup.map((page) => page.url), ["/backup"]);
+  });
+});
+
+describe("the stylesheet and the assistant controls agreeing", () => {
+  /**
+   * Every `.agent-*` rule was independently deletable with the suite green — including whole
+   * rules — because nothing in the project asserts on this stylesheet except the one backup
+   * pair. Each declaration below carries a failure a reader would meet, which is the only
+   * reason to pin a stylesheet at all.
+   */
+  const REQUIRED: readonly (readonly [selector: string, declaration: string, because: string])[] = [
+    [".agent-open", "border:1px solid var(--accent)", "the button reverts to a browser default nobody could find on a device"],
+    [".agent-open", "display:block", "the control runs into the question text beside it"],
+    [".agent-open:focus-visible", "outline:2px solid var(--accent-dark)", "a keyboard reader cannot see where they are"],
+    [".tools", "border-left:3px solid var(--accent)", "both tools sections merge into the prose around them"],
+    [".agent-preview", "max-height:70vh", "the payload shrinks back to a fraction of itself, which is the defect this pair was written to fix"],
+    [".agent-preview", "font-size:.92rem", "the text 0007 · 1 requires the reader to READ becomes too small to read"],
+    [".agent-preview", "overflow:auto", "the payload cannot be scrolled to read the rest of it"],
+    [".agent-preview", "white-space:pre-wrap", "the payload collapses into one unreadable line"],
+    [".agent-preview", "overflow-wrap:anywhere", "the payload runs off the side of a phone"],
+    [".agent-preview", "border:1px solid var(--accent)", "the box loses its only boundary — its background differs from the panel's by 1.10:1"],
+    [".agent-preview:focus-visible", "outline:2px solid var(--accent-dark)", "the scrollable region gives no focus indication"],
+    [".agent-note", "color:var(--ink)", "0007 · 3's one required sentence returns to 2.49:1 contrast"],
+    [".agent-scroll", "color:var(--ink)", "the note saying the payload scrolls is the same 2.49:1 grey"],
+  ];
+
+  /**
+   * The declarations inside one rule, by exact selector, each normalised to `property:value`.
+   *
+   * Whole declarations rather than a substring of one, which is what this checked before and
+   * why it certified claims that were not true. `"border"` was satisfied by the neighbouring
+   * `border-radius`, so deleting the actual border passed; `"outline"` by `outline-offset`;
+   * and `"max-height"` matched `max-height:6em`, which is precisely the shrunken box the
+   * commit above it claims to have fixed. `"white-space:pre-wrap"` also matched the invalid
+   * `pre-wrap-x`, which browsers discard. Five of nine rows could not fail.
+   */
+  function declarationsFor(css: string, selector: string): readonly string[] {
+    // Comments stripped first: this stylesheet carries a long one above most rules, and a
+    // naive scan folds it into the selector it precedes.
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    return [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((rule) => (rule[1] ?? "").trim() === selector)
+      .flatMap((rule) => (rule[2] ?? "").split(";"))
+      .map((declaration) => declaration.replace(/\s+/g, " ").trim())
+      .filter((declaration) => declaration !== "");
+  }
+
+  it("styleSheet_TheAssistantControls_KeepTheDeclarationsAReaderDependsOn", async () => {
+    // Arrange
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act & Assert
+    for (const [selector, declaration, because] of REQUIRED) {
+      const body = declarationsFor(css, selector);
+      assert.ok(body.length > 0, `${selector} has no rule at all: ${because}`);
+      assert.ok(
+        body.includes(declaration),
+        `${selector} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
+      );
+    }
+  });
+
+  it("styleSheet_ADeclarationWithTheRightPropertyButAWrongValue_IsNotAccepted", () => {
+    // Arrange — negative case for the helper itself, which is the part that was broken. Each
+    // of these is a real mutation that survived the previous version of the check.
+    const CSS = ".agent-preview{max-height:6em;white-space:pre-wrap-x;border-radius:4px}";
+
+    // Act
+    const body = declarationsFor(CSS, ".agent-preview");
+
+    // Assert
+    assert.ok(!body.includes("max-height:70vh"), "a shrunken box passed as the full-height one");
+    assert.ok(!body.includes("white-space:pre-wrap"), "an invalid value passed as the valid one");
+    assert.ok(
+      !body.includes("border:1px solid var(--accent)"),
+      "border-radius passed as a border",
+    );
+  });
+
+  it("styleSheet_TheControls_DoNotPrint", async () => {
+    // Arrange — 0010 · C3 asks for the absence of form controls on paper, and this file's own
+    // history is the argument: the backup print rule was keyed on a class the markup never
+    // carried and was dead from #25 until this branch. A print rule that silently stops
+    // matching is the failure 0010 predicts by name.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act
+    const printed = /@media print\{([^}]*)\{display:none\}\}/g;
+    const hidden = [...css.matchAll(printed)].flatMap((match) => (match[1] ?? "").split(","));
+
+    // Assert — every selector named here must appear in the markup the build emits, which is
+    // what the dead `.backup` rule did not.
+    for (const selector of ["#backup", "#restore", "#agent", ".agent-open", ".agent-panel"]) {
+      assert.ok(hidden.includes(selector), `${selector} is not hidden in print`);
+    }
   });
 });
 
