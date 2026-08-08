@@ -99,6 +99,9 @@ async function run(body: string, session: Session = {}): Promise<{
   const result = {
     banner: region?.textContent?.trim() ?? "",
     remaining: { ...(window as unknown as { seen: Record<string, string> }).seen },
+    // Read before the window closes: some decisions this module makes are visible only as
+    // markup, and asserting on a banner cannot see them.
+    agentVisible: window.document.getElementById("agent")?.hidden === false,
   };
   void window.close();
   return result;
@@ -123,6 +126,19 @@ describe("deciding whether to open a store", () => {
       result.banner.includes("cannot be saved"),
       `the backup page never reached storage: ${JSON.stringify(result.banner)}`,
     );
+  });
+
+  it("app_TheAssistantPage_RevealsItsOptInWithoutNeedingAStore", async () => {
+    // Arrange — the same defect as the one above, made a second time and found on a device
+    // again: the page whose entire purpose is one switch shipped with the switch still
+    // hidden. The opt-in reads a preference from localStorage and needs no answers, so
+    // gating it on "does this page have blanks" put all of /agent behind a check for
+    // something that page does not have.
+    // Act
+    const result = await run(pageBody("agent"));
+
+    // Assert
+    assert.equal(result.agentVisible, true, "the assistant page shipped with its switch hidden");
   });
 
   it("app_APageOfProseOnly_DoesNothingAtAll", async () => {

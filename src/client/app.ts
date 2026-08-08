@@ -35,6 +35,12 @@ export async function start(): Promise<void> {
   confirmRecentUpdate();
   registerWorker();
   confirmRecentRestore();
+  // Before the store, and outside it. The assistant opt-in reads and writes one preference in
+  // localStorage and needs no answers at all, so gating it on `needsStore` put the whole of
+  // /agent behind a check for blanks that page does not have — and shipped a page whose only
+  // purpose is a switch, with the switch still hidden. That is the mistake this file's own
+  // header records about the backup page, made again.
+  wireAgentPage(document, window.localStorage);
   try {
     await bindAnswerFields();
   } catch (error) {
@@ -116,11 +122,9 @@ async function bindAnswerFields(): Promise<void> {
     }
   });
 
-  // The assistant bridge. Its page carries the opt-in; the worksheets carry the buttons, and
-  // only when the reader has turned them on (docs/decisions/0007, #67). The store is read
-  // once here and handed over, so a copy control never opens a second read on a page that
-  // may be mid-dictation.
-  wireAgentPage(document, window.localStorage);
+  // The copy buttons, on the pages that have questions. The store is read once here and
+  // handed over, so a control never opens a second read on a page that may be mid-dictation.
+  // The opt-in itself is wired in `start`, because it needs no store — see there.
   wireQuestionControls(document, window.localStorage, await store.readAll());
 
   wireBackup(document, answers, store, {
