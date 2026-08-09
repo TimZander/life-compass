@@ -62,7 +62,13 @@ function store(): Store & { readonly kept: Map<string, string> } {
     },
     async merge(entries) {
       for (const [key, value] of entries) {
-        kept.set(key, value);
+        // Empty is absent, not blank — the real store deletes here, and a fake that
+        // stored "" would be more forgiving than the thing it stands in for.
+        if (value === "") {
+          kept.delete(key);
+        } else {
+          kept.set(key, value);
+        }
       }
     },
     async replaceAll(entries) {

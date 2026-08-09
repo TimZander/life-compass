@@ -69,7 +69,9 @@ async function fileHolding(entries: ReadonlyMap<string, string>): Promise<string
     async claim() {
       return true;
     },
-    async merge() {},
+    async merge() {
+      throw new Error("a restore replaces; it must not merge");
+    },
     async replaceAll() {},
   };
   return serialise(await envelopeOf(source, WHEN));
@@ -707,7 +709,9 @@ describe("when things go wrong at the control", () => {
       async claim() {
         return true;
       },
-      async merge() {},
+      async merge() {
+      throw new Error("a restore replaces; it must not merge");
+    },
       async replaceAll() {},
     };
     wireRestore(page.document, answersSpy(), broken, options(log));

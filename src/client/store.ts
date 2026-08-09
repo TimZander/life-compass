@@ -60,6 +60,15 @@ export type Store = {
    * been shown and confirmed, not a first-write race between tabs. Unlike `replaceAll` it
    * clears nothing, because assistant output is partial by construction and 0007 · C3 forbids
    * an absent field from removing a stored one.
+   *
+   * What that leaves open, deliberately and worth knowing: the plan is built from a `readAll`
+   * and applied here, so an answer written in another tab between the two is overwritten
+   * without having appeared in what the reader agreed to. `claim` exists because that gap is
+   * real in this app. The trade is that the alternative — re-reading and re-planning inside
+   * the transaction — would show the reader one set of changes and apply another, which is
+   * the same guarantee broken from the other end. The honest reading of 0007 · C3 here is "no
+   * overwrite the app knew about when it asked", and a second tab editing the same question
+   * mid-confirmation is not a case the preview can speak for.
    */
   merge(entries: ReadonlyMap<string, string>): Promise<void>;
   /**

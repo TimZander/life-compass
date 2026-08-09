@@ -80,6 +80,28 @@ export function answerKey(group: string, instance: string, field: string): strin
   return `${group}${SEPARATOR}${instance}${SEPARATOR}${field}`;
 }
 
+/**
+ * The key one field of a non-repeat question is stored under.
+ *
+ * `group.field`, with no instance segment — a `single` has no field segment at all and is
+ * stored under its group identifier alone, which `orderKey` also returns for a repeat. The
+ * two cannot collide: a group identifier names exactly one question, and a question has
+ * exactly one kind.
+ *
+ * Here rather than spelled inline at each call site. prompt.ts and agent-answers.ts are the
+ * two halves of one round trip and each had its own copy of this template; this file's own
+ * header records what happened the last time one fact about key shape lived in two places.
+ */
+export function fieldKey(group: string, field: string): string {
+  if (group === "") {
+    throw new Error("a group identifier is required");
+  }
+  if (field === "" || field.includes(SEPARATOR)) {
+    throw new Error(`field identifier ${JSON.stringify(field)} is not usable in a key`);
+  }
+  return `${group}${SEPARATOR}${field}`;
+}
+
 /** The key a repeat group's instance order is stored under — the group's own identifier. */
 export function orderKey(group: string): string {
   return group;
