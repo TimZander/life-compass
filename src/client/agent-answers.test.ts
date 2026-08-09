@@ -856,7 +856,9 @@ describe("instances, and the identity that must not be adopted", () => {
     // 1's chapters are min 5 / max 8, and bounding at `max` would store three chapters of
     // dictated words that nothing on the page will ever show. Truncating instead of refusing
     // is the silent loss the bound exists to prevent.
-    const SLOTS = 5;
+    // The ceiling is now `max` (#74), so "too many" means past the range rather than past
+    // the printed slots.
+    const SLOTS = 8;
     const TOO_MANY = SLOTS + 1;
     const instances = Array.from({ length: TOO_MANY }, (_, index) => ({
       fields: { title: `chapter ${index}` },
@@ -925,8 +927,9 @@ describe("instances, and the identity that must not be adopted", () => {
     // Arrange — a restored backup can leave more instances than the page renders, which
     // 0013 · Q2 says is accepted without comment. Those instances EXIST, so answering one is
     // fine even though the count is already past the rendered ceiling.
-    const SLOTS = 5;
-    const EXTRA = 2;
+    // Past the range, so a long order still raises the floor rather than the ceiling.
+    const SLOTS = 9;
+    const EXTRA = 0;
     const many = Array.from({ length: SLOTS + EXTRA }, (_, index) =>
       `5f1c8e2a-0000-4000-8000-00000000000${index}`,
     );
@@ -946,8 +949,9 @@ describe("instances, and the identity that must not be adopted", () => {
   it("planFor_AnOrderLongerThanTheRenderedCount_StillRefusesAddingToIt", () => {
     // Arrange — negative case for the same state. A long order raises the floor, not the
     // ceiling: those instances existing is not evidence that more may be added.
-    const SLOTS = 5;
-    const EXTRA = 2;
+    // Past the range, so a long order still raises the floor rather than the ceiling.
+    const SLOTS = 9;
+    const EXTRA = 0;
     const many = Array.from({ length: SLOTS + EXTRA }, (_, index) =>
       `5f1c8e2a-0000-4000-8000-00000000000${index}`,
     );

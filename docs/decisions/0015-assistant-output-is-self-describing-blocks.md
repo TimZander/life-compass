@@ -188,7 +188,17 @@ page will ever show.
 
 So the ceiling is the rendered slot count, not `max`, until Q2 is answered — which is
 [#74](https://github.com/TimZander/life-compass/issues/74)'s job, and this bound is standing
-in for it rather than describing what the workbook should do. A worksheet asking for "5–8
+in for it rather than describing what the workbook should do.
+
+*Amended 2026-08-09, when #74's first half landed.* **The ceiling is now `max`.** The sheet
+renders every instance the range allows and reveals the ones a stored order names, so eight
+chapters have somewhere to go and the reason for the smaller bound is gone. The prompt asks
+for the range rather than a fixed count, because how many falls inside it was always the
+reader's decision and answering it for them was the workaround, not the design.
+
+What has NOT changed is that excess is refused rather than truncated. Past `max` there is
+still nothing to display, and truncating silently is still the loss this bound exists to
+prevent. A worksheet asking for "5–8
 chapters" means the reader decides. Excess instances are refused rather than truncated —
 truncating is the silent loss this rule exists to prevent.
 The prompt generator asks for the rendered count rather than the worksheet's range, so the
