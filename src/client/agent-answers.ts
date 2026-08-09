@@ -26,6 +26,27 @@
  * answers to one question, which is not a choice this can make on the reader's behalf — the
  * same reasoning `several-shapes` already applies within a block — so it is refused, and that
  * makes the per-block bound the per-paste bound.
+ *
+ * ---
+ *
+ * Three of the team standards are C# idioms, and a review reads them literally against this
+ * tier. The deviation is recorded here so it is decided once rather than re-argued.
+ *
+ * "Only one type per file" is a rule about C# classes. The types below are one unit with one
+ * reason to change: `Reading` is `Block` or `Refusal`, `Planning` is `Plan` or `Refusal`, and
+ * every one of them exists to say what the two functions in this file return. Splitting them
+ * leaves a types-only module that cannot be reviewed against the code it describes, which is
+ * the opposite of what the rule is for. `src/questions/types.ts` already takes this reading.
+ *
+ * "Do not use type aliases unless absolutely necessary" refers to C#'s `using X = Y;`, a
+ * second name for a type that already exists. TypeScript's `type` is a different thing
+ * wearing the same word, and for a discriminated union it is the only expression the language
+ * has — `Refusal` being one is what makes `explain` exhaustive at compile time rather than at
+ * the moment a reader meets a blank message.
+ *
+ * "Use `x` for simple lambda expressions" is the one that could be followed and is not: every
+ * other module in this tier names the parameter for what it is, and one file spelling it
+ * differently costs more than the rule gains.
  */
 
 import type { RepeatQuestion } from "../questions/types.ts";
