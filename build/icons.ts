@@ -42,7 +42,7 @@ export const COMPASS_ROSE: readonly (readonly [x: number, y: number])[] = [
 ];
 
 /** Copper accent and warm paper, taken from the site's own palette. */
-const BACKGROUND: readonly [number, number, number] = [0x1f, 0x7a, 0x5a]; // TEMPORARY (#62 device test)
+const BACKGROUND: readonly [number, number, number] = [0x9a, 0x6b, 0x3f];
 const MARK: readonly [number, number, number] = [0xf6, 0xf4, 0xee];
 
 /** Samples per axis. 3×3 is enough to keep the rose's points from looking chewed. */
