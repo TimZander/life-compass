@@ -268,11 +268,60 @@ export async function bindAnswers(
   const failing = new Set<string>();
   const materialising = new Map<string, Promise<void>>();
 
-  /** How many slots the page is showing for a group — fixed by the markup, so computed once. */
+  /**
+   * How many slots the page is SHOWING for a group.
+   *
+   * Counted from what is visible rather than from what is rendered. #74 has the build emit
+   * every instance a range allows and ship the ones past `min` hidden, so the markup now
+   * says how many a reader MAY have while this says how many they currently do. Conflating
+   * them would mint identifiers for slots nobody can see and then refuse the group for
+   * having too few (see `adopt`).
+   */
   const slotCount = new Map<string, number>();
-  for (const { repeat: x } of fields) {
-    if (x !== undefined) {
-      slotCount.set(x.group, Math.max(slotCount.get(x.group) ?? 0, x.slot + 1));
+  /** The hidden ones, by group and slot, so a longer stored order can reveal them. */
+  const spare = new Map<string, Map<number, HTMLElement>>();
+  for (const { repeat: x, element } of fields) {
+    if (x === undefined) {
+      continue;
+    }
+    const slot = element.closest<HTMLElement>("[data-instance]");
+    if (slot !== null && slot.hidden) {
+      const held = spare.get(x.group) ?? new Map<number, HTMLElement>();
+      held.set(x.slot, slot);
+      spare.set(x.group, held);
+      continue;
+    }
+    slotCount.set(x.group, Math.max(slotCount.get(x.group) ?? 0, x.slot + 1));
+  }
+
+  /**
+   * Show the instances a stored order names but the sheet has not printed.
+   *
+   * 0013 · Q2 recorded the silent half of this: an order LONGER than the slot count "is
+   * accepted without comment, and the answers under its extra instances simply never
+   * appear". A reader who got eight chapters into the store — by restoring a backup, or by
+   * importing an assistant's reply — lost three of them with nothing said, which is the
+   * failure 0008 calls the worst available to this application.
+   *
+   * Revealing is all this does. The identifiers already exist in the order; nothing is
+   * minted, nothing is written, and a group whose order fits the printed slots is untouched.
+   */
+  function reveal(group: string, upTo: number): void {
+    const held = spare.get(group);
+    if (held === undefined) {
+      return;
+    }
+    for (let slot = slotCount.get(group) ?? 0; slot < upTo; slot += 1) {
+      const element = held.get(slot);
+      if (element === undefined) {
+        // The order names more instances than the range allows. Nothing here can show them,
+        // and `adopt` leaves the group writable for the slots it does cover — so this stops
+        // rather than pretending, and the count below records only what is really on screen.
+        break;
+      }
+      element.hidden = false;
+      held.delete(slot);
+      slotCount.set(group, slot + 1);
     }
   }
 
@@ -304,6 +353,9 @@ export async function bindAnswers(
       return;
     }
     instances.set(group, order.instances);
+    // Before the comparison below, or a longer order would be measured against the printed
+    // count and the extra instances would stay hidden with their answers unreachable.
+    reveal(group, order.instances.length);
     if (order.instances.length < (slotCount.get(group) ?? 0)) {
       refuse(group, "short");
     }

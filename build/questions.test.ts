@@ -168,15 +168,30 @@ describe("renderQuestion", () => {
     assert.equal(html.match(/class="fill(?:-sm)?"/g)?.length, 1);
   });
 
-  it("renderQuestion_RepeatQuestion_RendersMinInstancesWithEveryField", () => {
-    // Arrange — the sheet prints the floor of the range: two instances of two fields.
-    const expectedBlanks = CHAPTERS.kind === "repeat" ? CHAPTERS.min * CHAPTERS.fields.length : 0;
+  it("renderQuestion_RepeatQuestion_RendersToTheCeilingAndPrintsTheFloor", () => {
+    // Arrange — #74. The sheet renders every instance the range allows and hides the ones
+    // past `min`, so a blank worksheet still prints the floor while the reader can reach
+    // the ceiling. Rendered here rather than built on the client: the build already knows
+    // how to number an instance and speak its fields, and a second copy of that would
+    // drift from this one the first time either changed.
+    const rendered = CHAPTERS.kind === "repeat" ? CHAPTERS.max * CHAPTERS.fields.length : 0;
+    const printed = CHAPTERS.kind === "repeat" ? CHAPTERS.min : 0;
 
     // Act
     const html = renderQuestion(CHAPTERS);
 
     // Assert
-    assert.equal(html.match(/class="fill(?:-sm)?"/g)?.length, expectedBlanks);
+    assert.equal(html.match(/class="fill(?:-sm)?"/g)?.length, rendered);
+    assert.equal(
+      html.match(/data-instance="\d+"(?! hidden)/g)?.length,
+      printed,
+      "the blank worksheet does not print the floor of the range",
+    );
+    assert.equal(
+      html.match(/data-instance="\d+" hidden/g)?.length,
+      (CHAPTERS.kind === "repeat" ? CHAPTERS.max : 0) - printed,
+      "the spare instances are not hidden",
+    );
     assert.ok(html.includes('data-field="t.chapters.title"'));
     assert.ok(html.includes('data-field="t.chapters.learned"'));
     assert.ok(html.includes('data-min="2"'));
@@ -792,7 +807,8 @@ describe("repeat instance weight", () => {
     const html = renderQuestion(question);
 
     // Assert
-    assert.equal(html.match(/<h3 id=/g)?.length, 3);
+    const INSTANCES = 3;
+    assert.equal(html.match(/<h3 id=/g)?.length, INSTANCES);
     assert.ok(html.includes('<h3 id="t-values-1">Value 1 — '));
     assert.ok(html.includes('<h3 id="t-values-3">Value 3 — '));
     assert.ok(!html.includes("<ol"));
@@ -986,15 +1002,23 @@ describe("instance containment", () => {
 describe("repeat ranges", () => {
   it("renderQuestion_GenuineRange_PrintsTheFloorNotTheCeiling", () => {
     // Arrange — "divide your life into 5–8 chapters". Printing eight was tried and read
-    // as padding: eight blocks of three fields is a wall of ruled lines. The range is
-    // still carried for #24, which is what will let a reader add the sixth.
-    const question: Question = { ...CHAPTERS, min: 5, max: 8 };
+    // as padding: eight blocks of three fields is a wall of ruled lines. So all eight are
+    // rendered and the last three ship hidden — the sheet still prints five, and the sixth
+    // is there for the reader to reach rather than absent (#74).
+    const FLOOR = 5;
+    const CEILING = 8;
+    const question: Question = { ...CHAPTERS, min: FLOOR, max: CEILING };
 
     // Act
     const html = renderQuestion(question);
 
     // Assert
-    assert.equal(html.match(/data-field="t\.chapters\.title"/g)?.length, 5);
+    assert.equal(html.match(/data-field="t\.chapters\.title"/g)?.length, CEILING);
+    assert.equal(
+      html.match(/data-instance="\d+"(?! hidden)/g)?.length,
+      FLOOR,
+      "the sheet prints more or fewer than the floor of the range",
+    );
     assert.ok(html.includes('data-min="5" data-max="8"'));
   });
 
@@ -1014,6 +1038,13 @@ describe("repeat ranges", () => {
     const html = renderQuestion(question);
 
     // Assert
-    assert.equal(html.match(/<h3 id=/g)?.length, 3);
+    const FLOOR = 3;
+    const CEILING = 5;
+    assert.equal(html.match(/<h3 id=/g)?.length, CEILING, "not every instance is rendered");
+    assert.equal(
+      html.match(/data-instance="\d+"(?! hidden)/g)?.length,
+      FLOOR,
+      "the two shapes disagree about how many instances a range prints",
+    );
   });
 });
