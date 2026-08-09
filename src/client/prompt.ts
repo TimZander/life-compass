@@ -41,7 +41,7 @@ export const VERSION = 1;
  * after copying it. A group the schema does not hold is already a refusal (0015 · C6), so the
  * example is instructive on the way out and refused loudly on the way back.
  */
-const EXAMPLE_GROUP = "example.not_a_real_group";
+export const EXAMPLE_GROUP = "example.not_a_real_group";
 
 /** Everything except a checklist, which 0015 keeps out of the contract. */
 export type Answerable = Exclude<Question, { readonly kind: "checklist" }>;

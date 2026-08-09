@@ -110,6 +110,33 @@ async function wireAssistantBridge(): Promise<void> {
     // The store is read when a panel OPENS, not now: a load-time snapshot misses everything
     // dictated this session, and misses the instance order a repeat mints on its first write.
     let opened: Promise<Store> | null = null;
+    /** One handle for both halves of the bridge, opened on first use and retried on failure. */
+    const store = async (): Promise<Store> => {
+      try {
+        opened ??= openStore();
+        return await opened;
+      } catch (error) {
+        opened = null;
+        throw error;
+      }
+    };
+
+    // Only where the box exists, and by dynamic import: `paste.ts` pulls in the reader and the
+    // planner, and a worksheet page has no use for either. The assistant page is the one place
+    // answers come back, so it is the one place that pays for them.
+    if (document.getElementById("paste") !== null) {
+      void import("./paste.ts")
+        .then(({ wirePaste }) => wirePaste(document, storage, store))
+        .catch((error: unknown) => {
+          console.error("life-compass: the paste box could not be loaded", error);
+          showBanner({
+            id: "paste",
+            text: "The box for bringing answers back could not be loaded. Reloading the page may fix it.",
+            actions: [{ label: "Dismiss", onSelect: () => dismissBanner("paste") }],
+          });
+        });
+    }
+
     wireQuestionControls(document, storage, async () => {
       // Answers are written on a debounce (up to five seconds), so without this a reader who
       // dictates a chapter and taps straight away hands over the value from before their
@@ -117,10 +144,9 @@ async function wireAssistantBridge(): Promise<void> {
       // nothing pending to flush.
       await flushAnswers?.();
       try {
-        opened ??= openStore();
-        return await (await opened).readAll();
+        return await (await store()).readAll();
       } catch (error) {
-        // Dropped so the next open can retry — a rejected promise left in `opened` would cache
+        // Dropped so the next read can retry — a rejected promise left in `opened` would cache
         // one bad moment for the rest of the session.
         opened = null;
         // Raised, not swallowed. This returned an empty Map, which the panel cannot tell apart

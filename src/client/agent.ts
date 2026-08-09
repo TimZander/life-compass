@@ -85,7 +85,7 @@ function clip(line: string): string {
  * axis it exists for. Across the workbook the three rules together take the pages carrying a
  * duplicate name from nine to one.
  */
-function nameFor(
+export function nameFor(
   question: { readonly kind: string; readonly id: string },
   group: string,
 ): string {

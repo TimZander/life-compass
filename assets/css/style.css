@@ -159,4 +159,20 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
    every question — and any panel left open prints its own controls plus a preview that
    `max-height` silently truncates, which is the failure the textarea print rule above exists
    to fix. */
-@media print{.agent-open,.agent-panel,#agent{display:none}}
+#paste-text{width:100%;font-family:var(--mono);font-size:.9rem;line-height:1.5;padding:.7em .8em;border:1px solid var(--accent);border-radius:4px;background:var(--bg);color:var(--ink)}
+#paste-text:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
+#paste-read,#paste-go,#paste-cancel{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+#paste-cancel{background:var(--quote-bg);color:var(--accent-dark)}
+#paste-read:focus-visible,#paste-go:focus-visible,#paste-cancel:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+#paste-go[aria-disabled="true"]{opacity:.6;cursor:progress}
+#paste-confirm{margin-top:1.2em;padding-top:1em;border-top:1px solid var(--accent)}
+#paste-confirm h3{font-size:1.05rem;margin:0 0 .5em}
+#paste-summary{font-family:var(--sans);font-size:.9rem;color:var(--ink);margin:0 0 1em}
+.paste-tally{font-family:var(--sans);font-size:.9rem;margin:0 0 1.2em;padding-left:1.2em}
+.paste-tally li{margin:0 0 .25em}
+.paste-change{margin:0 0 1.2em}
+.paste-change-title{font-family:var(--sans);font-size:.88rem;font-weight:600;color:var(--ink);margin:0 0 .3em}
+.paste-label{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:.4em 0 .15em}
+.paste-before,.paste-after{margin:0;padding:.5em .7em;border-radius:4px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--rule);background:var(--quote-bg)}
+.paste-after{border-left-color:var(--accent)}
+@media print{.agent-open,.agent-panel,#agent,#paste{display:none}}

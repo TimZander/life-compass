@@ -13,9 +13,17 @@ are for you to work through yourself, so they get no button.
 
 Nothing happens automatically, and nothing happens to a question you do not ask about.
 
-**Bringing the answers back is not built yet.** The assistant will hand you a block of text at
-the end; for now there is nowhere in this workbook to put it, so keep it somewhere until there
-is. That half is being built next.
+**Bringing the answers back.** The assistant hands you a block of text at the end. Copy the
+whole reply — the block and the words around it — and paste it into the box further down this
+page. One paste can carry a single question, a whole day, or everything you worked through.
+
+Nothing is read until you ask for it, and nothing is saved until you have seen what it would
+change. Answers that fill a blank are counted; anything that would replace words you wrote is
+shown to you in full, the old beside the new, before you decide.
+
+A reply that answers the same question twice is refused rather than guessed at, and so is one
+that returns more entries than the page has room for. In both cases nothing on this device is
+touched, and the message says what to ask for instead.
 
 ## What leaves this device, and what does not
 

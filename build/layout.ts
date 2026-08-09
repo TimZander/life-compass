@@ -163,12 +163,29 @@ function agentTools(): string {
 <section class="tools" id="agent" aria-labelledby="agent-heading" hidden>
   <h2 id="agent-heading">Answer by talking, with an assistant</h2>
   <p>With this on, nearly every question grows a button that copies it — as a written brief —
-  for you to paste into an assistant of your choosing. It interviews you by voice. Bringing the
-  answers back is not built yet.</p>
+  for you to paste into an assistant of your choosing. It interviews you by voice, and you
+  bring its answers back through the box below.</p>
   <p><strong>Nothing is sent from this app.</strong> It has no way to send anything. What
   reaches an assistant is what you paste into it, and you see exactly that text before you
   copy it.</p>
   <p><label><input type="checkbox" id="agent-on"> Show the copy buttons on every question</label></p>
+</section>
+<section class="tools" id="paste" aria-labelledby="paste-heading" hidden>
+  <h2 id="paste-heading">Bring an assistant's answers back</h2>
+  <p>Paste the whole reply — the part in a code block and the words around it. Nothing is read
+  until you choose to read it, and nothing is saved until you have seen what would change.</p>
+  <p><label for="paste-text">The assistant's reply</label></p>
+  <textarea id="paste-text" rows="6" spellcheck="false"></textarea>
+  <p><button type="button" id="paste-read">Read this reply</button></p>
+  <div id="paste-confirm" hidden>
+    <h3>What this would change</h3>
+    <p id="paste-summary"></p>
+    <div id="paste-detail"></div>
+    <p>
+      <button type="button" id="paste-go">Save these answers</button>
+      <button type="button" id="paste-cancel">Cancel</button>
+    </p>
+  </div>
 </section>`;
 }
 

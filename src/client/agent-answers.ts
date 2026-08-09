@@ -52,6 +52,7 @@
 import type { RepeatQuestion } from "../questions/types.ts";
 import { answerKey, fieldKey, newInstanceId, orderKey, readOrder, writeOrder } from "./keys.ts";
 import {
+  EXAMPLE_GROUP,
   FORMAT,
   VERSION,
   findQuestion,
@@ -72,7 +73,7 @@ import {
  */
 export type Refusal =
   | { readonly kind: "no-blocks" }
-  | { readonly kind: "unterminated-fence" }
+  | { readonly kind: "cut-off" }
   | { readonly kind: "repeated-group"; readonly group: string }
   | { readonly kind: "repeated-instance"; readonly group: string }
   | { readonly kind: "unknown-group"; readonly group: string }
@@ -139,6 +140,17 @@ export type Change = {
   readonly group: string;
   /** What the reader sees this field called. */
   readonly label: string;
+  /**
+   * Which slot of a repeat this belongs to, counting from 1. Absent for everything else.
+   *
+   * Display only, and it never touches a key — 0011 and 0013 · O1 both refuse position AS
+   * identity, and this is the opposite: the identifier stays the identity, and the reader is
+   * shown the number the page already prints beside the slot. Without it a reply rewriting
+   * three chapters produces three rows all reading "Title", which are byte-identical when the
+   * old values were blank. 0007 · C3 asks the reader to approve each overwrite; approving
+   * three things you cannot tell apart is not that.
+   */
+  readonly slot?: number;
   /** Empty when nothing is stored — an addition rather than an overwrite. */
   readonly before: string;
   readonly after: string;
@@ -177,57 +189,71 @@ function own(from: Record<string, unknown>, key: string): unknown {
   return Object.hasOwn(from, key) ? from[key] : undefined;
 }
 
-/** Every fenced block in the text, and whether one of them never closed. */
-type Scan = { readonly bodies: readonly string[]; readonly unterminated: boolean };
+/** Every balanced JSON object in the text, and whether one of them ran off the end. */
+type Scan = { readonly sources: readonly string[]; readonly truncated: boolean };
 
 /**
- * Scan the text for fenced blocks, line by line.
+ * Find the objects themselves, wherever they sit.
  *
- * Found by content rather than by fence label (0015): asked for ```life-compass an assistant
- * writes ```json, so requiring an info string would be requiring them to be reliable about
- * something they demonstrably are not.
+ * 0015 says blocks are "found by their content, not by their fence", and the first version of
+ * this read that as "any fence label will do" — asked for ```life-compass an assistant writes
+ * ```json, so the info string cannot be relied on. That was the smaller half of the problem.
+ * The larger half is that a fence is MARKDOWN SOURCE: copying a rendered chat message gives
+ * you the JSON without the backticks, because the backticks were never on screen. The
+ * ordinary way a reader copies a reply therefore produced "there is nothing from an assistant
+ * in that" — found on a device, on the first real attempt.
  *
- * A line scanner rather than one regex over the whole paste, after the regex turned out to be
- * wrong in three ways. It silently swallowed every block AFTER an unterminated fence — the
- * lazy body ran on to pair with some later block's closing fence — so a truncated streamed
- * reply returned `ok` having quietly dropped half of it, which is the silence 0015 forbids
- * with a partial success in front of it. It was quadratic on unmatched fences: a 1 MB paste
- * froze the main thread for six seconds, on the device where 0001 makes responsiveness the
- * point. And its comment claimed longer closing fences let a nested example survive, which was
- * false — that case returned no blocks at all.
+ * So this scans for balanced `{…}` regions and lets the fences be whatever they are. Strings
+ * are respected, so a brace inside a dictated answer does not throw the count off, and a
+ * fenced block is found for free because the backticks sit outside the braces.
  *
- * Closing requires the same character, at least the opening length, and nothing else on the
- * line, so a four-backtick wrapper really does carry a three-backtick block through. Tildes
- * are accepted because CommonMark allows them and assistants occasionally emit them.
+ * One pass, linear in the length of the paste.
  */
-function scanFences(text: string): Scan {
-  const bodies: string[] = [];
-  let fence: string | null = null;
-  let body: string[] = [];
-  // Splitting on both handles a paste from a Windows clipboard without a second code path.
-  for (const line of text.split(/\r?\n/)) {
-    const marks = /^[ \t]*(`{3,}|~{3,})(.*)$/.exec(line);
-    const run = marks?.[1];
-    const rest = marks?.[2] ?? "";
-    if (fence === null) {
-      // An info string containing the fence character is not an opener — that is a run of
-      // inline code, not a block.
-      if (run !== undefined && !rest.includes(run[0] ?? "")) {
-        fence = run;
-        body = [];
+function scanObjects(text: string): Scan {
+  const sources: string[] = [];
+  let at = 0;
+  while (at < text.length) {
+    if (text[at] !== "{") {
+      at += 1;
+      continue;
+    }
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let closed = false;
+    for (let cursor = at; cursor < text.length; cursor += 1) {
+      const ch = text[cursor];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === "\\") {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
       }
-      continue;
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === "{") {
+        depth += 1;
+      } else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          sources.push(text.slice(at, cursor + 1));
+          at = cursor + 1;
+          closed = true;
+          break;
+        }
+      }
     }
-    const closes =
-      run !== undefined && run[0] === fence[0] && run.length >= fence.length && rest.trim() === "";
-    if (closes) {
-      bodies.push(body.join("\n"));
-      fence = null;
-      continue;
+    if (!closed) {
+      // Ran to the end of the paste with an object still open. Only worth reporting if it was
+      // going to be one of ours — an unclosed brace in prose is not the reader's problem.
+      return { sources, truncated: text.slice(at).includes(FORMAT) };
     }
-    body.push(line);
   }
-  return { bodies, unterminated: fence !== null };
+  return { sources, truncated: false };
 }
 
 /** A field map, or the refusal that stopped it. Shared by every shape that carries fields. */
@@ -275,23 +301,34 @@ function fieldsFrom(
  * the property this application keeps.
  */
 export function readBlocks(text: string): Reading {
-  const scan = scanFences(text);
-  if (scan.unterminated) {
-    // Refused even when earlier blocks parsed. Everything after the unclosed fence was
-    // consumed as its body, so those blocks cannot be recovered — and reporting success on
-    // the ones that survived would tell the reader their whole reply arrived.
-    return { ok: false, refusal: { kind: "unterminated-fence" } };
+  const scan = scanObjects(text);
+  if (scan.truncated) {
+    // Refused even when earlier objects parsed. A reply cut off mid-answer cannot be
+    // recovered, and reporting success on the part that survived would tell the reader their
+    // whole reply arrived.
+    return { ok: false, refusal: { kind: "cut-off" } };
   }
-  const blocks: Block[] = [];
-  const seen = new Set<string>();
-  for (const source of scan.bodies) {
+  const candidates: Record<string, unknown>[] = [];
+  for (const source of scan.sources) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(source);
     } catch {
       continue;
     }
-    if (!isObject(parsed) || own(parsed, "format") !== FORMAT) {
+    if (isObject(parsed) && own(parsed, "format") === FORMAT) {
+      candidates.push(parsed);
+    }
+  }
+  const blocks: Block[] = [];
+  const seen = new Set<string>();
+  for (const parsed of candidates) {
+    // The worked example from the prompt, repeated back. 0015 · C8a put a group the schema
+    // does not contain into the example precisely so it can never be imported, and refusing
+    // the whole paste because an assistant helpfully restated the shape would make a verbose
+    // reply unusable. Ignored when there is something real beside it; still refused loudly
+    // when it is all there is, which is the mis-paste C8a actually describes.
+    if (own(parsed, "group") === EXAMPLE_GROUP && candidates.length > 1) {
       continue;
     }
     const read = readBlock(parsed);
@@ -446,7 +483,7 @@ function ceilingFor(question: RepeatQuestion, existing: number): number {
 function planInstances(
   block: Extract<Block, { for: "instances" }>,
   existing: readonly string[],
-  record: (group: string, key: string, label: string, after: string) => void,
+  record: (group: string, key: string, label: string, after: string, slot?: number) => void,
   writes: Map<string, string>,
 ): Refusal | null {
   const { group, question } = block;
@@ -473,16 +510,20 @@ function planInstances(
     return { kind: "too-many-instances", group, slots, existing: existing.length, adding: minted.length };
   }
 
+  const finalOrder = [...existing, ...minted];
   for (const { target, fields } of targets) {
+    // Counted against the order as it will stand once this is applied, so a new instance is
+    // numbered where the reader will find it rather than where it sat in the reply.
+    const slot = finalOrder.indexOf(target) + 1;
     for (const [field, value] of fields) {
-      record(group, answerKey(group, target, field), labelFor(question, field), value);
+      record(group, answerKey(group, target, field), labelFor(question, field), value, slot);
     }
   }
 
   if (minted.length > 0) {
     // New instances append after everything that exists, in the order the block gave them.
     // A block never reorders what is already there — the order is the reader's (0015).
-    writes.set(orderKey(group), writeOrder([...existing, ...minted]));
+    writes.set(orderKey(group), writeOrder(finalOrder));
   }
   return null;
 }
@@ -522,7 +563,13 @@ export function planFor(blocks: readonly Block[], entries: ReadonlyMap<string, s
   const groups: string[] = [];
   let unchanged = 0;
 
-  const record = (group: string, key: string, label: string, after: string): void => {
+  const record = (
+    group: string,
+    key: string,
+    label: string,
+    after: string,
+    slot?: number,
+  ): void => {
     const before = entries.get(key) ?? "";
     if (before === after) {
       // Counted rather than written. An assistant echoing back an answer unchanged is the
@@ -532,7 +579,8 @@ export function planFor(blocks: readonly Block[], entries: ReadonlyMap<string, s
       return;
     }
     writes.set(key, after);
-    (before === "" ? additions : changes).push({ group, label, before, after });
+    const change: Change = slot === undefined ? { group, label, before, after } : { group, label, slot, before, after };
+    (before === "" ? additions : changes).push(change);
   };
 
   for (const block of blocks) {
@@ -605,8 +653,8 @@ export function explain(refusal: Refusal): string {
   switch (refusal.kind) {
     case "no-blocks":
       return `There is nothing from an assistant in that. Copy the whole reply, including the part in a code block, and paste it again.${UNTOUCHED}`;
-    case "unterminated-fence":
-      return `That reply looks cut off — a code block starts and never finishes, so the rest of it cannot be read. Copy the whole reply and paste it again.${UNTOUCHED}`;
+    case "cut-off":
+      return `That reply looks cut off — an answer starts and never finishes, so the rest of it cannot be read. Copy the whole reply and paste it again.${UNTOUCHED}`;
     case "repeated-group":
       return `That reply answers ${named(refusal.group)} twice, and there is no safe way to choose between them. Ask your assistant to send just the one you want, on its own.${UNTOUCHED}`;
     case "repeated-instance":
