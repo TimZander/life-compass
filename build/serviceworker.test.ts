@@ -143,6 +143,53 @@ describe("renderServiceWorker", () => {
     assert.ok(source.includes('request.mode === "navigate"'));
   });
 
+  it("renderServiceWorker_TheManifest_GoesToTheNetworkBeforeTheCache", () => {
+    // Arrange — the one resource where a stale copy is not merely old. The manifest is how
+    // the browser learns what the installed app IS, and Chrome re-reads it to decide whether
+    // to rebuild an installed WebAPK. Answered from cache it reports whatever was true on the
+    // day the reader installed, so a changed icon can never reach them however the file is
+    // named — which is what a device found after #62's hashed names shipped.
+    const source = renderServiceWorker(ENTRIES);
+
+    // Act — the manifest branch must come BEFORE the cache lookup every other request takes.
+    const manifestAt = source.indexOf("/manifest.webmanifest");
+    const cacheFirstAt = source.indexOf("caches.match(request, { ignoreSearch: true })");
+
+    // Assert
+    assert.ok(manifestAt !== -1, "the manifest is not singled out at all");
+    assert.ok(cacheFirstAt !== -1, "the cache-first path is gone");
+    assert.ok(
+      manifestAt < cacheFirstAt,
+      "the manifest is answered from cache before the network is tried",
+    );
+  });
+
+  it("renderServiceWorker_TheManifestOffline_StillHasSomethingToAnswerWith", () => {
+    // Arrange — negative case. Network-first must not mean network-only: an installed app
+    // opened with no connection still has an identity to read, and 0010 keeps the site
+    // working offline.
+    const source = renderServiceWorker(ENTRIES);
+
+    // Act & Assert — matched as one expression rather than by looking for `caches.match`
+    // somewhere nearby. A window wide enough to be readable also reaches the cache-first
+    // lookup in the block below, so deleting this fallback outright left the check green.
+    assert.match(
+      source,
+      /catch \{\s*const stored = await caches\.match\(request\);\s*return stored \?\?/,
+      "a failed manifest fetch has no cache fallback",
+    );
+  });
+
+  it("renderServiceWorker_TheManifest_IsStillPrecached", () => {
+    // Arrange — network-first needs something to fall back TO, so it stays in the precache
+    // list. Dropping it would make the offline branch above unreachable.
+    // Act
+    const urls = precacheOf(renderServiceWorker([...ENTRIES, { url: "/manifest.webmanifest", content: "{}" }]));
+
+    // Assert
+    assert.ok(urls.includes("/manifest.webmanifest"));
+  });
+
   it("renderServiceWorker_NonGetRequest_IsNotIntercepted", () => {
     // Arrange — the worker has no business answering anything but GET.
     const source = renderServiceWorker(ENTRIES);
