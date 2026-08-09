@@ -159,6 +159,20 @@ function askAt(tokens: readonly Token[], anchorIndexes: ReadonlySet<number>, anc
   const prose: string[] = [];
   let heading = "";
   let inHeading = false;
+  /**
+   * Whether a sibling question stands between here and whatever prose comes next.
+   *
+   * Only set once this question has a heading of its own, and that is the whole distinction.
+   * A question with its own heading has siblings with their own headings too, so prose met
+   * immediately past a sibling's anchor sits under THAT heading and belongs to it. A question
+   * with no heading is one of a run sharing a lead-in printed once above all of them, and
+   * that prose is genuinely its own.
+   *
+   * Without this, `anchor.review_date` — a heading with no paragraph of its own — walked back
+   * past `anchor.decision_rule` and took its paragraph, so the generated prompt interviewed
+   * the reader about a decision rule when they had asked about a review date (#80).
+   */
+  let pastASibling = false;
   // Walking backwards, a blockquote is entered at its closing token. A list inside one is
   // part of the quoted example rather than a sibling of this question — Day 4 quotes a
   // format and two example statements, and treating that list as a boundary left the
@@ -206,6 +220,10 @@ function askAt(tokens: readonly Token[], anchorIndexes: ReadonlySet<number>, anc
       if (prose.length > 0) {
         break;
       }
+      // Crossing a heading means whatever lies above it introduces a GROUP rather than one
+      // question, so it is shared and this question may have it. Day 5 asks one question
+      // under five sibling headings and only the paragraph above the first says what to ask.
+      pastASibling = false;
       continue;
     }
 
@@ -216,10 +234,19 @@ function askAt(tokens: readonly Token[], anchorIndexes: ReadonlySet<number>, anc
       if (prose.length > 0) {
         break;
       }
+      if (heading !== "") {
+        pastASibling = true;
+      }
       continue;
     }
 
     if (token.type === "inline" && token.content.trim() !== "") {
+      if (pastASibling && !inHeading) {
+        // Prose under a sibling's own heading. Taking it would put another question's words
+        // in this one's ask, which the empty-ask guard cannot see because the result is not
+        // empty — merely wrong.
+        break;
+      }
       if (inHeading) {
         // The NEAREST heading is the subject; ones further up are the section it sits in.
         // Day 5 asks one question five times under `### Career`, `### Money` and so on, and
