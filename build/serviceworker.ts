@@ -113,6 +113,33 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     (async () => {
+      // The manifest goes to the network first, and it is the one resource that must.
+      //
+      // Everything else here is cache-first because a stale copy is merely old. The manifest
+      // is different in kind: it is how the browser learns what the installed app IS, and
+      // Chrome re-reads it to decide whether to rebuild an installed WebAPK. Served from
+      // cache, it answers that question with whatever was true on the day the reader
+      // installed — so a changed icon can never reach them, however the file is named.
+      //
+      // That is the second half of #62, and the half a device found. Naming icons after
+      // their bytes made the manifest change; this is what lets anyone see that it changed.
+      // The worker's own update is gated behind a banner the reader has to accept, so
+      // without this the icon waits on that, and then on Chrome's daily check, and then on
+      // the minting server.
+      //
+      // Falls back to the cache when the network is not there, so an offline install still
+      // has an identity to read.
+      if (new URL(request.url).pathname === "/manifest.webmanifest") {
+        try {
+          // no-store, because a worker's own fetch uses the HTTP cache like any other and
+          // would otherwise satisfy this from the very copy we are trying to get past.
+          return await fetch(request, { cache: "no-store" });
+        } catch {
+          const stored = await caches.match(request);
+          return stored ?? new Response("{}", { headers: { "content-type": "application/manifest+json" } });
+        }
+      }
+
       // ignoreSearch so a cache-busting query string still finds the cached page.
       const cached = await caches.match(request, { ignoreSearch: true });
       if (cached !== undefined) {

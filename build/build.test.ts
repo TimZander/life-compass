@@ -17,6 +17,8 @@ import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion, loadSchema } from "./questions.ts";
+import { icons } from "./icons.ts";
+import { renderManifest } from "./manifest.ts";
 import { render } from "./markdown.ts";
 import { checkSpecifiers } from "./client.ts";
 
@@ -138,6 +140,25 @@ describe("the stylesheet and the markup agreeing", () => {
       !css.includes("#restore-go[disabled]"),
       "the stylesheet still targets an attribute the markup never sets",
     );
+  });
+
+  it("styleSheet_TheManifestColours_AreTheColoursTheStylesheetPaints", async () => {
+    // Arrange — the same two colours are declared in three places: the manifest (which the
+    // OS paints an installed app's chrome and splash with), the layout's theme-color meta
+    // tag, and the stylesheet's custom properties. The manifest and the layout are held
+    // together by sharing a constant since #62; the stylesheet cannot import TypeScript, so
+    // this is what holds the third copy. Drift shows as an installed app whose chrome does
+    // not match the paper directly below it — obvious on a device, invisible in a diff.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const declared = JSON.parse(renderManifest());
+
+    // Act — read the palette back out of the stylesheet.
+    const accent = /--accent:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
+    const paper = /--bg:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
+
+    // Assert
+    assert.equal(declared.theme_color, accent, "theme_color is not the stylesheet's --accent");
+    assert.equal(declared.background_color, paper, "background_color is not the --bg painted");
   });
 });
 
@@ -844,16 +865,24 @@ describe("build", () => {
 
     // Assert
     const written = await readdir(out, { recursive: true, withFileTypes: true });
-    const files = written.filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
+    // Icon filenames carry a digest of their own bytes (#62), so they are matched on
+    // shape rather than named: writing the current digests here would make redrawing the
+    // mark fail this test, which is the opposite of what the digest is for.
+    const files = written
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name.replace(/\.[0-9a-f]{8}\.png$/, ".<hash>.png"))
+      .sort();
     // questions.json is emitted alongside the pages so the assistant contract and the
     // importer key off the same definitions the pages were rendered from (#15).
-    // Icons and the service worker are generated, not copied — see build/icons.ts and
-    // build/serviceworker.ts. They appear here because they are genuinely written.
+    // Icons, the manifest and the service worker are generated, not copied — see
+    // build/icons.ts, build/manifest.ts and build/serviceworker.ts. They appear here
+    // because they are genuinely written.
     assert.deepEqual(files, [
-      "icon-192.png",
-      "icon-512.png",
-      "icon-maskable-512.png",
+      "icon-192.<hash>.png",
+      "icon-512.<hash>.png",
+      "icon-maskable-512.<hash>.png",
       "index.html",
+      "manifest.webmanifest",
       "one.html",
       "questions.json",
       "sw.js",
@@ -914,6 +943,8 @@ describe("header contract", () => {
     "  X-Content-Type-Options: nosniff",
     "  Referrer-Policy: no-referrer",
     "  Permissions-Policy: microphone=()",
+    "/manifest.webmanifest",
+    "  Cache-Control: no-cache",
     "/sw.js",
     "  Cache-Control: no-cache",
     "  ! Content-Security-Policy",
@@ -1657,13 +1688,67 @@ describe("service worker precache", () => {
       "/assets/js/app.js",
       "/assets/js/banner.js",
       "/assets/js/sw-update.js",
-      "/icons/icon-192.png",
-      "/icons/icon-maskable-512.png",
       "/questions.json",
       "/404",
     ]) {
       assert.ok(precached.has(url), `${url} is served but not precached`);
     }
+
+    // The icons are asked for by the names they were actually given, since #62 made those
+    // names carry a digest of the drawing. Naming them literally here would have to be
+    // rewritten every time the mark changes — and would then be asserting the digest
+    // rather than the property, which is that every icon written is an icon cached.
+    for (const icon of icons()) {
+      assert.ok(precached.has(`/${icon.output}`), `${icon.output} is served but not precached`);
+    }
+  });
+
+  it("build_RealSite_ManifestNamesIconsThatWereActuallyWritten", async () => {
+    // Arrange — the agreement, not either side of it. #57 shipped with two counts of one
+    // store that disagreed, and this is the same shape: the manifest declares icon URLs,
+    // the build writes icon files, and nothing until now made the two answer together. A
+    // manifest naming a path that 404s is an app that cannot be installed, and
+    // installation is what makes storage durable (docs/decisions/0008).
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-manifest-"));
+    temporary.push(out);
+
+    // Act
+    await build({ root: ROOT, out });
+    const manifest = JSON.parse(await readFile(path.join(out, "manifest.webmanifest"), "utf8"));
+
+    // Assert
+    assert.ok(manifest.icons.length > 0, "the manifest declares no icons at all");
+    // Not merely that the files exist: that the manifest names the icons the generator
+    // produced, digest and all. Re-deriving the digest from the WRITTEN file is the check
+    // this used to make, and it pinned the wrong axis — the name follows the drawing, and
+    // the encoded file varies with the Node version that wrote it (build/icons.ts).
+    const generated = new Map(icons().map((one) => [`/${one.output}`, one.png]));
+    for (const declared of manifest.icons) {
+      const expected = generated.get(declared.src);
+      assert.ok(expected !== undefined, `${declared.src} is not an icon the build generated`);
+      const written = await readFile(path.join(out, declared.src));
+      assert.deepEqual(written, expected, `${declared.src} is not the file that was generated`);
+    }
+  });
+
+  it("build_RealSite_FaviconLinkNamesAWrittenIcon", async () => {
+    // Arrange — a tab's favicon is cached separately from an installed app's icon and goes
+    // stale on its own schedule, so it wants the same digest. It is also the one icon URL
+    // that lives in the layout rather than the manifest, which is how it would be missed.
+    const out = await mkdtemp(path.join(tmpdir(), "life-compass-favicon-"));
+    temporary.push(out);
+
+    // Act
+    await build({ root: ROOT, out });
+    const home = await readFile(path.join(out, "index.html"), "utf8");
+    const href = /<link rel="icon" href="([^"]+)"/.exec(home)?.[1];
+
+    // Assert
+    assert.ok(href !== undefined, "no favicon link in the rendered page");
+    await assert.doesNotReject(
+      () => readFile(path.join(out, href)),
+      `the favicon link names ${href}, which was never written`,
+    );
   });
 
   it("build_RealSite_NeverPrecachesAFileCloudflareConsumes", async () => {
@@ -1695,7 +1780,9 @@ describe("what ships", () => {
     // decides, deliberately, whether it belongs on a public site.
     // Client modules are no longer here: they are emitted from src/client rather than
     // copied, so they are not discovered assets. dist/assets/js is asserted separately.
-    const expected = ["LICENSE", "_headers", "assets/css/style.css", "manifest.webmanifest"];
+    // Nor is the manifest, since #62: it is generated from icons() so that it names the
+    // drawing that actually shipped, which a committed file cannot do.
+    const expected = ["LICENSE", "_headers", "assets/css/style.css"];
 
     // Act
     const result = await site();

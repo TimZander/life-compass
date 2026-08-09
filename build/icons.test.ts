@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { inflateSync } from "node:zlib";
-import { drawIcon, encodePng, icons } from "./icons.ts";
+import { drawIcon, drawPixels, encodePng, faviconHref, hashedName, icons } from "./icons.ts";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Hex characters of sha256 kept in a filename. Cache-busting, not a security claim. */
+const DIGEST_LENGTH = 8;
 
 describe("encodePng", () => {
   it("encodePng_ValidPixels_StartsWithThePngSignature", () => {
@@ -93,6 +96,113 @@ describe("icons", () => {
       assert.equal(icon.png.readUInt32BE(16), icon.size, icon.output);
       assert.equal(icon.png.readUInt32BE(20), icon.size, icon.output);
     }
+  });
+
+  it("icons_EveryOutput_IsNamedAfterItsDrawingRatherThanItsEncoding", () => {
+    // Arrange — #62, and the distinction a device had to teach. The digest has to be OF the
+    // drawing: hashed over the encoded PNG instead, CI on Node 22 and a laptop on Node 25
+    // produced different filenames for identical pixels, because `deflateSync` differs
+    // between them. A local build then cannot predict what ships, and bumping Node renames
+    // every icon — rebuilding every installed reader's app for a change nobody can see,
+    // which is the opposite of what naming them after their content is for.
+    //
+    // The declarations are repeated here on purpose. Reading them from `icons()` would let
+    // the same wrong number satisfy both sides.
+    const DECLARED: readonly (readonly [base: string, size: number, coverage: number])[] = [
+      ["icons/icon-192", 192, 0.7],
+      ["icons/icon-512", 512, 0.7],
+      ["icons/icon-maskable-512", 512, 0.5],
+    ];
+
+    // Act & Assert
+    const produced = icons();
+    assert.equal(produced.length, DECLARED.length, "the icon set changed shape");
+    DECLARED.forEach(([base, size, coverage], index) => {
+      assert.equal(produced[index]?.output, hashedName(base, drawPixels(size, coverage)));
+    });
+  });
+
+  it("icons_TheSameDrawingEncodedTwice_KeepsOneName", () => {
+    // Arrange — negative case for the property above, stated as the failure it prevents: two
+    // encodings of one drawing must be one identity. This is what a Node bump does.
+    const SIZE = 64;
+    const COVERAGE = 0.7;
+    const pixels = drawPixels(SIZE, COVERAGE);
+
+    // Act — the same pixels, encoded independently.
+    const first = encodePng(SIZE, SIZE, pixels);
+    const second = encodePng(SIZE, SIZE, Buffer.from(pixels));
+
+    // Assert
+    assert.deepEqual(first, second, "the encoder is not deterministic within one runtime");
+    assert.equal(hashedName("x", pixels), hashedName("x", Buffer.from(pixels)));
+  });
+
+  it("icons_TwoIconsOfTheSameSize_DoNotShareAName", () => {
+    // Arrange — negative case. icon-512 and icon-maskable-512 are the same size and differ
+    // only in the drawing; if the name came from anything but the bytes they would collide
+    // and one would silently overwrite the other in the output directory.
+    // Act
+    const names = new Set(icons().map((icon) => icon.output));
+
+    // Assert
+    assert.equal(names.size, icons().length);
+  });
+});
+
+describe("faviconHref", () => {
+  it("faviconHref_Always_NamesAnIconThatWasGenerated", () => {
+    // Act
+    const href = faviconHref();
+
+    // Assert — a favicon pointing at a path nothing writes is a 404 on every page.
+    assert.ok(icons().some((icon) => `/${icon.output}` === href), href);
+  });
+
+  it("faviconHref_Always_PrefersTheSmallestNonMaskableIcon", () => {
+    // Arrange — negative case. A maskable icon is drawn small inside a safe zone for
+    // platforms that crop it; used as a tab favicon, nothing crops it and the mark appears
+    // marooned in padding at 16px.
+    const SMALLEST = 192;
+
+    // Act
+    const chosen = icons().find((icon) => `/${icon.output}` === faviconHref());
+
+    // Assert
+    assert.equal(chosen?.purpose, "any");
+    assert.equal(chosen?.size, SMALLEST);
+  });
+});
+
+describe("hashedName", () => {
+  it("hashedName_SameContent_IsStable", () => {
+    // Arrange
+    const content = Buffer.from("the same bytes");
+
+    // Act & Assert — an unstable name would change the manifest on every build, which
+    // makes a browser's update check meaningless in the other direction.
+    assert.equal(hashedName("icons/x", content), hashedName("icons/x", content));
+  });
+
+  it("hashedName_DifferentContent_Differs", () => {
+    // Act
+    const one = hashedName("icons/x", Buffer.from("one"));
+    const two = hashedName("icons/x", Buffer.from("two"));
+
+    // Assert
+    assert.notEqual(one, two);
+  });
+
+  it("hashedName_Always_KeepsTheBaseAndExtensionEitherSideOfTheDigest", () => {
+    // Arrange — the extension is what makes Pages serve it as an image rather than a
+    // download, and the base is what makes the file recognisable in a directory listing.
+    const BASE = "icons/icon-512";
+
+    // Act
+    const named = hashedName(BASE, Buffer.from("bytes"));
+
+    // Assert
+    assert.match(named, new RegExp(`^${BASE}\\.[0-9a-f]{${DIGEST_LENGTH}}\\.png$`));
   });
 });
 

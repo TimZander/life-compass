@@ -16,6 +16,7 @@ import type { ResolvedLink } from "./links.ts";
 import { checkRegistry, checkSchema, loadSchema, type Schema } from "./questions.ts";
 import { checkHeaders, parseHeaders } from "./headers.ts";
 import { icons } from "./icons.ts";
+import { renderManifest } from "./manifest.ts";
 import { buildClient } from "./client.ts";
 import { renderServiceWorker, type PrecacheEntry } from "./serviceworker.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
@@ -439,13 +440,22 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
   }
 
   // Icons are generated rather than committed; a PWA cannot be installed without them,
-  // and installation is what makes storage durable (docs/decisions/0008).
+  // and installation is what makes storage durable (docs/decisions/0008). Their names
+  // carry a digest of their own bytes, so the manifest below changes whenever the drawing
+  // does — see build/icons.ts and #62.
   for (const icon of icons()) {
     const destination = path.join(out, icon.output);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, icon.png);
     precache.push({ url: `/${icon.output}`, content: icon.png });
   }
+
+  // Written here rather than copied from the root, so it names the icons just written
+  // rather than a fixed path that survives them being redrawn. It has to be added to the
+  // precache explicitly now: it used to arrive for free among the discovered assets.
+  const manifest = renderManifest();
+  await writeFile(path.join(out, "manifest.webmanifest"), manifest, "utf8");
+  precache.push({ url: "/manifest.webmanifest", content: manifest });
 
   for (const page of result.pages) {
     precache.push({ url: page.url, content: page.html });

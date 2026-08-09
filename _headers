@@ -34,6 +34,22 @@
   # dependency tries. Dictation still works — it happens in the keyboard, not the page.
   Permissions-Policy: microphone=(), camera=(), geolocation=()
 
+/manifest.webmanifest
+  # Must revalidate, for the same reason /sw.js must, and it took a device to find it.
+  #
+  # This file is how the browser learns what the installed app IS. Chrome re-reads it to
+  # decide whether to rebuild an installed WebAPK, so a stale copy means a changed icon can
+  # never reach anyone who already has the app (#62) — the icons can be named after their own
+  # bytes and it makes no difference, because nothing ever fetches the new names.
+  #
+  # Without a rule here the zone default applies, which the note at the top of this file
+  # records as a four-hour browser cache. Four hours is not the problem on its own; being
+  # cached at all is, because a service worker's own `fetch` uses the HTTP cache too, so
+  # network-first inside the worker can still be answered from a stale copy. And if Chrome
+  # fetches the manifest directly rather than through the worker, this header is the only
+  # thing governing it at all.
+  Cache-Control: no-cache
+
 /sw.js
   # Must revalidate, or an installed client keeps an old worker and never sees a deploy.
   # This is the concrete reason docs/decisions/0005 wanted header control at all.
