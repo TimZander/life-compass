@@ -28,6 +28,8 @@ export type RenderResult = {
   readonly headingIds: readonly string[];
   /** Question ids this page anchored, in order, for the bidirectional check. */
   readonly anchors: readonly string[];
+  /** Question id -> the prose that introduces it on this page. See `askAt`. */
+  readonly asks: ReadonlyMap<string, string>;
   /**
    * Hand-written `- [ ]` markers, which no longer render as checkboxes.
    *
@@ -125,8 +127,154 @@ function fillMarkupIn(rawHtml: string): string[] {
   return found;
 }
 
+/**
+ * The prose that introduces a question, read back out of the page it sits on.
+ *
+ * The schema knows a question's identifier, label and fields; it does not know what the
+ * question ASKS, because docs/decisions/0004 put the prose in Markdown on purpose. That is
+ * fine for rendering a blank beside its own paragraph and useless anywhere the question has
+ * to be stated away from the page — which is #67, where a generated prompt for `day4.eulogy`
+ * said "Eulogy" and nothing else, while the Markdown two lines above asked the real question.
+ *
+ * Taken from the token stream rather than the raw text, so "belonging to" is structural: the
+ * content since the nearest boundary — the previous anchor, or a heading, or the list item
+ * this anchor sits inside. Three shapes occur in the worksheets and all three fall out of
+ * that one rule:
+ *
+ *   a lead-in line          `**Skills (technical and otherwise):**` then the anchor
+ *   nested in a list item   `- **Who do you want to be useful to?**` with the anchor indented
+ *   a shared lead-in        "Finish these sentences:" then four anchors in a row
+ *
+ * The third is why there is a fallback: the second of four consecutive anchors has nothing
+ * between it and the one before, so the walk continues past it to the nearest prose. It will
+ * not cross a heading, because a heading is a new subject rather than more of this one.
+ *
+ * Anchor positions are passed in rather than recognised from token content, because the
+ * render pass REPLACES an anchor's content with the question it generated. Testing content
+ * meant a question could not see the anchor above it — already rewritten — and walked
+ * straight through into the previous question's lead-in. It read as a plausible ask, which
+ * is the failure mode worth engineering against here.
+ */
+function askAt(tokens: readonly Token[], anchorIndexes: ReadonlySet<number>, anchor: number): string {
+  const prose: string[] = [];
+  let heading = "";
+  let inHeading = false;
+  // Walking backwards, a blockquote is entered at its closing token. A list inside one is
+  // part of the quoted example rather than a sibling of this question — Day 4 quotes a
+  // format and two example statements, and treating that list as a boundary left the
+  // question with no ask at all.
+  let quoted = 0;
+
+  for (let at = anchor - 1; at >= 0; at -= 1) {
+    const token = tokens[at];
+    if (token === undefined) {
+      continue;
+    }
+
+    // Boundaries. A list ends the subject — reaching past one collects a neighbouring
+    // question's bullet as though it introduced this one, which the rigorous Day 3 does
+    // (History, Spending, then Calendar). `list_item_open` is the same rule seen from
+    // inside: where an anchor is nested in an item, the item's own text is the question.
+    if (token.type === "blockquote_close") {
+      quoted += 1;
+      continue;
+    }
+    if (token.type === "blockquote_open") {
+      quoted -= 1;
+      continue;
+    }
+    if (
+      quoted === 0 &&
+      (token.type === "list_item_open" ||
+        token.type === "bullet_list_close" ||
+        token.type === "ordered_list_close")
+    ) {
+      break;
+    }
+
+    // Walking backwards, a heading's closing token arrives before its text.
+    if (token.type === "heading_close") {
+      inHeading = true;
+      continue;
+    }
+    if (token.type === "heading_open") {
+      inHeading = false;
+      // A heading above prose we already have is a different subject. A heading above
+      // nothing is this question's subject, and the words that ask it are further up —
+      // Day 5 asks one question under five sibling headings, and only the paragraph above
+      // the first of them says what to ask.
+      if (prose.length > 0) {
+        break;
+      }
+      continue;
+    }
+
+    if (anchorIndexes.has(at)) {
+      // Another question. Stop, unless nothing has been gathered — then this anchor shares
+      // a lead-in with the one before it, which is the four-sentences-in-a-row shape on
+      // Day 4.
+      if (prose.length > 0) {
+        break;
+      }
+      continue;
+    }
+
+    if (token.type === "inline" && token.content.trim() !== "") {
+      if (inHeading) {
+        // The NEAREST heading is the subject; ones further up are the section it sits in.
+        // Day 5 asks one question five times under `### Career`, `### Money` and so on, and
+        // without this all five read identically — which is how seven questions came out
+        // with no ask at all.
+        if (heading === "") {
+          heading = token.content.trim();
+        }
+        continue;
+      }
+      // Contiguous blocks, not just the nearest one: Day 1 puts the instruction in a
+      // paragraph and an example in a blockquote beneath it, and the instruction is the
+      // half that matters.
+      prose.unshift(token.content.trim());
+    }
+  }
+
+  return [heading, ...prose].filter((part) => part !== "").join("\n\n");
+}
+
+/**
+ * Every question this Markdown anchors, and the prose that introduces each.
+ *
+ * Parses its own token stream rather than sharing `render`'s. That costs one extra parse per
+ * worksheet and buys the thing that went wrong first: `render` REPLACES an anchor's content
+ * with the question it generated, so reading asks from a stream mid-rewrite let a question
+ * walk through the anchor above it — already rewritten, no longer recognisable — into the
+ * previous question's lead-in. Here nothing has been rewritten, so it cannot arise.
+ */
+export function asksIn(markdown: string): ReadonlyMap<string, string> {
+  const tokens = md.parse(markdown, {});
+  const anchorIndexes = new Set<number>();
+  const ids = new Map<number, string>();
+  for (let at = 0; at < tokens.length; at += 1) {
+    const token = tokens[at];
+    if (token?.type !== "html_block") {
+      continue;
+    }
+    const match = ANCHOR.exec(token.content.trim());
+    if (match !== null) {
+      anchorIndexes.add(at);
+      ids.set(at, match[1] ?? "");
+    }
+  }
+
+  const asks = new Map<string, string>();
+  for (const [at, id] of ids) {
+    asks.set(id, askAt(tokens, anchorIndexes, at));
+  }
+  return asks;
+}
+
 export function render(markdown: string, source: string, context: RenderContext): RenderResult {
   const tokens = md.parse(markdown, {});
+  const asks = asksIn(markdown);
   const slug = createSlugger();
   const links: ResolvedLink[] = [];
   const headingIds: string[] = [];
@@ -219,6 +367,7 @@ export function render(markdown: string, source: string, context: RenderContext)
     links,
     headingIds,
     anchors,
+    asks,
     taskMarkers,
     fillMarkup,
   };

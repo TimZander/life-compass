@@ -110,5 +110,47 @@ export async function buildClient(root: string): Promise<readonly ClientModule[]
       code: outputText,
     });
   }
+  checkSpecifiers(modules);
   return modules;
+}
+
+
+/** Relative specifiers in emitted code, e.g. `from "./keys.js"` or `import "./app.js"`. */
+const RELATIVE_SPECIFIER = /(?:^|[\s{(,;])(?:from|import)\s*\(?\s*"(\.[^"]*)"/g;
+
+/**
+ * Refuse a module graph the browser cannot load.
+ *
+ * `buildClient` discovers files by reading a directory, so a module that is absent is not an
+ * error here — it is simply not in the list. That was survivable while every module was
+ * committed. It stopped being survivable when one of them became GENERATED: delete
+ * `src/client/schema.ts`, and the build emitted `prompt.js` importing `./schema.js`, shipped
+ * it, left it out of the precache — so `cache.addAll` succeeded, the deploy smoke test read
+ * one fewer URL from the manifest, and every gate passed on a site whose client was dead.
+ *
+ * Checking that each specifier resolves to something actually emitted closes that whole
+ * family at once rather than one entry point at a time: a skipped `prebuild` hook, `node
+ * --run`, `npm run serve`, a symlinked checkout, a fresh clone. None of them can produce a
+ * build that says it succeeded, because none of them can produce an import that resolves.
+ */
+export function checkSpecifiers(modules: readonly ClientModule[]): void {
+  const emitted = new Set(modules.map((module) => module.output));
+  const problems: string[] = [];
+
+  for (const module of modules) {
+    const directory = path.dirname(module.output);
+    for (const [, specifier] of module.code.matchAll(RELATIVE_SPECIFIER)) {
+      if (specifier === undefined) {
+        continue;
+      }
+      const target = path.posix.normalize(path.posix.join(directory, specifier));
+      if (!emitted.has(target)) {
+        problems.push(`${module.output} imports ${specifier}, which nothing emits (${target})`);
+      }
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new Error(`refusing to emit a client graph the browser cannot load:\n  ${problems.join("\n  ")}`);
+  }
 }

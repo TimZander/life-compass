@@ -30,12 +30,13 @@ every citation already written down.
 | [0006](0006-no-in-app-speech-recognition.md) | No in-app speech recognition; scope the privacy claim honestly | Proposed |
 | [0007](0007-clipboard-is-the-airgap.md) | The clipboard is the airgap | Proposed |
 | [0008](0008-installation-makes-storage-durable.md) | Installation is what makes storage durable, and the app must say so | Proposed |
-| [0009](0009-encryption-is-an-opt-in-add-on.md) | Encryption is an opt-in add-on; the export envelope is designed for it now | Proposed |
+| [0009](0009-encryption-is-an-opt-in-add-on.md) | Encryption is an opt-in add-on; the export envelope is designed for it now | Accepted |
 | [0010](0010-printing-is-a-supported-output.md) | Printing stays a supported output, not an accident | Proposed |
 | [0011](0011-question-identifiers-are-frozen-and-registered.md) | Question identifiers are frozen, registered, and never derived | Proposed |
 | [0012](0012-client-typescript-stripped-at-build-time.md) | Client code becomes TypeScript, stripped at build time | Accepted |
 | [0013](0013-instance-identity-for-rendered-slots.md) | Instance identity for slots the build renders | Accepted |
 | [0014](0014-a-dom-for-tests-only.md) | A DOM for tests, and only for tests | Accepted |
+| [0015](0015-assistant-output-is-self-describing-blocks.md) | Assistant output is self-describing blocks, one per question group | Proposed |
 
 ## Still open
 
@@ -47,6 +48,15 @@ instances, whether `0011`'s rename-on-read can reach a key with an instance spli
 the middle, how an orphaned instance is surfaced — and with it a retired group's stored
 order, which is JSON the orphan surface would otherwise present to the reader as their
 own prose — and what the registry must record for a stored key to be readable back.
+
+[#74](https://github.com/TimZander/life-compass/issues/74) is where Q2 gets answered rather
+than noted again: a repeat should hold as many instances as the reader has, up to `max`, and
+three groups currently invite a range they cannot deliver.
+
+[0015](0015-assistant-output-is-self-describing-blocks.md) answers none of those four and
+opens a new route into Q2. Until now an over-long instance order could only come from a
+worksheet edit; an import can produce one too, so 0015 bounds new instances at the rendered
+slot count and refuses the excess rather than relying on Q2 staying theoretical.
 
 `0004 · C4` raised question-identifier versioning as the one decision deliberately left
 unmade; [0011](0011-question-identifiers-are-frozen-and-registered.md) settles it.

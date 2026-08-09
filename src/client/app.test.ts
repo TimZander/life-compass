@@ -17,7 +17,7 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { before, describe, it } from "node:test";
-import { layout } from "../../build/layout.ts";
+import { layout, type Tools } from "../../build/layout.ts";
 
 type Session = { throws?: boolean; seed?: Record<string, string> };
 
@@ -83,6 +83,7 @@ function install(window: Window, session: Session): Window {
 async function run(body: string, session: Session = {}): Promise<{
   readonly banner: string;
   readonly remaining: Record<string, string>;
+  readonly agentVisible: boolean;
 }> {
   const window = install(new Window({ url: "https://example.test/backup" }), session);
   window.document.body.innerHTML = body;
@@ -99,14 +100,17 @@ async function run(body: string, session: Session = {}): Promise<{
   const result = {
     banner: region?.textContent?.trim() ?? "",
     remaining: { ...(window as unknown as { seen: Record<string, string> }).seen },
+    // Read before the window closes: some decisions this module makes are visible only as
+    // markup, and asserting on a banner cannot see them.
+    agentVisible: window.document.querySelector("#agent:not([hidden])") !== null,
   };
   void window.close();
   return result;
 }
 
 /** The body of a real built page, so these run against what the build actually emits. */
-function pageBody(isBackupPage: boolean, content = "<p>prose</p>"): string {
-  const html = layout(content, "A page", isBackupPage);
+function pageBody(tools: Tools, content = "<p>prose</p>"): string {
+  const html = layout(content, "A page", tools);
   return html.slice(html.indexOf("<main"), html.indexOf("</body>"));
 }
 
@@ -116,7 +120,7 @@ describe("deciding whether to open a store", () => {
     // backup page has none, and so the page whose only purpose is the backup controls
     // returned before opening anything and revealed neither.
     // Act
-    const result = await run(pageBody(true));
+    const result = await run(pageBody("backup"));
 
     // Assert — it got as far as storage, and told the reader when storage was not there.
     assert.ok(
@@ -125,12 +129,87 @@ describe("deciding whether to open a store", () => {
     );
   });
 
+  it("app_TheAssistantPage_RevealsItsOptInWithoutNeedingAStore", async () => {
+    // Arrange — the same defect as the one above, made a second time and found on a device
+    // again: the page whose entire purpose is one switch shipped with the switch still
+    // hidden. The opt-in reads a preference from localStorage and needs no answers, so
+    // gating it on "does this page have blanks" put all of /agent behind a check for
+    // something that page does not have.
+    // Act
+    const result = await run(pageBody("agent"));
+
+    // Assert
+    assert.equal(result.agentVisible, true, "the assistant page shipped with its switch hidden");
+  });
+
+  it("app_AWorksheetWithTheBridgeOn_GrowsAControlOnEveryQuestion", async () => {
+    // Arrange — the decision, not the wiring. Deleting the `wireQuestionControls` call from
+    // `start` left all 401 tests green: the eight tests for that module call it directly, so
+    // none of them could notice that nothing calls it. That is the shape of the defect this
+    // page already shipped once, one layer up — the wiring is tested, the decision to wire is
+    // not.
+    const window = install(new Window({ url: "https://example.test/days/day-1-excavation" }), {});
+    window.localStorage.setItem("life-compass:assistant", "on");
+    window.document.body.innerHTML = pageBody(null, '<p class="q-single" data-question="day4.eulogy">x</p>');
+    const noise = console.error;
+    console.error = () => {};
+    try {
+      await start();
+    } finally {
+      console.error = noise;
+    }
+
+    // Act
+    const controls = window.document.querySelectorAll("button.agent-open").length;
+    void window.close();
+
+    // Assert
+    assert.equal(controls, 1, "the question grew no copy control");
+  });
+
+  it("app_TheStoreRefusingToOpen_LeavesThePanelSayingSoRatherThanQuietlyDroppingTheAnswers", async () => {
+    // Arrange — the `readEntries` callback had no test of any kind: flush-before-read, the
+    // memoised handle and the failure path all survived mutation. This is the failure path,
+    // and it is not hypothetical here — there is no IndexedDB in this environment, which is
+    // the same thing a reader meets with site data blocked or in private browsing.
+    //
+    // It used to resolve to an empty Map. The panel cannot tell that apart from "nothing
+    // written yet", so the reader ticked "include what I have already written", watched the
+    // preview not change, and was told nothing. For a repeat it silently drops every instance
+    // identifier as well, which 0015 · C3 forbids outright.
+    const SETTLE = 8;
+    const window = install(new Window({ url: "https://example.test/days/day-1-excavation" }), {});
+    window.localStorage.setItem("life-compass:assistant", "on");
+    window.document.body.innerHTML = pageBody(
+      null,
+      '<p class="q-single" data-question="day4.eulogy">x</p>',
+    );
+    const noise = console.error;
+    console.error = (): void => {};
+    try {
+      await start();
+      (window.document.querySelector("button.agent-open") as unknown as HTMLElement).click();
+      for (let turn = 0; turn < SETTLE; turn += 1) {
+        await Promise.resolve();
+      }
+    } finally {
+      console.error = noise;
+    }
+
+    // Act
+    const shown = window.document.querySelector(".agent-preview")?.textContent ?? "";
+    void window.close();
+
+    // Assert
+    assert.match(shown, /could not be read/, `the store failure was hidden: ${shown}`);
+  });
+
   it("app_APageOfProseOnly_DoesNothingAtAll", async () => {
     // Arrange — negative case, and the reason the gate exists. A decision record should not
     // prompt anybody about storage, and 0010 keeps it readable and printable with no script
     // having run.
     // Act
-    const result = await run(pageBody(false));
+    const result = await run(pageBody(null));
 
     // Assert
     assert.equal(result.banner, "", "a page of prose was given a storage message");
@@ -147,7 +226,7 @@ describe("reporting a restore that happened before this load", () => {
     // storage-failure message: this environment has no IndexedDB, and the banner region
     // shows the last message given to it. Which is itself worth knowing — a restore
     // confirmed and then followed by a storage failure shows only the failure.
-    const result = await run(pageBody(false), { seed: { "life-compass:restored": "7" } });
+    const result = await run(pageBody(null), { seed: { "life-compass:restored": "7" } });
 
     // Assert — said once, and cleared so it is not repeated on every later page.
     assert.ok(
@@ -160,7 +239,7 @@ describe("reporting a restore that happened before this load", () => {
   it("app_ASingleRestoredAnswer_IsCountedInTheSingular", async () => {
     // Arrange & Act — negative case for the pluralisation, which is in the sentence a
     // reader reads immediately after an irreversible action.
-    const result = await run(pageBody(false), { seed: { "life-compass:restored": "1" } });
+    const result = await run(pageBody(null), { seed: { "life-compass:restored": "1" } });
 
     // Assert
     assert.ok(result.banner.includes("Restored 1 answer "), result.banner);
@@ -173,7 +252,7 @@ describe("reporting a restore that happened before this load", () => {
     // explaining any of it. A rare-event confirmation disabling the whole application for
     // the readers most likely to hit it.
     // Act
-    const result = await run(pageBody(true), { throws: true });
+    const result = await run(pageBody("backup"), { throws: true });
 
     // Assert — it carried on to the storage attempt rather than stopping at the flag.
     assert.ok(

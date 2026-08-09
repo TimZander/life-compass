@@ -100,8 +100,9 @@ jobs:
           # a 404, so "not yet what we asked for" is the only shape worth matching on.
           #
           # The budget stays deliberately small. The poll above can already spend five
-          # minutes of this job's timeout-minutes: 10, and check() runs about 38 times —
-          # so a wholly broken deployment must still cost seconds per URL, or the job is
+          # minutes of this job's timeout-minutes: 10, and check() runs once per precached
+          # URL plus a handful of literals — sixty as this is written, and growing with the
+          # site — so a wholly broken deployment must still cost seconds per URL, or the job is
           # killed on time and reports a timeout instead of naming what was wrong.
           ATTEMPTS=3
           RETRY_SLEEP=2

@@ -60,6 +60,7 @@ const NAV: readonly (readonly [href: string, label: string])[] = [
   ["/with-a-partner", "Partner"],
   ["/optional-add-ons", "Add-ons"],
   ["/backup", "Backup"],
+  ["/agent", "Assistant"],
   ["/docs/decisions/", "Decisions"],
 ];
 
@@ -84,7 +85,7 @@ const NAV: readonly (readonly [href: string, label: string])[] = [
  * A control visible before it can do anything is one somebody presses and watches do
  * nothing, and 0008 is about being straight over whether answers are safe.
  */
-function tools(): string {
+function backupTools(): string {
   return `
 <section class="tools" id="backup" aria-labelledby="backup-heading" hidden>
   <h2 id="backup-heading">Save a backup</h2>
@@ -111,7 +112,15 @@ function tools(): string {
 </section>`;
 }
 
-export function layout(content: string, pageTitle: string | null, isBackupPage: boolean): string {
+/**
+ * Which page-specific controls a page carries, if any.
+ *
+ * A named thing rather than a second boolean beside the first: two flags would let a page be
+ * both, which nothing means, and a third would make the call site unreadable.
+ */
+export type Tools = "backup" | "agent" | null;
+
+export function layout(content: string, pageTitle: string | null, tools: Tools): string {
   const nav = NAV.map(([href, label]) => `    <a href="${href}">${label}</a>`).join("\n");
 
   return `<!doctype html>
@@ -136,7 +145,7 @@ export function layout(content: string, pageTitle: string | null, isBackupPage: 
 </head>
 <body>
   <a class="wordmark" href="/"><svg class="wm-mark" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L12.96 9.69 L18.01 5.99 L14.31 11.04 L21 12 L14.31 12.96 L18.01 18.01 L12.96 14.31 L12 21 L11.04 14.31 L5.99 18.01 L9.69 12.96 L3 12 L9.69 11.04 L5.99 5.99 L11.04 9.69 Z" fill="currentColor"/></svg>&nbsp;&nbsp;LIFE COMPASS</a>
-  <main><article>${content}${isBackupPage ? tools() : ""}</article></main>
+  <main><article>${content}${toolsFor(tools)}</article></main>
   <!-- The banner's live region. Static markup on purpose: a screen reader only
        announces changes to a region that existed beforehand, so creating it on demand
        and filling it in the same task is routinely missed (0001). -->
@@ -147,6 +156,60 @@ ${nav}
 </body>
 </html>
 `;
+}
+
+/**
+ * The assistant bridge's own page.
+ *
+ * Off by default and turned on here, the way #25 gave backup a page rather than a control
+ * under each worksheet. The default matters more than the placement: a reader who never wants
+ * an assistant sees an unchanged worksheet and is never nudged toward handing their
+ * reflections to a third party, which is what makes docs/decisions/0007's "the user's choice
+ * becomes real rather than nominal" true of the interface and not only of the network.
+ *
+ * The controls ship `hidden` and are revealed by the client once storage opens, as backup's
+ * do — a control visible before it can do anything is one somebody presses and watches do
+ * nothing.
+ */
+function agentTools(): string {
+  return `
+<section class="tools" id="agent" aria-labelledby="agent-heading" hidden>
+  <h2 id="agent-heading">Answer by talking, with an assistant</h2>
+  <p>With this on, nearly every question grows a button that copies it — as a written brief —
+  for you to paste into an assistant of your choosing. It interviews you by voice, and you
+  bring its answers back through the box below.</p>
+  <p><strong>Nothing is sent from this app.</strong> It has no way to send anything. What
+  reaches an assistant is what you paste into it, and you see exactly that text before you
+  copy it.</p>
+  <p><label><input type="checkbox" id="agent-on"> Show the copy buttons on every question</label></p>
+</section>
+<section class="tools" id="paste" aria-labelledby="paste-heading" hidden>
+  <h2 id="paste-heading">Bring an assistant's answers back</h2>
+  <p>Paste the whole reply — the part in a code block and the words around it. Nothing is read
+  until you choose to read it, and nothing is saved until you have seen what would change.</p>
+  <p><label for="paste-text">The assistant's reply</label></p>
+  <textarea id="paste-text" rows="6" spellcheck="false"></textarea>
+  <p><button type="button" id="paste-read">Read this reply</button></p>
+  <div id="paste-confirm" hidden>
+    <h3>What this would change</h3>
+    <p id="paste-summary"></p>
+    <div id="paste-detail"></div>
+    <p>
+      <button type="button" id="paste-go">Save these answers</button>
+      <button type="button" id="paste-cancel">Cancel</button>
+    </p>
+  </div>
+</section>`;
+}
+
+function toolsFor(tools: Tools): string {
+  if (tools === "backup") {
+    return backupTools();
+  }
+  if (tools === "agent") {
+    return agentTools();
+  }
+  return "";
 }
 
 // Exported because the manifest declares the same three things about the app, and two

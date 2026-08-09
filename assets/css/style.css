@@ -75,15 +75,10 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 /* Keeping a copy. Set apart from the worksheet by a rule and a tint rather than a border
    box, so it reads as a footer to the page's work and not as another question. It is
    `hidden` in the markup until the script confirms storage actually opens (0008). */
-.backup{margin:3.5em 0 0;padding:1.6em 0 0;border-top:1px solid var(--rule)}
-.backup h2{font-size:1.3rem;margin:0 0 .5em}
-.backup p{margin:0 0 .8em;font-size:.95rem}
-.backup-note{color:var(--muted);font-size:.86rem;font-style:italic}
 #backup-save{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
 #backup-save:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
 #backup-save:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 #backup-save[aria-disabled="true"]{opacity:.6;cursor:progress}
-.backup h3{font-size:1.05rem;margin:1.8em 0 .4em}
 /* The file input itself is replaced by its label, which is styled as a button — the native
    control renders differently on every platform and reads as "no file chosen" until one is,
    which is a status nobody asked for next to a destructive action. */
@@ -109,7 +104,11 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 #restore-cancel{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--rule);background:transparent;color:var(--ink);cursor:pointer;margin-left:.5em}
 #restore-go:focus-visible,#restore-cancel:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* A printed worksheet has no button to press. */
-@media print{.backup{display:none}}
+/* Keyed on the ids, not the class: the layout emits <section class="tools" id="backup">, so
+   every `.backup` rule in this file — including the print rule this replaces — has been dead
+   since the controls moved onto their own page in #25. Noticed while adding the assistant
+   equivalent below. */
+@media print{#backup,#restore{display:none}}
 
 /* Banner: one strip for what the app needs to tell you about itself.
    Fixed, so appearing never reflows the page under someone who is reading or typing —
@@ -124,3 +123,56 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .banner-primary:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
 .banner-action:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
 @media(max-width:540px){.banner{margin:0 .6rem .6rem}}
+
+/* The assistant bridge (#67). Absent entirely unless the reader opted in, so none of this
+   applies to a worksheet by default. */
+/* Legible rather than discreet. The first device pass could not find this button: muted text
+   on a hairline border reads as disabled next to the worksheet's own contrast. */
+.agent-open{display:block;margin:.2em 0 .8em;font-family:var(--sans);font-size:.86rem;font-weight:600;padding:.45em 1em;border-radius:6px;border:1px solid var(--accent);background:var(--quote-bg);color:var(--accent-dark);cursor:pointer}
+.agent-open:hover{background:var(--accent);color:#fff}
+.agent-open:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+/* Both tools sections — backup and assistant — render as `<section class="tools">`, and until
+   now nothing styled that class at all, so each sat in the page as undifferentiated prose. On
+   /agent that put the opt-in, which is the page's entire purpose, in a wall of text. */
+.tools{margin:2.2em 0;padding:1.2em 1.3em;border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:6px;background:var(--quote-bg)}
+.tools h2{margin-top:0}
+.agent-panel{margin:.6em 0 1.2em;padding:.9em 1em;border:2px solid var(--accent);border-radius:6px;background:var(--quote-bg)}
+.agent-panel label{display:block;font-family:var(--sans);font-size:.88rem;margin-bottom:.6em}
+/* 0007 · 1 wants the literal payload shown. On a phone that means it has to scroll rather
+   than run off the side of the page, and wrap rather than force the article to. */
+/* 0007 · 1 makes this the consent mechanism, so how much of it a reader can see is not a
+   styling question. Every generated payload is 40-63 lines; at the previous 22em and .8rem
+   roughly a quarter was visible, inside a box whose own boundary was 1.10:1 against the page —
+   so the reader could neither read the rest nor tell there was a rest. Taller, larger, and
+   bounded by something visible. */
+.agent-preview{max-height:70vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92rem;line-height:1.55;padding:.8em .9em;margin:0 0 .5em;background:var(--bg);border:1px solid var(--accent);border-radius:4px}
+/* Said plainly rather than left to an overlay scrollbar that appears only while scrolling. */
+.agent-scroll{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:0 0 .7em}
+.agent-preview:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
+/* --muted on the panel tint is 2.49:1, which fails AA outright — and this is not incidental
+   text, it is the one sentence 0007 · 3 requires at the copy control. Ink, not grey. */
+.agent-note{font-family:var(--sans);font-size:.86rem;color:var(--ink);margin:0 0 .7em}
+.agent-panel button{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+.agent-panel button:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+/* A printed worksheet has no button to press, and 0010 · C3 asks for the absence of form
+   controls on paper. Without this an opted-in reader prints an "Ask an assistant" button above
+   every question — and any panel left open prints its own controls plus a preview that
+   `max-height` silently truncates, which is the failure the textarea print rule above exists
+   to fix. */
+#paste-text{width:100%;font-family:var(--mono);font-size:.9rem;line-height:1.5;padding:.7em .8em;border:1px solid var(--accent);border-radius:4px;background:var(--bg);color:var(--ink)}
+#paste-text:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
+#paste-read,#paste-go,#paste-cancel{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+#paste-cancel{background:var(--quote-bg);color:var(--accent-dark)}
+#paste-read:focus-visible,#paste-go:focus-visible,#paste-cancel:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+#paste-go[aria-disabled="true"]{opacity:.6;cursor:progress}
+#paste-confirm{margin-top:1.2em;padding-top:1em;border-top:1px solid var(--accent)}
+#paste-confirm h3{font-size:1.05rem;margin:0 0 .5em}
+#paste-summary{font-family:var(--sans);font-size:.9rem;color:var(--ink);margin:0 0 1em}
+.paste-tally{font-family:var(--sans);font-size:.9rem;margin:0 0 1.2em;padding-left:1.2em}
+.paste-tally li{margin:0 0 .25em}
+.paste-change{margin:0 0 1.2em}
+.paste-change-title{font-family:var(--sans);font-size:.88rem;font-weight:600;color:var(--ink);margin:0 0 .3em}
+.paste-label{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:.4em 0 .15em}
+.paste-before,.paste-after{margin:0;padding:.5em .7em;border-radius:4px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--rule);background:var(--quote-bg)}
+.paste-after{border-left-color:var(--accent)}
+@media print{.agent-open,.agent-panel,#agent,#paste{display:none}}

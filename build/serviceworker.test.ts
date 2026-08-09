@@ -208,17 +208,29 @@ describe("shipped client scripts", () => {
     const modules = await buildClient(ROOT);
 
     // Assert
-    // answers.js and store.js are emitted and precached before anything imports them —
-    // app.js wires them up in the next slice. Listing them rather than allowing "at
-    // least these" keeps the check able to notice a module that should not be shipping.
+    // Listed rather than allowing "at least these", which keeps this able to notice a module
+    // that should not be shipping at all.
     assert.deepEqual(modules.map((module) => module.output).sort(), [
+      // agent-answers.js now has its consumer — paste.js, reached by dynamic import on the
+      // assistant page only. It shipped one slice ahead of it, which 0015 · C4a rules against;
+      // that debt is paid here rather than merely noted.
+      "assets/js/agent-answers.js",
+      "assets/js/agent.js",
       "assets/js/answers.js",
       "assets/js/app.js",
       "assets/js/banner.js",
+      "assets/js/bridge.js",
       "assets/js/export.js",
       "assets/js/fields.js",
       "assets/js/import.js",
       "assets/js/keys.js",
+      // Only /agent carries the box, so only /agent pays for the reader and the planner it
+      // pulls in. The deferred check below is what keeps that true.
+      "assets/js/paste.js",
+      "assets/js/prompt.js",
+      // Generated into src/client by build/schema.ts, then discovered here like any other
+      // module. See docs/decisions/0015 · C4a and build/schema.ts.
+      "assets/js/schema.js",
       "assets/js/store.js",
       "assets/js/sw-update.js",
     ]);
@@ -227,9 +239,28 @@ describe("shipped client scripts", () => {
     // disconnected from the entry module and still appear here — verified: replacing
     // app.ts's import of import.ts with local stubs left the whole suite green while the
     // restore control was wired to nothing.
+    // The assistant bridge is loaded on demand, not with the page. It reaches the prompt
+    // generator and through it the whole question schema — 94 kB raw, 19 kB gzipped — and the
+    // feature is off by default, so a static import made every reader pay for a feature most
+    // of them decline, on every page including the 404 and every decision record. `bridge.ts`
+    // exists so the "is it on" question can be answered without pulling any of that in.
+    const eager = modules.find((module) => module.output === "assets/js/app.js");
+    assert.ok(eager !== undefined);
+    // agent-answers is in this list before anything imports it, deliberately: it reaches
+    // prompt.js and through it the 73 kB schema, so the day its consumer lands a static
+    // import here would ship all of that to every reader on every page. Adding the name now
+    // costs one word and makes that a failing test rather than a discovery.
+    for (const deferred of ["agent", "agent-answers", "paste", "prompt", "schema"]) {
+      assert.ok(
+        !eager.code.includes(`from "./${deferred}.js"`),
+        `app.js statically imports ${deferred}.js, which every reader then downloads`,
+      );
+    }
+    assert.ok(eager.code.includes('import("./agent.js")'), "the bridge is not loaded on demand");
+
     const entry = modules.find((module) => module.output === "assets/js/app.js");
     assert.ok(entry !== undefined, "no entry module was emitted");
-    for (const sibling of ["export", "import", "fields", "answers", "store", "banner", "sw-update"]) {
+    for (const sibling of ["bridge", "export", "import", "fields", "answers", "store", "banner", "sw-update"]) {
       assert.ok(
         entry.code.includes(`"./${sibling}.js"`),
         `app.js does not import ${sibling}.js, so that feature reaches no page`,
@@ -414,7 +445,7 @@ describe("banner surface", () => {
     // the change, so creating it on demand and filling it in the same task is routinely
     // missed. 0001 makes that a defect rather than a nicety.
     // Act
-    const html = layout("<p>x</p>", "Page", true);
+    const html = layout("<p>x</p>", "Page", "backup");
 
     // Assert
     assert.ok(html.includes('<div id="banner-region" aria-live="polite"></div>'));

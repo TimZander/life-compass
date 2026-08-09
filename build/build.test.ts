@@ -17,13 +17,16 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { build, buildPages, ROOT, type BuildResult } from "./build.ts";
 import { WORKSHEETS } from "../src/questions/index.ts";
-import { renderQuestion } from "./questions.ts";
+import { renderQuestion, loadSchema } from "./questions.ts";
 import { icons } from "./icons.ts";
 import { renderManifest } from "./manifest.ts";
+import { render } from "./markdown.ts";
+import { checkSpecifiers } from "./client.ts";
 
 /** Every page the site is expected to publish. */
 const EXPECTED_PAGES: readonly string[] = [
   "404.html",
+  "agent.html",
   "backup.html",
   "days/day-1-excavation.html",
   "days/day-2-values.html",
@@ -44,6 +47,7 @@ const EXPECTED_PAGES: readonly string[] = [
   "docs/decisions/0012-client-typescript-stripped-at-build-time.html",
   "docs/decisions/0013-instance-identity-for-rendered-slots.html",
   "docs/decisions/0014-a-dom-for-tests-only.html",
+  "docs/decisions/0015-assistant-output-is-self-describing-blocks.html",
   "docs/decisions/index.html",
   "index.html",
   "one-page-anchor.html",
@@ -68,6 +72,8 @@ const NAV_HREFS: readonly string[] = [
   "/rigorous/",
   "/with-a-partner",
   "/optional-add-ons",
+  "/backup",
+  "/agent",
   "/docs/decisions/",
 ];
 
@@ -154,6 +160,447 @@ describe("the stylesheet and the markup agreeing", () => {
     // Assert
     assert.equal(declared.theme_color, accent, "theme_color is not the stylesheet's --accent");
     assert.equal(declared.background_color, paper, "background_color is not the --bg painted");
+  });
+});
+
+describe("the prose that introduces a question", () => {
+  /** Render one page's worth of Markdown and read back what each anchor claimed. */
+  function asksIn(markdown: string): Map<string, string> {
+    const schema = loadSchema(WORKSHEETS);
+    const rendered = render(markdown, "fixture.md", {
+      questions: schema.byId,
+      urls: new Map<string, string>(),
+      assets: new Set<string>(),
+    });
+    return new Map(rendered.asks);
+  }
+
+  const ANCHOR_ONE = "<!-- questions: day1.chapters -->";
+  const ANCHOR_TWO = "<!-- questions: day1.peaks -->";
+
+  it("render_AProseParagraphAboveTheAnchor_IsTheAsk", () => {
+    // Arrange — the ordinary shape, and the one that makes the feature work at all: the
+    // definitions carry a label, docs/decisions/0004 keeps the question itself in Markdown.
+    const ASK = "What did you love doing at ten that you no longer do?";
+
+    // Act
+    const asks = asksIn(`${ASK}\n\n${ANCHOR_ONE}\n`);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), ASK);
+  });
+
+  it("render_AnAnchorNestedInAListItem_TakesTheItemAndNotTheListAboveIt", () => {
+    // Arrange — Day 4 asks three questions as bullets with the anchor indented under each.
+    const MINE = "**Who do you want to be useful to?** Be specific.";
+    const markdown = `- Something else entirely.\n\n- ${MINE}\n\n  ${ANCHOR_ONE}\n`;
+
+    // Act
+    const asks = asksIn(markdown);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), MINE);
+  });
+
+  it("render_AListAboveTheAnchor_IsNotCollected", () => {
+    // Arrange — negative case, and a real failure this rule had. The rigorous Day 3 lists
+    // History and Spending as bullets, then introduces the calendar in its own paragraph.
+    // Walking back across the list collected the bullet about spending as though it
+    // introduced the calendar — a plausible-looking ask that was simply the wrong question.
+    const MINE = "**Calendar:**";
+    const markdown = `- **Spending:** what do you spend on without resentment?\n\n${MINE}\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const asks = asksIn(markdown);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), MINE);
+  });
+
+  it("render_ConsecutiveAnchors_ShareTheLeadInAboveThem", () => {
+    // Arrange — Day 4 puts one instruction above four sentence questions in a row. The
+    // second has nothing between it and the first, and an empty ask would be worse than a
+    // shared one.
+    const LEAD = "Finish these sentences (multiple times if needed):";
+
+    // Act
+    const asks = asksIn(`${LEAD}\n\n${ANCHOR_ONE}\n\n${ANCHOR_TWO}\n`);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), LEAD);
+    assert.equal(asks.get("day1.peaks"), LEAD);
+  });
+
+  it("render_AnAnchorBelowAnother_SeesTheAnchorAndNotTheQuestionItBecame", () => {
+    // Arrange — the subtlest failure this had. The render pass REPLACES an anchor's content
+    // with the markup it generated, and the ask was being read in that same pass, so a
+    // question could not recognise the anchor above it — already rewritten — and walked
+    // straight through into the previous question's lead-in. It read as a plausible ask.
+    const FIRST = "**History:** what do you return to?";
+    const SECOND = "**Calendar:**";
+
+    // Act
+    const asks = asksIn(`${FIRST}\n\n${ANCHOR_ONE}\n\n${SECOND}\n\n${ANCHOR_TWO}\n`);
+
+    // Assert
+    assert.equal(asks.get("day1.peaks"), SECOND, "it reached past the anchor above it");
+    assert.equal(asks.get("day1.chapters"), FIRST);
+  });
+
+  it("render_AHeadingBetweenTheProseAndTheAnchor_IsCarriedAsTheSubject", () => {
+    // Arrange — Day 5 asks one question five times under `### Career`, `### Money` and so
+    // on. Without the heading all five read identically; with only the heading none of them
+    // says what to ask. Both halves are needed, which is why both are asserted.
+    const LEAD = "For each dimension ask: is my setup aligned?";
+    const markdown = `${LEAD}\n\n### Money\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.includes("Money"), "the heading naming the subject is missing");
+    assert.ok(ask.includes(LEAD), "the prose that asks the question is missing");
+  });
+
+  it("render_AQuotedExampleBelowTheInstruction_IsKeptWithIt", () => {
+    // Arrange — Day 1 puts the instruction in a paragraph and an example in a blockquote
+    // beneath it, and Day 4 quotes a format with a bulleted example. A list inside a quote
+    // is part of the example rather than a sibling of the question, and treating it as a
+    // boundary left one question with no ask at all.
+    const INSTRUCTION = "Divide your life into chapters.";
+    const markdown = `${INSTRUCTION}\n\n> Example:\n>\n> - "The garage-band years"\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.includes(INSTRUCTION), "the instruction was dropped");
+    assert.ok(ask.includes("garage-band"), "the quoted example was treated as a boundary");
+  });
+
+  it("render_TheNearestHeading_IsTheSubjectAndNotTheOneAboveIt", () => {
+    // Arrange — the mutation that matters here, and the one the code comment beside it
+    // describes: taking the furthest heading instead of the nearest makes all five of Day 5's
+    // questions read identically, which is the defect the heading rule was added to fix. A
+    // single-heading fixture cannot tell the two apart, so this one has both.
+    const LEAD = "For each dimension ask: is my setup aligned?";
+    const markdown = `## The five dimensions\n\n${LEAD}\n\n### Money\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.includes("Money"), "the nearest heading is missing");
+    assert.ok(!ask.includes("The five dimensions"), "it reached past to the section heading");
+    assert.ok(ask.includes(LEAD), "the prose that asks the question is missing");
+  });
+
+  it("render_TheHeading_ComesBeforeTheProseItIntroduces", () => {
+    // Arrange — order is meaning here. "Money / For each dimension ask…" is a subject and its
+    // question; reversed, it is a question with a stray word after it.
+    const LEAD = "For each dimension ask: is my setup aligned?";
+
+    // Act
+    const ask = asksIn(`${LEAD}\n\n### Money\n\n${ANCHOR_ONE}\n`).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.indexOf("Money") < ask.indexOf(LEAD), "the subject arrives after the question");
+  });
+
+  it("render_SeveralBlocks_KeepTheirOrderAndStaySeparate", () => {
+    // Arrange — Day 1 puts the instruction first and an example beneath it. Reversed, the
+    // example reads as the instruction; run together on one line, both read as neither.
+    const FIRST = "Divide your life into chapters.";
+    const SECOND = "Example: the garage-band years.";
+
+    // Act
+    const ask = asksIn(`${FIRST}\n\n${SECOND}\n\n${ANCHOR_ONE}\n`).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.ok(ask.indexOf(FIRST) < ask.indexOf(SECOND), "the blocks came back reversed");
+    assert.ok(ask.includes(`${FIRST}\n\n${SECOND}`), "the blocks were run together");
+  });
+
+  it("render_AnOrderedListAboveTheAnchor_IsABoundaryLikeABulletList", () => {
+    // Arrange — bullet lists and list items were both pinned; ordered lists were not, and a
+    // numbered list is how several worksheets lay out their steps.
+    const MINE = "**Calendar:**";
+    const markdown = `1. A numbered step that is not this question.\n\n${MINE}\n\n${ANCHOR_ONE}\n`;
+
+    // Act
+    const ask = asksIn(markdown).get("day1.chapters") ?? "";
+
+    // Assert
+    assert.equal(ask, MINE);
+  });
+
+  it("buildPages_RealContent_EveryQuestionHasAnAsk", async () => {
+    // Arrange — the property that matters, over the whole workbook rather than one shape.
+    // Seven questions came out empty on the first attempt and one on the second, each time
+    // in a shape the rule had not met.
+    const result = await site();
+
+    // Act
+    const missing = [...result.schema.byId.keys()].filter(
+      (id) => (result.asks.get(id) ?? "").trim() === "",
+    );
+
+    // Assert
+    assert.deepEqual(missing, []);
+  });
+
+  it("buildPages_AQuestionWithNoProseAnywhere_IsReported", async () => {
+    // Arrange — negative case. The rule is structural, so a worksheet written in a shape it
+    // has not seen can yield nothing, and nothing is the half that would otherwise be silent.
+    // A bare anchor with no prose and no heading above it is that case: a heading alone would
+    // supply an ask, which is the fallback working rather than the failure being tested.
+    const root = await fixture({ "README.md": `${ANCHOR_ONE}\n` });
+
+    // Act
+    const result = await buildPages({ root, worksheets: WORKSHEETS });
+    const reported = result.problems
+      .filter((problem) => problem.kind === "questionless-ask")
+      // Whole identifier, not a substring: `rday1.chapters` contains `day1.chapters`, and an
+      // earlier version of this test passed on the wrong question because of it.
+      .map((problem) => problem.detail.split(" ")[0]);
+
+    // Assert
+    assert.ok(reported.includes("day1.chapters"), "a question with no prose was not reported");
+  });
+});
+
+describe("refusing a client graph the browser cannot load", () => {
+  it("checkSpecifiers_AnImportNothingEmits_Throws", () => {
+    // Arrange — the failure this exists for, and it shipped once. `buildClient` discovers
+    // modules by reading a directory, so a GENERATED module that was never written is not an
+    // error, it is simply absent from the list. Deleting src/client/schema.ts left the build
+    // emitting prompt.js importing ./schema.js, shipping it, and leaving it out of the
+    // precache — so cache.addAll succeeded and every gate passed on a dead client.
+    const modules = [
+      { output: "assets/js/app.js", code: 'import { x } from "./gone.js";\n' },
+      { output: "assets/js/keys.js", code: "export const x = 1;\n" },
+    ];
+
+    // Act & Assert
+    assert.throws(() => checkSpecifiers(modules), /imports \.\/gone\.js, which nothing emits/);
+  });
+
+  it("checkSpecifiers_EveryImportEmitted_DoesNotThrow", () => {
+    // Arrange — the ordinary case, including a specifier that climbs a directory, so the
+    // resolution is doing real path work rather than comparing strings.
+    const modules = [
+      { output: "assets/js/app.js", code: 'import { k } from "./keys.js";\n' },
+      { output: "assets/js/keys.js", code: 'import { s } from "../js/schema.js";\n' },
+      { output: "assets/js/schema.js", code: "export const s = 1;\n" },
+    ];
+
+    // Act & Assert
+    assert.doesNotThrow(() => checkSpecifiers(modules));
+  });
+
+  it("checkSpecifiers_BareSpecifiers_AreLeftAlone", () => {
+    // Arrange — negative case. Only relative specifiers name something this build emits; a
+    // bare one would be a dependency, which this tier does not have and must not start
+    // reporting as a missing file.
+    const modules = [{ output: "assets/js/app.js", code: 'import { z } from "node:path";\n' }];
+
+    // Act & Assert
+    assert.doesNotThrow(() => checkSpecifiers(modules));
+  });
+});
+
+describe("the decision records and their index", () => {
+  /** Every record file, and the table rows in the index that name them. */
+  async function records(): Promise<{
+    files: string[];
+    listed: Map<string, string>;
+  }> {
+    const dir = path.join(ROOT, "docs/decisions");
+    const files = (await readdir(dir))
+      .filter((name) => /^\d{4}-.*\.md$/.test(name))
+      .sort();
+    const index = await readFile(path.join(dir, "README.md"), "utf8");
+    const listed = new Map<string, string>();
+    for (const row of index.split("\n")) {
+      // | [0009](0009-....md) | Title | Status |
+      const found = /^\|\s*\[\d{4}\]\(([^)]+)\)\s*\|[^|]*\|\s*([^|]+?)\s*\|/.exec(row);
+      if (found?.[1] !== undefined && found[2] !== undefined) {
+        listed.set(found[1], found[2]);
+      }
+    }
+    return { files, listed };
+  }
+
+  it("decisionRecords_EveryFile_IsListedInTheIndex", async () => {
+    // Arrange — the index table is how anyone finds a record; the nav points at the
+    // directory, not at individual pages. A record nobody links is a record nobody reads,
+    // and nothing until now would have noticed one shipping unlisted.
+    const { files, listed } = await records();
+
+    // Act
+    const missing = files.filter((name) => !listed.has(name));
+
+    // Assert
+    assert.deepEqual(missing, [], "decision records exist that the index does not list");
+  });
+
+  it("decisionRecords_EveryIndexRow_NamesAFileThatExists", async () => {
+    // Arrange — negative case, the other direction: a renamed or deleted record leaves a
+    // row pointing at nothing, and the build only checks links inside published pages.
+    const { files, listed } = await records();
+
+    // Act
+    const dangling = [...listed.keys()].filter((name) => !files.includes(name));
+
+    // Assert
+    assert.deepEqual(dangling, [], "the index lists records that do not exist");
+  });
+
+  it("decisionRecords_TheIndexStatus_MatchesTheRecordsOwn", async () => {
+    // Arrange — two copies of one fact, which is the failure 0015 itself is about. Six of
+    // the records are Proposed and the README's own clause governs when that changes, so a
+    // record promoted to Accepted in its own file and left Proposed in the table is the
+    // likely drift rather than an exotic one.
+    const { files, listed } = await records();
+    const disagreements: string[] = [];
+
+    // Act
+    for (const name of files) {
+      const body = await readFile(path.join(ROOT, "docs/decisions", name), "utf8");
+      const own = /^- \*\*Status:\*\*\s*(\S+)/m.exec(body)?.[1];
+      const row = listed.get(name);
+      if (own !== undefined && row !== undefined && own !== row) {
+        disagreements.push(`${name}: file says ${own}, index says ${row}`);
+      }
+    }
+
+    // Assert
+    assert.deepEqual(disagreements, []);
+  });
+});
+
+describe("which page carries which controls", () => {
+  it("buildPages_RealContent_PutsTheAssistantOptInOnExactlyTheAssistantPage", async () => {
+    // Arrange — the decision, which nothing asserted. layout.test.ts proves `layout()` emits
+    // the section when told to; build.test.ts proved `agent.html` exists. Neither noticed that
+    // the build could stop telling it: replacing the AGENT_SOURCE arm with `null` shipped the
+    // page whose entire purpose is one switch, with no switch, past a green suite. This page
+    // has already shipped switchless once for a different reason.
+    const { pages } = await site();
+
+    // Act
+    const withOptIn = pages.filter((page) => page.html.includes('id="agent-on"'));
+
+    // Assert
+    assert.deepEqual(withOptIn.map((page) => page.url), ["/agent"]);
+  });
+
+  it("buildPages_RealContent_LeavesTheBackupControlsWhereTheyWere", async () => {
+    // Arrange — the same decision for the other page, and a regression guard on the parameter
+    // this branch changed from a boolean to a named union. A ternary that got either arm wrong
+    // would move the controls silently.
+    const { pages } = await site();
+
+    // Act
+    const withBackup = pages.filter((page) => page.html.includes('id="restore-file"'));
+
+    // Assert
+    assert.deepEqual(withBackup.map((page) => page.url), ["/backup"]);
+  });
+});
+
+describe("the stylesheet and the assistant controls agreeing", () => {
+  /**
+   * Every `.agent-*` rule was independently deletable with the suite green — including whole
+   * rules — because nothing in the project asserts on this stylesheet except the one backup
+   * pair. Each declaration below carries a failure a reader would meet, which is the only
+   * reason to pin a stylesheet at all.
+   */
+  const REQUIRED: readonly (readonly [selector: string, declaration: string, because: string])[] = [
+    [".agent-open", "border:1px solid var(--accent)", "the button reverts to a browser default nobody could find on a device"],
+    [".agent-open", "display:block", "the control runs into the question text beside it"],
+    [".agent-open:focus-visible", "outline:2px solid var(--accent-dark)", "a keyboard reader cannot see where they are"],
+    [".tools", "border-left:3px solid var(--accent)", "both tools sections merge into the prose around them"],
+    [".agent-preview", "max-height:70vh", "the payload shrinks back to a fraction of itself, which is the defect this pair was written to fix"],
+    [".agent-preview", "font-size:.92rem", "the text 0007 · 1 requires the reader to READ becomes too small to read"],
+    [".agent-preview", "overflow:auto", "the payload cannot be scrolled to read the rest of it"],
+    [".agent-preview", "white-space:pre-wrap", "the payload collapses into one unreadable line"],
+    [".agent-preview", "overflow-wrap:anywhere", "the payload runs off the side of a phone"],
+    [".agent-preview", "border:1px solid var(--accent)", "the box loses its only boundary — its background differs from the panel's by 1.10:1"],
+    [".agent-preview:focus-visible", "outline:2px solid var(--accent-dark)", "the scrollable region gives no focus indication"],
+    [".agent-note", "color:var(--ink)", "0007 · 3's one required sentence returns to 2.49:1 contrast"],
+    [".agent-scroll", "color:var(--ink)", "the note saying the payload scrolls is the same 2.49:1 grey"],
+  ];
+
+  /**
+   * The declarations inside one rule, by exact selector, each normalised to `property:value`.
+   *
+   * Whole declarations rather than a substring of one, which is what this checked before and
+   * why it certified claims that were not true. `"border"` was satisfied by the neighbouring
+   * `border-radius`, so deleting the actual border passed; `"outline"` by `outline-offset`;
+   * and `"max-height"` matched `max-height:6em`, which is precisely the shrunken box the
+   * commit above it claims to have fixed. `"white-space:pre-wrap"` also matched the invalid
+   * `pre-wrap-x`, which browsers discard. Five of nine rows could not fail.
+   */
+  function declarationsFor(css: string, selector: string): readonly string[] {
+    // Comments stripped first: this stylesheet carries a long one above most rules, and a
+    // naive scan folds it into the selector it precedes.
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    return [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((rule) => (rule[1] ?? "").trim() === selector)
+      .flatMap((rule) => (rule[2] ?? "").split(";"))
+      .map((declaration) => declaration.replace(/\s+/g, " ").trim())
+      .filter((declaration) => declaration !== "");
+  }
+
+  it("styleSheet_TheAssistantControls_KeepTheDeclarationsAReaderDependsOn", async () => {
+    // Arrange
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act & Assert
+    for (const [selector, declaration, because] of REQUIRED) {
+      const body = declarationsFor(css, selector);
+      assert.ok(body.length > 0, `${selector} has no rule at all: ${because}`);
+      assert.ok(
+        body.includes(declaration),
+        `${selector} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
+      );
+    }
+  });
+
+  it("styleSheet_ADeclarationWithTheRightPropertyButAWrongValue_IsNotAccepted", () => {
+    // Arrange — negative case for the helper itself, which is the part that was broken. Each
+    // of these is a real mutation that survived the previous version of the check.
+    const CSS = ".agent-preview{max-height:6em;white-space:pre-wrap-x;border-radius:4px}";
+
+    // Act
+    const body = declarationsFor(CSS, ".agent-preview");
+
+    // Assert
+    assert.ok(!body.includes("max-height:70vh"), "a shrunken box passed as the full-height one");
+    assert.ok(!body.includes("white-space:pre-wrap"), "an invalid value passed as the valid one");
+    assert.ok(
+      !body.includes("border:1px solid var(--accent)"),
+      "border-radius passed as a border",
+    );
+  });
+
+  it("styleSheet_TheControls_DoNotPrint", async () => {
+    // Arrange — 0010 · C3 asks for the absence of form controls on paper, and this file's own
+    // history is the argument: the backup print rule was keyed on a class the markup never
+    // carried and was dead from #25 until this branch. A print rule that silently stops
+    // matching is the failure 0010 predicts by name.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act
+    const printed = /@media print\{([^}]*)\{display:none\}\}/g;
+    const hidden = [...css.matchAll(printed)].flatMap((match) => (match[1] ?? "").split(","));
+
+    // Assert — every selector named here must appear in the markup the build emits, which is
+    // what the dead `.backup` rule did not.
+    for (const selector of ["#backup", "#restore", "#agent", ".agent-open", ".agent-panel"]) {
+      assert.ok(hidden.includes(selector), `${selector} is not hidden in print`);
+    }
   });
 });
 
