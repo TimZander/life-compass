@@ -135,11 +135,11 @@ describe("finding blocks in a reply", () => {
     assert.equal(answerOf(blocks[0]), "the real one");
   });
 
-  it("readBlocks_AFourBacktickWrapperAroundANestedBlock_ReadsTheOuterOne", () => {
-    // Arrange — an assistant showing the reader what a block looks like wraps it in a longer
-    // fence. The previous scanner's comment claimed to handle this and did not: the case
-    // returned no blocks at all, because one regex cannot tell the nested closing fence from
-    // the real one.
+  it("readBlocks_ALongerFenceAroundAPlainBlock_IsRead", () => {
+    // Arrange — a four-backtick fence with nothing nested inside it. Named for what the
+    // fixture actually contains: it used to claim the nested case, which it does not exercise
+    // at all — the rule that makes nesting work is pinned by the test below, and this one
+    // passed with that rule mutated away.
     const ONE = 1;
     const text = ["````json", JSON.stringify(block(SINGLE, { answer: "outer" })), "````"].join(
       "\n",
@@ -370,7 +370,6 @@ describe("refusing a block", () => {
       [SINGLE, {}],
       [SENTENCE, { fields: {} }],
       [REPEAT, { instances: [] }],
-      [REPEAT, { instances: [{ fields: {} }] }],
     ];
 
     // Act & Assert
@@ -378,6 +377,25 @@ describe("refusing a block", () => {
       const refusal = refusalFor(reply(block(group, shape)));
       assert.equal(refusal.kind, "no-answers", `${group} ${JSON.stringify(shape)} was accepted`);
     }
+  });
+
+  it("readBlocks_OneEmptyEntryAmongSeveral_BlamesTheEntryRatherThanTheBlock", () => {
+    // Arrange — negative case. An entry answering nothing would mint an instance holding no
+    // words, taking a slot out of the count the page renders. It used to refuse as
+    // `no-answers`, whose message says the block carries none — untrue when it carries three,
+    // and it sends the reader looking for an empty block that is not there.
+    const text = reply(
+      block(REPEAT, {
+        instances: [{ fields: { title: "a real one" } }, { fields: {} }],
+      }),
+    );
+
+    // Act
+    const refusal = refusalFor(text);
+
+    // Assert
+    assert.equal(refusal.kind, "empty-instance");
+    assert.match(explain(refusal), /One of the entries/);
   });
 
   it("readBlocks_AShapeThatDoesNotMatchTheGroupsKind_IsRefused", () => {
@@ -565,6 +583,25 @@ describe("planning what a reply would change", () => {
     assert.equal(plan.additions.length, EXPECTED_WRITES);
   });
 
+  it("planFor_CalledDirectlyWithTwoBlocksForOneGroup_RefusesRatherThanTrusting", () => {
+    // Arrange — `planFor` is exported, and all four of the original defects are still latent
+    // inside it: each block reads the stored instance order from `entries`, so two naming one
+    // group would plan from the same starting point and the second's order write would strand
+    // the first's answers. `readBlocks` refuses this, and being its only caller today is the
+    // condition under which a precondition gets quietly forgotten — the next slice adds the
+    // second caller. Every other planning test goes through `readBlocks`, which is why the
+    // guard here was invisible to the suite.
+    const first = blocksIn(reply(block(REPEAT, { instances: [{ fields: { title: "A" } }] })));
+    const second = blocksIn(reply(block(REPEAT, { instances: [{ fields: { title: "B" } }] })));
+
+    // Act
+    const planned = planFor([...first, ...second], new Map());
+
+    // Assert
+    assert.ok(!planned.ok, "two blocks for one group were planned");
+    assert.equal(planned.refusal.kind, "repeated-group");
+  });
+
   it("planFor_NoBlocksAtAll_IsAnEmptyPlanRatherThanAFailure", () => {
     // Arrange — negative case. `readBlocks` refuses an empty paste, so this is only
     // reachable by a caller passing an empty list, and it should not throw.
@@ -641,16 +678,33 @@ describe("instances, and the identity that must not be adopted", () => {
     // Arrange — negative case. Stringifying a number or an object would put an
     // assistant-chosen value into a storage key by another route.
     const NOT_IDENTIFIERS: readonly unknown[] = [42, null, { id: "x" }, ["a"], true];
+    const AFTER_EXISTING = 2;
 
     // Act & Assert
     for (const id of NOT_IDENTIFIERS) {
+      // The store already holds an instance whose id is the STRINGIFIED value, so coercion
+      // would find a match and answer that instance instead of minting. Against an empty
+      // store this test could not fail: coercion matches nothing there, so minting happens
+      // either way — verified, the `String(id)` mutation survived that version.
+      const collides = String(id);
+      const entries = new Map([
+        [orderKey(REPEAT), writeOrder([collides])],
+        [answerKey(REPEAT, collides, "title"), "an answer already here"],
+      ]);
+
       const plan = planning(
         reply(block(REPEAT, { instances: [{ id, fields: { title: "t" } }] })),
-        new Map(),
+        entries,
       );
+
       const order = JSON.parse(plan.writes.get(orderKey(REPEAT)) ?? "[]") as string[];
-      assert.equal(order.length, 1, `${JSON.stringify(id)} did not mint one instance`);
-      assert.notEqual(order[0], String(id), `${JSON.stringify(id)} was coerced into a key`);
+      assert.equal(order.length, AFTER_EXISTING, `${JSON.stringify(id)} was coerced and matched`);
+      assert.equal(order[0], collides, "the existing instance moved");
+      assert.equal(
+        plan.writes.get(answerKey(REPEAT, collides, "title")),
+        undefined,
+        `${JSON.stringify(id)} was coerced into a key and overwrote a stored answer`,
+      );
     }
   });
 
@@ -741,7 +795,7 @@ describe("instances, and the identity that must not be adopted", () => {
     // Assert
     assert.equal(refusal.kind, "too-many-instances");
     assert.equal(refusal.kind === "too-many-instances" ? refusal.slots : 0, SLOTS);
-    assert.equal(refusal.kind === "too-many-instances" ? refusal.found : 0, TOO_MANY);
+    assert.equal(refusal.kind === "too-many-instances" ? refusal.adding : 0, TOO_MANY);
   });
 
   it("planFor_FewerInstancesThanThePageRenders_IsAllowedAndWritesWhatItHas", () => {
@@ -862,8 +916,10 @@ describe("what the reader is told", () => {
       [{ kind: "unknown-field", group: SENTENCE, field: "invented" }, /invented/],
       [{ kind: "bad-order", group: REPEAT }, /not a problem with the reply/],
       [{ kind: "orphaned-answers", group: REPEAT }, /not a problem with the reply/],
-      [{ kind: "cannot-key", group: REPEAT }, /will not let/],
-      [{ kind: "too-many-instances", group: REPEAT, slots: 5, found: 6 }, /room for 5/],
+      [{ kind: "cannot-key", group: REPEAT }, /could not be worked out/],
+      [{ kind: "too-many-instances", group: REPEAT, slots: 5, existing: 0, adding: 6 }, /room for 5/],
+      [{ kind: "empty-instance", group: REPEAT }, /One of the entries/],
+      [{ kind: "too-many-instances", group: REPEAT, slots: 5, existing: 5, adding: 1 }, /already holds 5/],
     ];
 
     // Act & Assert

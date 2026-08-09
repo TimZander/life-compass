@@ -33,8 +33,8 @@
  * tier. The deviation is recorded here so it is decided once rather than re-argued.
  *
  * "Only one type per file" is a rule about C# classes. The types below are one unit with one
- * reason to change: `Reading` is `Block` or `Refusal`, `Planning` is `Plan` or `Refusal`, and
- * every one of them exists to say what the two functions in this file return. Splitting them
+ * reason to change: `Reading` is a list of `Block` or a `Refusal`, `Planning` is a `Plan` or a
+ * `Refusal`, and every one of them exists to say what the exported functions here return. Splitting them
  * leaves a types-only module that cannot be reviewed against the code it describes, which is
  * the opposite of what the rule is for. `src/questions/types.ts` already takes this reading.
  *
@@ -80,6 +80,7 @@ export type Refusal =
   | { readonly kind: "newer-version"; readonly group: string; readonly found: number }
   | { readonly kind: "bad-version"; readonly group: string }
   | { readonly kind: "no-answers"; readonly group: string }
+  | { readonly kind: "empty-instance"; readonly group: string }
   | { readonly kind: "several-shapes"; readonly group: string }
   | { readonly kind: "wrong-shape"; readonly group: string; readonly expected: string }
   | { readonly kind: "bad-value"; readonly group: string; readonly field: string }
@@ -90,8 +91,12 @@ export type Refusal =
   | {
       readonly kind: "too-many-instances";
       readonly group: string;
+      /** How many the page renders — the ceiling. */
       readonly slots: number;
-      readonly found: number;
+      /** How many are already stored. */
+      readonly existing: number;
+      /** How many the REPLY asked to add, which is not the same number. */
+      readonly adding: number;
     };
 
 /** One instance an assistant answered. `id` is what it claimed, and is never written. */
@@ -358,7 +363,7 @@ function readBlock(
     if (typeof answer !== "string" || answer === "") {
       // The empty string especially: `store.ts` deletes on empty, so accepting one here is
       // the delete primitive 0015 says the format does not have.
-      return { ok: false, refusal: { kind: "bad-value", group, field: group } };
+      return { ok: false, refusal: { kind: "bad-value", group, field: labelFor(question, group) } };
     }
     return { ok: true, block: { for: "answer", group, question, answer } };
   }
@@ -380,8 +385,10 @@ function readBlock(
       }
       if (made.fields.size === 0) {
         // An entry answering nothing would mint an instance holding no words — a slot the
-        // reader did not ask for, taken out of the count the page renders.
-        return { ok: false, refusal: { kind: "no-answers", group } };
+        // reader did not ask for, taken out of the count the page renders. Its own refusal:
+        // saying the block "carries no answers" when it carries three sends the reader
+        // looking for an empty block that is not there.
+        return { ok: false, refusal: { kind: "empty-instance", group } };
       }
       const id = own(entry, "id");
       const named = typeof id === "string" ? id : undefined;
@@ -430,6 +437,57 @@ function ceilingFor(question: RepeatQuestion, existing: number): number {
 }
 
 /**
+ * Plan one repeat block's instances against the order that already exists.
+ *
+ * Separated so the branch that calls it reads as one decision rather than forty lines. It
+ * mutates `writes` through `record` and directly, and returns a refusal or nothing — the
+ * caller's `try` is what turns a key it cannot build into a refusal.
+ */
+function planInstances(
+  block: Extract<Block, { for: "instances" }>,
+  existing: readonly string[],
+  record: (group: string, key: string, label: string, after: string) => void,
+  writes: Map<string, string>,
+): Refusal | null {
+  const { group, question } = block;
+  // An id naming an instance in THIS group's order answers that instance. Anything else —
+  // unknown, another group's, malformed, or absent — is a new instance, and what the block
+  // supplied is never written (0015). Minting rather than adopting is what makes a hostile
+  // or reused identifier a case that cannot arise rather than one to validate.
+  const minted: string[] = [];
+  const targets: { readonly target: string; readonly fields: ReadonlyMap<string, string> }[] = [];
+  for (const instance of block.instances) {
+    if (instance.id !== undefined && existing.includes(instance.id)) {
+      targets.push({ target: instance.id, fields: instance.fields });
+      continue;
+    }
+    const fresh = newInstanceId();
+    minted.push(fresh);
+    targets.push({ target: fresh, fields: instance.fields });
+  }
+
+  const slots = ceilingFor(question, existing.length);
+  if (existing.length + minted.length > slots) {
+    // Refused, not truncated. Truncating is the silent loss this bound exists to prevent —
+    // the reader would be told it worked and lose whichever instances fell off the end.
+    return { kind: "too-many-instances", group, slots, existing: existing.length, adding: minted.length };
+  }
+
+  for (const { target, fields } of targets) {
+    for (const [field, value] of fields) {
+      record(group, answerKey(group, target, field), labelFor(question, field), value);
+    }
+  }
+
+  if (minted.length > 0) {
+    // New instances append after everything that exists, in the order the block gave them.
+    // A block never reorders what is already there — the order is the reader's (0015).
+    writes.set(orderKey(group), writeOrder([...existing, ...minted]));
+  }
+  return null;
+}
+
+/**
  * Work out what a set of blocks would change, against what is stored now.
  *
  * Writes nothing and is given no store — only the entries. The numbers it returns are what
@@ -444,6 +502,20 @@ function ceilingFor(question: RepeatQuestion, existing: number): number {
  * below catches the commonest way of getting it wrong, and cannot catch all of them.
  */
 export function planFor(blocks: readonly Block[], entries: ReadonlyMap<string, string>): Planning {
+  // Checked here as well as in `readBlocks`, because this function is exported and every one
+  // of the four defects above is still latent inside it: each block reads the stored order
+  // from `entries`, so two naming one group would each plan from the same starting point and
+  // the second's order write would strand the first's answers. `readBlocks` happens to be the
+  // only caller today, which is exactly the condition under which a precondition gets
+  // forgotten — and the next slice adds the second caller.
+  const named = new Set<string>();
+  for (const block of blocks) {
+    if (named.has(block.group)) {
+      return { ok: false, refusal: { kind: "repeated-group", group: block.group } };
+    }
+    named.add(block.group);
+  }
+
   const writes = new Map<string, string>();
   const changes: Change[] = [];
   const additions: Change[] = [];
@@ -467,90 +539,53 @@ export function planFor(blocks: readonly Block[], entries: ReadonlyMap<string, s
     const { group, question } = block;
     groups.push(group);
 
-    if (block.for === "answer") {
-      // A single is stored under the question identifier itself — no field segment.
-      record(group, question.id, labelFor(question, question.id), block.answer);
-      continue;
-    }
-
-    if (block.for === "fields") {
-      for (const [field, value] of block.fields) {
-        record(group, fieldKey(group, field), labelFor(question, field), value);
-      }
-      continue;
-    }
-
-    const stored = readOrder(entries.get(orderKey(group)));
-    // `unreadable` is deliberately not `absent` (0013 · Q3): materialising over an order that
-    // merely failed to parse would mint fresh identifiers on top of the reader's answers and
-    // orphan every one of them. Treating it as empty here would do exactly that by another
-    // name, so it refuses instead — and as its own refusal, because the reader's storage being
-    // damaged is not something their assistant can fix.
-    if (stored.kind === "unreadable") {
-      return { ok: false, refusal: { kind: "bad-order", group } };
-    }
-    const existing = stored.kind === "order" ? stored.instances : [];
-    if (existing.length === 0 && [...entries.keys()].some((key) => key.startsWith(`${group}.`))) {
-      // Answers under this group with no order to reference them. Either the store is damaged
-      // or `entries` is a filtered view — and both end the same way if this proceeds, because
-      // minting a fresh order here is what makes those answers permanently unreachable.
-      return { ok: false, refusal: { kind: "orphaned-answers", group } };
-    }
-
-    // An id naming an instance in THIS group's order answers that instance. Anything else —
-    // unknown, another group's, malformed, or absent — is a new instance, and what the block
-    // supplied is never written (0015). Minting rather than adopting is what makes a hostile
-    // or reused identifier a case that cannot arise rather than one to validate.
-    const minted: string[] = [];
-    const planned: { readonly target: string; readonly fields: ReadonlyMap<string, string> }[] = [];
+    // One guard around EVERY branch, not the repeat one alone. `fieldKey` throwing from the
+    // `fields` branch escaped `planFor` entirely — breaking the contract the repeat branch's
+    // catch exists to keep, in the branch beside it. keys.ts refuses to build a key from an
+    // identifier it will not store, and build/questions.ts records that an interior dot in a
+    // field id "passes through unremarked", so a schema edit is the way this is reached.
+    let refused: Refusal | null = null;
     try {
-      for (const instance of block.instances) {
-        if (instance.id !== undefined && existing.includes(instance.id)) {
-          planned.push({ target: instance.id, fields: instance.fields });
-          continue;
+      if (block.for === "answer") {
+        // A single is stored under the question identifier itself — no field segment.
+        record(group, question.id, labelFor(question, question.id), block.answer);
+      } else if (block.for === "fields") {
+        for (const [field, value] of block.fields) {
+          record(group, fieldKey(group, field), labelFor(question, field), value);
         }
-        const fresh = newInstanceId();
-        minted.push(fresh);
-        planned.push({ target: fresh, fields: instance.fields });
-      }
-
-      // `block.question`, not the destructured `question`: destructuring before the
-      // discriminant is read widens it back to the union, so the narrowing this branch has
-      // already established is lost.
-      const slots = ceilingFor(block.question, existing.length);
-      if (existing.length + minted.length > slots) {
-        // Refused, not truncated. Truncating is the silent loss this bound exists to prevent —
-        // the reader would be told it worked and lose whichever instances fell off the end.
-        return {
-          ok: false,
-          refusal: {
-            kind: "too-many-instances",
-            group,
-            slots,
-            found: existing.length + minted.length,
-          },
-        };
-      }
-
-      for (const { target, fields } of planned) {
-        for (const [field, value] of fields) {
-          record(group, answerKey(group, target, field), labelFor(question, field), value);
+      } else {
+        const stored = readOrder(entries.get(orderKey(group)));
+        // `unreadable` is deliberately not `absent` (0013 · Q3): materialising over an order
+        // that merely failed to parse would mint fresh identifiers on top of the reader's
+        // answers and orphan every one. Treating it as empty here would do that by another
+        // name, so it refuses — and as its own refusal, because a damaged store is not
+        // something the reader's assistant can fix.
+        if (stored.kind === "unreadable") {
+          refused = { kind: "bad-order", group };
+        } else {
+          const existing = stored.kind === "order" ? stored.instances : [];
+          const loose =
+            existing.length === 0 &&
+            [...entries.keys()].some((key) => key.startsWith(`${group}.`));
+          if (loose) {
+            // Answers under this group with no order to reference them. Either the store is
+            // damaged or `entries` is a filtered view — and both end the same way if this
+            // proceeds, because minting a fresh order is what makes those answers unreachable.
+            refused = { kind: "orphaned-answers", group };
+          } else {
+            refused = planInstances(block, existing, record, writes);
+          }
         }
-      }
-
-      if (minted.length > 0) {
-        // New instances append after everything that exists, in the order the block gave them.
-        // A block never reorders what is already there — the order is the reader's (0015).
-        writes.set(orderKey(group), writeOrder([...existing, ...minted]));
       }
     } catch {
-      // `newInstanceId` throws where `crypto.randomUUID` is missing, and `answerKey` and
-      // `writeOrder` throw on an identifier they will not put in a key. keys.ts asks callers
-      // to treat that as "storage is unavailable" and tell the reader "rather than letting it
-      // escape an input handler (0011 · C6)" — and this function is documented as returning a
-      // refusal, so a throw escaping it would become an unhandled rejection in a paste
-      // handler that had no reason to guard.
-      return { ok: false, refusal: { kind: "cannot-key", group } };
+      // keys.ts asks callers to treat a refusal-to-make-a-key as something to tell the reader
+      // about "rather than letting it escape an input handler (0011 · C6)", and this function
+      // is documented as returning a refusal — a throw escaping it becomes an unhandled
+      // rejection in a paste handler that had no reason to guard.
+      refused = { kind: "cannot-key", group };
+    }
+    if (refused !== null) {
+      return { ok: false, refusal: refused };
     }
   }
 
@@ -573,7 +608,7 @@ export function explain(refusal: Refusal): string {
     case "unterminated-fence":
       return `That reply looks cut off — a code block starts and never finishes, so the rest of it cannot be read. Copy the whole reply and paste it again.${UNTOUCHED}`;
     case "repeated-group":
-      return `That reply answers ${named(refusal.group)} twice, and there is no safe way to choose between them. Keep the one you want and paste it again.${UNTOUCHED}`;
+      return `That reply answers ${named(refusal.group)} twice, and there is no safe way to choose between them. Ask your assistant to send just the one you want, on its own.${UNTOUCHED}`;
     case "repeated-instance":
       return `That reply answers the same entry of ${named(refusal.group)} twice, and there is no safe way to choose between them.${UNTOUCHED}`;
     case "unknown-group":
@@ -586,6 +621,8 @@ export function explain(refusal: Refusal): string {
       return `A block for ${named(refusal.group)} does not say which version it is, so it cannot be read safely.${UNTOUCHED}`;
     case "no-answers":
       return `A block for ${named(refusal.group)} carries no answers.${UNTOUCHED}`;
+    case "empty-instance":
+      return `One of the entries for ${named(refusal.group)} carries no answers, so it cannot be added.${UNTOUCHED}`;
     case "several-shapes":
       return `A block for ${named(refusal.group)} answers in more than one way at once, and there is no safe way to choose between them.${UNTOUCHED}`;
     case "wrong-shape":
@@ -599,9 +636,11 @@ export function explain(refusal: Refusal): string {
     case "orphaned-answers":
       return `The answers already saved for ${named(refusal.group)} are not in a state this can add to safely. This is not a problem with the reply.${UNTOUCHED}`;
     case "cannot-key":
-      return `This browser will not let new answers be saved for ${named(refusal.group)} right now, so the reply was not applied.${UNTOUCHED}`;
+      return `The answers for ${named(refusal.group)} could not be worked out on this device, so the reply was not applied. Reloading the page may fix it.${UNTOUCHED}`;
     case "too-many-instances":
-      return `That returns ${refusal.found} answers for ${named(refusal.group)}, and the page has room for ${refusal.slots}. Ask for ${refusal.slots} and paste it again.${UNTOUCHED}`;
+      return refusal.existing === 0
+        ? `That returns ${refusal.adding} entries for ${named(refusal.group)}, and the page has room for ${refusal.slots}. Ask for ${refusal.slots} and paste it again.${UNTOUCHED}`
+        : `${named(refusal.group)} already holds ${refusal.existing} of the ${refusal.slots} the page shows, so ${refusal.adding} more cannot be added. Ask your assistant to answer the entries it was given, keeping the ids from the message you copied.${UNTOUCHED}`;
   }
 }
 
