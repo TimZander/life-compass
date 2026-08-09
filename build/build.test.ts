@@ -10,7 +10,6 @@
  */
 
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1710,7 +1709,6 @@ describe("service worker precache", () => {
     // the build writes icon files, and nothing until now made the two answer together. A
     // manifest naming a path that 404s is an app that cannot be installed, and
     // installation is what makes storage durable (docs/decisions/0008).
-    const DIGEST_LENGTH = 8;
     const out = await mkdtemp(path.join(tmpdir(), "life-compass-manifest-"));
     temporary.push(out);
 
@@ -1720,12 +1718,16 @@ describe("service worker precache", () => {
 
     // Assert
     assert.ok(manifest.icons.length > 0, "the manifest declares no icons at all");
+    // Not merely that the files exist: that the manifest names the icons the generator
+    // produced, digest and all. Re-deriving the digest from the WRITTEN file is the check
+    // this used to make, and it pinned the wrong axis — the name follows the drawing, and
+    // the encoded file varies with the Node version that wrote it (build/icons.ts).
+    const generated = new Map(icons().map((one) => [`/${one.output}`, one.png]));
     for (const declared of manifest.icons) {
+      const expected = generated.get(declared.src);
+      assert.ok(expected !== undefined, `${declared.src} is not an icon the build generated`);
       const written = await readFile(path.join(out, declared.src));
-      const digest = createHash("sha256").update(written).digest("hex").slice(0, DIGEST_LENGTH);
-      // Not merely that the file exists: that the name it was given describes the bytes
-      // sitting at it. A stale name that happened to still resolve is exactly #62.
-      assert.ok(declared.src.includes(digest), `${declared.src} does not match its own bytes`);
+      assert.deepEqual(written, expected, `${declared.src} is not the file that was generated`);
     }
   });
 

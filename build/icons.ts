@@ -113,7 +113,7 @@ function inside(x: number, y: number): boolean {
  * sit inside the safe zone — a circle 80% of the width. Passing a smaller `coverage` is
  * what keeps the mark's points from being shaved off on a device that crops to a circle.
  */
-export function drawIcon(size: number, coverage: number): Buffer {
+export function drawPixels(size: number, coverage: number): Buffer {
   const pixels = Buffer.alloc(size * size * 3);
   const scale = (size * coverage) / 24;
   // Centred on the MARK, not on the viewBox it is drawn in. The compass rose reaches
@@ -151,7 +151,12 @@ export function drawIcon(size: number, coverage: number): Buffer {
     }
   }
 
-  return encodePng(size, size, pixels);
+  return pixels;
+}
+
+/** The same drawing, encoded. */
+export function drawIcon(size: number, coverage: number): Buffer {
+  return encodePng(size, size, drawPixels(size, coverage));
 }
 
 export type Icon = {
@@ -171,6 +176,15 @@ export type Icon = {
  * installed app kept the old mark. With the digest in the filename the manifest cannot
  * help but change when the drawing does.
  *
+ * Hashed over the PIXELS, not the encoded file. It hashed the PNG until a device showed
+ * why that is wrong: CI runs Node 22 and this machine runs Node 25, `deflateSync` emits
+ * different bytes for identical pixels, and the two builds produced different filenames for
+ * the same drawing. Two consequences, both bad. A local build cannot be used to predict what
+ * ships, which is how three rounds of diagnosis went looking for a stale manifest that was
+ * never stale. And bumping Node would rename every icon, so every installed reader's app is
+ * rebuilt for a change nobody can see — the exact churn this naming exists to make meaningful.
+ * The pixels are the drawing; the encoding is an implementation detail of storing it.
+ *
  * Eight hex characters, matching the shape `cacheVersion` already uses in
  * build/serviceworker.ts. This is a cache-busting name, not a security claim: the cost of
  * a collision is a stale icon, and 32 bits against a set of three is not a risk worth
@@ -186,8 +200,13 @@ export function hashedName(base: string, content: Buffer): string {
 
 /** Draw one icon and name it after what was drawn. */
 function icon(base: string, size: number, coverage: number, purpose: Icon["purpose"]): Icon {
-  const png = drawIcon(size, coverage);
-  return { output: hashedName(base, png), size, purpose, png };
+  const pixels = drawPixels(size, coverage);
+  return {
+    output: hashedName(base, pixels),
+    size,
+    purpose,
+    png: encodePng(size, size, pixels),
+  };
 }
 
 let cached: readonly Icon[] | undefined;

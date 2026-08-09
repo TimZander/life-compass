@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import { inflateSync } from "node:zlib";
-import { drawIcon, encodePng, faviconHref, hashedName, icons } from "./icons.ts";
+import { drawIcon, drawPixels, encodePng, faviconHref, hashedName, icons } from "./icons.ts";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -99,18 +98,44 @@ describe("icons", () => {
     }
   });
 
-  it("icons_EveryOutput_IsNamedAfterItsOwnBytes", () => {
-    // Arrange — #62. The name is what makes the manifest change when the drawing does, so
-    // the digest in it has to be OF the drawing rather than merely present in the name.
-    const DIGEST = /\.([0-9a-f]{8})\.png$/;
+  it("icons_EveryOutput_IsNamedAfterItsDrawingRatherThanItsEncoding", () => {
+    // Arrange — #62, and the distinction a device had to teach. The digest has to be OF the
+    // drawing: hashed over the encoded PNG instead, CI on Node 22 and a laptop on Node 25
+    // produced different filenames for identical pixels, because `deflateSync` differs
+    // between them. A local build then cannot predict what ships, and bumping Node renames
+    // every icon — rebuilding every installed reader's app for a change nobody can see,
+    // which is the opposite of what naming them after their content is for.
+    //
+    // The declarations are repeated here on purpose. Reading them from `icons()` would let
+    // the same wrong number satisfy both sides.
+    const DECLARED: readonly (readonly [base: string, size: number, coverage: number])[] = [
+      ["icons/icon-192", 192, 0.7],
+      ["icons/icon-512", 512, 0.7],
+      ["icons/icon-maskable-512", 512, 0.5],
+    ];
 
     // Act & Assert
-    for (const icon of icons()) {
-      const found = DIGEST.exec(icon.output);
-      assert.ok(found?.[1] !== undefined, `${icon.output} carries no digest`);
-      const expected = createHash("sha256").update(icon.png).digest("hex").slice(0, DIGEST_LENGTH);
-      assert.equal(found[1], expected, icon.output);
-    }
+    const produced = icons();
+    assert.equal(produced.length, DECLARED.length, "the icon set changed shape");
+    DECLARED.forEach(([base, size, coverage], index) => {
+      assert.equal(produced[index]?.output, hashedName(base, drawPixels(size, coverage)));
+    });
+  });
+
+  it("icons_TheSameDrawingEncodedTwice_KeepsOneName", () => {
+    // Arrange — negative case for the property above, stated as the failure it prevents: two
+    // encodings of one drawing must be one identity. This is what a Node bump does.
+    const SIZE = 64;
+    const COVERAGE = 0.7;
+    const pixels = drawPixels(SIZE, COVERAGE);
+
+    // Act — the same pixels, encoded independently.
+    const first = encodePng(SIZE, SIZE, pixels);
+    const second = encodePng(SIZE, SIZE, Buffer.from(pixels));
+
+    // Assert
+    assert.deepEqual(first, second, "the encoder is not deterministic within one runtime");
+    assert.equal(hashedName("x", pixels), hashedName("x", Buffer.from(pixels)));
   });
 
   it("icons_TwoIconsOfTheSameSize_DoNotShareAName", () => {
