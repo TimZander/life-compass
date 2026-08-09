@@ -96,6 +96,79 @@ describe("finding blocks in a reply", () => {
     assert.equal(answerOf(blocks[0]), ANSWER);
   });
 
+  it("readBlocks_AReplyCopiedFromAChatWindowWithNoFences_IsStillRead", () => {
+    // Arrange — the ordinary way a reader copies a reply, and the first thing that happened on
+    // a device. A fence is MARKDOWN SOURCE: copying a rendered chat message gives you the JSON
+    // without the backticks, because the backticks were never on screen. Requiring them made
+    // the whole feature answer "there is nothing from an assistant in that" to a paste that
+    // contained exactly what was asked for.
+    const ANSWER = "That I showed up for the people who needed me.";
+    const ONE = 1;
+    const text = `Great — here is what we worked out.\n\n${JSON.stringify(block(SINGLE, { answer: ANSWER }))}\n\nLet me know if you would like to revise it.`;
+
+    // Act
+    const blocks = blocksIn(text);
+
+    // Assert
+    assert.equal(blocks.length, ONE);
+    assert.equal(answerOf(blocks[0]), ANSWER);
+  });
+
+  it("readBlocks_AnAnswerContainingABraceAndAQuote_DoesNotThrowTheScanOff", () => {
+    // Arrange — the scan counts braces, so anything inside a string has to be invisible to it.
+    // Both halves matter and a balanced pair proves neither: this carries an UNMATCHED `}`, so
+    // a scan that read string contents as structure would close the object early, and an
+    // escaped quote before it, so a scan that mishandled `\\"` would leave the string at the
+    // wrong moment and count that brace anyway. Either way the object never parses and the
+    // reader is told there is nothing from an assistant in their reply.
+    const ANSWER = 'He said "we are done}" and left, and I have thought about it since.';
+    const ONE = 1;
+
+    // Act
+    const blocks = blocksIn(reply(block(SINGLE, { answer: ANSWER })));
+
+    // Assert
+    assert.equal(blocks.length, ONE);
+    assert.equal(answerOf(blocks[0]), ANSWER);
+  });
+
+  it("readBlocks_TheWorkedExampleRepeatedBesideARealAnswer_IsIgnored", () => {
+    // Arrange — an assistant restating the shape it was given. 0015 · C8a puts a group the
+    // schema does not contain into the example precisely so it can never be imported; refusing
+    // the whole paste because the assistant was thorough would make a verbose reply unusable.
+    const ANSWER = "the real one";
+    const ONE = 1;
+    const text = pasteOf(
+      { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", answer: "what I said" },
+      block(SINGLE, { answer: ANSWER }),
+    );
+
+    // Act
+    const blocks = blocksIn(text);
+
+    // Assert
+    assert.equal(blocks.length, ONE, "the worked example was imported");
+    assert.equal(answerOf(blocks[0]), ANSWER);
+  });
+
+  it("readBlocks_TheWorkedExampleOnItsOwn_IsStillRefusedLoudly", () => {
+    // Arrange — negative case, and the mis-paste 0015 · C8a actually describes: the reader taps
+    // copy, then pastes the PROMPT back into the box seconds later. Ignoring it here would
+    // leave them staring at a box that appeared to do nothing.
+    const text = reply({
+      format: "life-compass/agent-answers",
+      version: 1,
+      group: "example.not_a_real_group",
+      answer: "what I said",
+    });
+
+    // Act
+    const refusal = refusalFor(text);
+
+    // Assert
+    assert.equal(refusal.kind, "unknown-group");
+  });
+
   it("readBlocks_AWholeDayInOnePaste_ReadsEveryBlockInOrder", () => {
     // Arrange — 0015 · C1 makes a day's reply an ordinary use of version 1 rather than a
     // future addition, and the prose between blocks is what an assistant actually sends.
@@ -166,7 +239,7 @@ describe("finding blocks in a reply", () => {
       "````",
       "A block looks like this:",
       "```json",
-      '{"format":"life-compass/agent-answers","version":1,"group":"day1.chapters"}',
+      '{"format":"life-compass/agent-answers","version":1,"group":"example.not_a_real_group","answer":"what I said"}',
       "```",
       "````",
       "",
@@ -180,7 +253,7 @@ describe("finding blocks in a reply", () => {
     const blocks = blocksIn(text);
 
     // Assert
-    assert.equal(blocks.length, ONE, "the illustration was read as an answer, or the answer lost");
+    assert.equal(blocks.length, ONE, "the worked example was imported, or the answer was lost");
     assert.equal(blocks[0]?.group, SINGLE);
     assert.equal(answerOf(blocks[0]), ANSWER);
   });
@@ -222,7 +295,7 @@ describe("finding blocks in a reply", () => {
     assert.equal(refusal.kind, "no-blocks");
   });
 
-  it("readBlocks_AFenceThatNeverCloses_IsRefusedRatherThanSwallowingWhatFollows", () => {
+  it("readBlocks_AReplyCutOffMidAnswer_IsRefusedRatherThanPartlyAccepted", () => {
     // Arrange — negative case, and a silent one before it was found. Everything after an
     // unclosed fence is consumed as its body, so a truncated streamed reply used to return
     // `ok` with the later blocks simply gone and nothing said. Reporting success on the
@@ -231,15 +304,15 @@ describe("finding blocks in a reply", () => {
       "```json",
       JSON.stringify(block(SINGLE, { answer: "this one parsed" })),
       "```",
-      "```json",
-      '{"format":"life-compass/agent-answers","version":1,"group":"day5.career"',
+      "And the rest:",
+      '{"format":"life-compass/agent-answers","version":1,"group":"day5.career","fields":{"change":"cut off mid',
     ].join("\n");
 
     // Act
     const refusal = refusalFor(text);
 
     // Assert
-    assert.equal(refusal.kind, "unterminated-fence");
+    assert.equal(refusal.kind, "cut-off");
     assert.match(explain(refusal), /cut off/);
   });
 
@@ -902,7 +975,7 @@ describe("what the reader is told", () => {
     // reply about words they dictated.
     const EVERY: readonly (readonly [Refusal, RegExp])[] = [
       [{ kind: "no-blocks" }, /code block/],
-      [{ kind: "unterminated-fence" }, /cut off/],
+      [{ kind: "cut-off" }, /cut off/],
       [{ kind: "repeated-group", group: REPEAT }, /twice/],
       [{ kind: "repeated-instance", group: REPEAT }, /same entry/],
       [{ kind: "unknown-group", group: "day9.x" }, /day9\.x/],

@@ -69,6 +69,24 @@ a particular info string would be requiring an assistant to be reliable about so
 are demonstrably not — asked for ` ```life-compass ` they will write ` ```json ` — and the
 scan is what lets several blocks, and the prose between them, arrive together.
 
+*Amended 2026-08-09, after the first device test.* "Not by their fence" was implemented as
+"any info string will do", and that was only the smaller half. A fence is **Markdown source**:
+copying a rendered chat message gives you the JSON without the backticks, because the
+backticks were never on screen. The ordinary way a reader copies a reply therefore produced
+"there is nothing from an assistant in that" on the first real attempt. The importer now scans
+for balanced `{…}` regions and lets the fences be whatever they are — respecting strings, so a
+brace inside a dictated answer does not throw the count off, and finding a fenced block for
+free because the backticks sit outside the braces. A reply that runs out mid-answer is refused
+as cut off rather than partly accepted.
+
+One consequence follows, and is the reason this is an amendment rather than a footnote: an
+object carrying the format is now found wherever it sits, including inside an assistant's
+prose explaining the shape. C8a's example group is what makes that safe — it names a group the
+schema does not contain, so a restated example cannot import. It is **ignored** when a real
+block sits beside it and still **refused** when it is the only thing in the paste, which is the
+mis-paste C8a describes. An assistant that illustrates with a REAL group instead would be
+importable, and the confirmation surface is what stands between that and the reader's answers.
+
 **Anything that is not a matching block is ignored, and a paste with no matching block at all
 is refused.** Assistants quote, illustrate and explain; a fenced block that will not parse, or
 parses without this `format`, is ordinary noise rather than an error to report. What must not
