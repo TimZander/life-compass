@@ -183,6 +183,22 @@ export function checkHeaders(rules: readonly HeaderRule[]): readonly string[] {
 
   problems.push(...checkSourceShapes("/*", csp));
 
+  // The manifest must revalidate, and this is checked rather than trusted for the same
+  // reason the worker's rule is: the build always emits a manifest, so the rule always
+  // applies, and its absence is silent. A stale manifest means Chrome keeps whatever it
+  // learned about the app on install day, so a changed icon reaches nobody who already has
+  // it (#62). Found on a device after the icons were already named after their own bytes.
+  const manifest = rules.find((rule) => rule.path === "/manifest.webmanifest");
+  if (manifest === undefined) {
+    problems.push(
+      '_headers has no "/manifest.webmanifest" rule, but the build always emits one — without it the zone default caches the manifest and a changed icon never reaches an installed app (#62)',
+    );
+  } else if (manifest.headers.get("cache-control") !== "no-cache") {
+    problems.push(
+      '_headers "/manifest.webmanifest" must be no-cache, or Chrome keeps the identity it learned on install day and no icon change is ever detected (#62)',
+    );
+  }
+
   // The service worker gets its own policy out of necessity, which makes it the one
   // place the site-wide rule can be escaped. Check it rather than trust it.
   //

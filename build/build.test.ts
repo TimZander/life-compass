@@ -944,6 +944,8 @@ describe("header contract", () => {
     "  X-Content-Type-Options: nosniff",
     "  Referrer-Policy: no-referrer",
     "  Permissions-Policy: microphone=()",
+    "/manifest.webmanifest",
+    "  Cache-Control: no-cache",
     "/sw.js",
     "  Cache-Control: no-cache",
     "  ! Content-Security-Policy",

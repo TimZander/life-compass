@@ -198,6 +198,9 @@ describe("checkHeaders — service worker rule", () => {
   Referrer-Policy: no-referrer
   Permissions-Policy: microphone=()
 
+/manifest.webmanifest
+  Cache-Control: no-cache
+
 /sw.js
   Cache-Control: no-cache
   ! Content-Security-Policy
@@ -207,6 +210,36 @@ describe("checkHeaders — service worker rule", () => {
   it("checkHeaders_WorkerRuleAsShipped_IsClean", () => {
     // Act & Assert
     assert.deepEqual(checkHeaders(parseHeaders(SW)), []);
+  });
+
+  it("checkHeaders_NoManifestRule_IsReported", () => {
+    // Arrange — negative case, and the one a device found. Without a rule the zone default
+    // applies, which this file's own header records as a four-hour browser cache. Chrome
+    // re-reads the manifest to decide whether to rebuild an installed WebAPK, so a cached
+    // copy means it keeps the identity it learned on install day and no icon change is ever
+    // detected — however the icons are named (#62).
+    const weakened = SW.replace(/\/manifest\.webmanifest\n  Cache-Control: no-cache\n\n/, "");
+
+    // Act & Assert
+    assert.ok(
+      checkHeaders(parseHeaders(weakened)).some((p) => p.includes("/manifest.webmanifest")),
+      "a missing manifest rule is not reported",
+    );
+  });
+
+  it("checkHeaders_ManifestCachedRatherThanRevalidated_IsReported", () => {
+    // Arrange — negative case. Present but permissive is the shape that reads as correct,
+    // which is why the worker's own rule is checked for its VALUE rather than its presence.
+    const weakened = SW.replace(
+      "/manifest.webmanifest\n  Cache-Control: no-cache",
+      "/manifest.webmanifest\n  Cache-Control: max-age=14400",
+    );
+
+    // Act & Assert
+    assert.ok(
+      checkHeaders(parseHeaders(weakened)).some((p) => p.includes("install day")),
+      "a cached manifest is not reported",
+    );
   });
 
   it("checkHeaders_WorkerWithoutNoCache_IsReported", () => {

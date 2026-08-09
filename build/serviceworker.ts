@@ -131,7 +131,9 @@ self.addEventListener("fetch", (event) => {
       // has an identity to read.
       if (new URL(request.url).pathname === "/manifest.webmanifest") {
         try {
-          return await fetch(request);
+          // no-store, because a worker's own fetch uses the HTTP cache like any other and
+          // would otherwise satisfy this from the very copy we are trying to get past.
+          return await fetch(request, { cache: "no-store" });
         } catch {
           const stored = await caches.match(request);
           return stored ?? new Response("{}", { headers: { "content-type": "application/manifest+json" } });
