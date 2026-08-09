@@ -164,12 +164,9 @@ describe("shipped client scripts", () => {
     // Listed rather than allowing "at least these", which keeps this able to notice a module
     // that should not be shipping at all.
     assert.deepEqual(modules.map((module) => module.output).sort(), [
-      // Emitted and precached with NO consumer: nothing imports agent-answers.js on this
-      // branch, statically or dynamically, because the paste surface it exists for is the
-      // next slice. Emission walks the directory (build/client.ts), so this is a consequence
-      // of splitting the work rather than a choice — but it is the cost 0015 · C4a rules
-      // against, and the honest reading is that it is owed rather than free. The deferred
-      // check below is what stops it becoming worse than a download when its consumer lands.
+      // agent-answers.js now has its consumer — paste.js, reached by dynamic import on the
+      // assistant page only. It shipped one slice ahead of it, which 0015 · C4a rules against;
+      // that debt is paid here rather than merely noted.
       "assets/js/agent-answers.js",
       "assets/js/agent.js",
       "assets/js/answers.js",
@@ -180,6 +177,9 @@ describe("shipped client scripts", () => {
       "assets/js/fields.js",
       "assets/js/import.js",
       "assets/js/keys.js",
+      // Only /agent carries the box, so only /agent pays for the reader and the planner it
+      // pulls in. The deferred check below is what keeps that true.
+      "assets/js/paste.js",
       "assets/js/prompt.js",
       // Generated into src/client by build/schema.ts, then discovered here like any other
       // module. See docs/decisions/0015 · C4a and build/schema.ts.
@@ -203,7 +203,7 @@ describe("shipped client scripts", () => {
     // prompt.js and through it the 73 kB schema, so the day its consumer lands a static
     // import here would ship all of that to every reader on every page. Adding the name now
     // costs one word and makes that a failing test rather than a discovery.
-    for (const deferred of ["agent", "agent-answers", "prompt", "schema"]) {
+    for (const deferred of ["agent", "agent-answers", "paste", "prompt", "schema"]) {
       assert.ok(
         !eager.code.includes(`from "./${deferred}.js"`),
         `app.js statically imports ${deferred}.js, which every reader then downloads`,

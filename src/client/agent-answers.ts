@@ -139,6 +139,17 @@ export type Change = {
   readonly group: string;
   /** What the reader sees this field called. */
   readonly label: string;
+  /**
+   * Which slot of a repeat this belongs to, counting from 1. Absent for everything else.
+   *
+   * Display only, and it never touches a key — 0011 and 0013 · O1 both refuse position AS
+   * identity, and this is the opposite: the identifier stays the identity, and the reader is
+   * shown the number the page already prints beside the slot. Without it a reply rewriting
+   * three chapters produces three rows all reading "Title", which are byte-identical when the
+   * old values were blank. 0007 · C3 asks the reader to approve each overwrite; approving
+   * three things you cannot tell apart is not that.
+   */
+  readonly slot?: number;
   /** Empty when nothing is stored — an addition rather than an overwrite. */
   readonly before: string;
   readonly after: string;
@@ -446,7 +457,7 @@ function ceilingFor(question: RepeatQuestion, existing: number): number {
 function planInstances(
   block: Extract<Block, { for: "instances" }>,
   existing: readonly string[],
-  record: (group: string, key: string, label: string, after: string) => void,
+  record: (group: string, key: string, label: string, after: string, slot?: number) => void,
   writes: Map<string, string>,
 ): Refusal | null {
   const { group, question } = block;
@@ -473,16 +484,20 @@ function planInstances(
     return { kind: "too-many-instances", group, slots, existing: existing.length, adding: minted.length };
   }
 
+  const finalOrder = [...existing, ...minted];
   for (const { target, fields } of targets) {
+    // Counted against the order as it will stand once this is applied, so a new instance is
+    // numbered where the reader will find it rather than where it sat in the reply.
+    const slot = finalOrder.indexOf(target) + 1;
     for (const [field, value] of fields) {
-      record(group, answerKey(group, target, field), labelFor(question, field), value);
+      record(group, answerKey(group, target, field), labelFor(question, field), value, slot);
     }
   }
 
   if (minted.length > 0) {
     // New instances append after everything that exists, in the order the block gave them.
     // A block never reorders what is already there — the order is the reader's (0015).
-    writes.set(orderKey(group), writeOrder([...existing, ...minted]));
+    writes.set(orderKey(group), writeOrder(finalOrder));
   }
   return null;
 }
@@ -522,7 +537,13 @@ export function planFor(blocks: readonly Block[], entries: ReadonlyMap<string, s
   const groups: string[] = [];
   let unchanged = 0;
 
-  const record = (group: string, key: string, label: string, after: string): void => {
+  const record = (
+    group: string,
+    key: string,
+    label: string,
+    after: string,
+    slot?: number,
+  ): void => {
     const before = entries.get(key) ?? "";
     if (before === after) {
       // Counted rather than written. An assistant echoing back an answer unchanged is the
@@ -532,7 +553,8 @@ export function planFor(blocks: readonly Block[], entries: ReadonlyMap<string, s
       return;
     }
     writes.set(key, after);
-    (before === "" ? additions : changes).push({ group, label, before, after });
+    const change: Change = slot === undefined ? { group, label, before, after } : { group, label, slot, before, after };
+    (before === "" ? additions : changes).push(change);
   };
 
   for (const block of blocks) {
