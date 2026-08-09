@@ -90,6 +90,11 @@ function backupTools(): string {
 <section class="tools" id="backup" aria-labelledby="backup-heading" hidden>
   <h2 id="backup-heading">Save a backup</h2>
   <p><button type="button" id="backup-save">Download a backup</button></p>
+  <!-- 0008 · C5: storage state shown honestly somewhere durable — "one quiet line, not a
+       dashboard". Ships hidden and empty: the client fills it in once it has asked the
+       browser, and a line asserting anything before that would be a guess about the one
+       thing this page exists to be straight about. -->
+  <p class="storage-state" id="storage-state" hidden></p>
 </section>
 
 <section class="tools" id="restore" aria-labelledby="restore-heading" hidden>

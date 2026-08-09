@@ -220,6 +220,11 @@ describe("shipped client scripts", () => {
       "assets/js/app.js",
       "assets/js/banner.js",
       "assets/js/bridge.js",
+      // Statically imported by app.js, deliberately: 0008 · C5's line is on the backup page
+      // and reports what the browser promises about answers already written. Deferring it
+      // would mean the one page that exists to be straight about storage is the page that
+      // waits to say so.
+      "assets/js/durability.js",
       "assets/js/export.js",
       "assets/js/fields.js",
       "assets/js/import.js",

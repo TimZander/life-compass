@@ -11,6 +11,14 @@ import { createAnswers } from "./answers.ts";
 import { bindAnswers } from "./fields.ts";
 import { needsStore, saveBackup, wireBackup } from "./export.ts";
 import { bridgeIsOn, preferences } from "./bridge.ts";
+import {
+  installed,
+  lastBackup,
+  persisted,
+  recordBackup,
+  requestPersistence,
+  showDurability,
+} from "./durability.ts";
 
 /** Where a just-completed restore leaves its count, to be reported after the reload. */
 const RESTORED_KEY = "life-compass:restored";
@@ -251,16 +259,46 @@ async function bindAnswerFields(): Promise<void> {
   });
 
 
+  // 0008 · C5. Asked for once the store is open, so the line reports what is true rather
+  // than what was true at page load, and awaited here rather than raced: `persisted()` is a
+  // promise, and a line that appears after the reader has already read the page is a line
+  // they will not read.
+  const held = preferences(window);
+  /** Ask all three questions again and repaint. One function, so no caller can answer a
+   *  question it did not ask — passing a placeholder for `persisted` after a backup would
+   *  overwrite a known "protected" with "this browser will not say". */
+  const refreshDurability = async (): Promise<void> => {
+    showDurability(document, {
+      installed: installed(window),
+      persisted: await persisted(navigator),
+      lastBackup: lastBackup(held),
+    });
+  };
+  void refreshDurability();
+  // Asked here, where the store has just been opened, so a reader on a page of prose never
+  // triggers it — Firefox PROMPTS on `persist()` and Chrome does not, so asking on a page
+  // with nothing to protect would put a permission dialog in front of somebody who came to
+  // read (0008's amendment, and 0001). Not awaited, for the same reason: a prompt on the
+  // load path would hold the field binding behind a dialog.
+  void requestPersistence(navigator).then(refreshDurability, () => {});
+
   wireBackup(document, answers, store, {
-    onHandedOver: (filename) =>
-      showBanner({
+    onHandedOver: (filename) => {
+      // Recorded when the file is handed to the browser, which is the last moment this code
+      // knows anything. `onHandedOver` is deliberately not "saved" — nothing here observes
+      // whether the browser accepted it — so the line this feeds says "saved from this
+      // device", which is the claim that survives that uncertainty.
+      recordBackup(held, new Date());
+      void refreshDurability();
+      return showBanner({
         id: "backup",
         // "Downloading", not "saved". Nothing here observes whether the browser accepted
         // the file — a synthetic click reports no outcome — and claiming a backup exists
         // when it may not is the one thing 0008 says this app must not get wrong.
         text: `Downloading ${filename}. Check your files — and keep it somewhere you would keep a private notebook.`,
         actions: [{ label: "Dismiss", onSelect: () => dismissBanner("backup") }],
-      }),
+      });
+    },
     onFailure: (error: unknown) => {
       console.error("life-compass: the backup could not be saved", error);
       showBanner({

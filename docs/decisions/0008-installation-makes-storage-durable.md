@@ -33,6 +33,27 @@ The prompt carries three things, and all three are obligations rather than sugge
 2. Installing is what makes them durable.
 3. Installing grants no permissions, needs no account, and can be undone.
 
+*Amended 2026-08-09, on the first device that reported its own state.* This record said
+"treat installation as the mechanism that makes storage durable" and then specified only
+`persisted()`, which READS the state. It never said to call `persist()`, which REQUESTS it —
+and the app never did. The result was exactly what the reader saw: **installed, and not
+protected**, because nothing had ever asked.
+
+Installation is not the mechanism. Installation is what makes the request likely to be
+*granted* — browsers grant on their own criteria, with an installed or well-used origin being
+the lever a reader actually controls. The request still has to be made, and this application
+must make it.
+
+Where it is made matters, and follows from C2. The request goes out where the store is
+opened, which is every page carrying blanks and the backup page, and nowhere else. Someone
+who arrives only to read never triggers it — which is not merely tidy, because Firefox
+*prompts* on `persist()` and Chrome does not. Asking on a page with nothing to protect would
+be a permission dialog in front of somebody who came to read a worksheet, and 0001 forbids
+exactly that interruption.
+
+It is requested without being awaited. A browser that prompts would otherwise hold up the
+field binding behind a dialog, which is the dictation surface 0001 makes primary.
+
 ## Consequences
 
 **C1.** The prompt must never interrupt an input session. Inline banner, not modal — a
@@ -55,6 +76,11 @@ message does not.
 
 **C5.** The app shows storage state honestly somewhere durable: installed or not,
 persisted or not, when you last exported. One quiet line, not a dashboard.
+
+**C7.** *Added 2026-08-09.* The state is reported honestly whether or not the request
+succeeded, and a refusal is not the same as a browser that will not answer. `persisted()`
+returning false and a missing Storage API are different facts, and collapsing them warns
+about a risk that may not exist — which the Decision above rules out for the reason it gives.
 
 **C6.** "No security implications" is a claim about permissions, and in that form it is
 true — installation grants nothing the page did not already have. It should be stated
