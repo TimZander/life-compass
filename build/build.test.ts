@@ -246,6 +246,57 @@ describe("the prose that introduces a question", () => {
     assert.equal(asks.get("day1.chapters"), FIRST);
   });
 
+  it("render_AHeadingWithNoProseOfItsOwn_DoesNotTakeThePreviousQuestions", () => {
+    // Arrange — #80, found by reading a generated prompt. `anchor.review_date` is a heading
+    // followed straight by its anchor, so the walk went back past `anchor.decision_rule` and
+    // took ITS paragraph. The prompt then interviewed the reader about a decision rule when
+    // they had asked about a review date — and the empty-ask guard could not see it, because
+    // the result was not empty, merely another question's words.
+    //
+    // Day 5's "Set a review cadence" had the same shape and the same defect.
+    const THEIRS = "A single if-then you can apply on a Tuesday without re-reading anything.";
+    const MINE = "4. One review date (2 min)";
+    const markdown = `## 3. One decision rule\n\n${THEIRS}\n\n${ANCHOR_ONE}\n\n## ${MINE}\n\n${ANCHOR_TWO}\n`;
+
+    // Act
+    const asks = asksIn(markdown);
+
+    // Assert
+    assert.equal(asks.get("day1.peaks"), MINE, "it took the previous question's paragraph");
+    assert.equal(asks.get("day1.chapters"), `3. One decision rule\n\n${THEIRS}`);
+  });
+
+  it("render_SiblingHeadingsUnderOneLeadIn_StillShareIt", () => {
+    // Arrange — negative case for the rule above, and the shape it must not break. Day 5
+    // asks one question under five sibling headings, and only the paragraph above the FIRST
+    // of them says what to ask. Crossing a sibling's heading means what lies above it
+    // introduces the group rather than one question, so it is genuinely shared.
+    const LEAD = "For each dimension ask:";
+    const markdown = `${LEAD}\n\n### Career\n\n${ANCHOR_ONE}\n\n### Money\n\n${ANCHOR_TWO}\n`;
+
+    // Act
+    const asks = asksIn(markdown);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), `Career\n\n${LEAD}`);
+    assert.equal(asks.get("day1.peaks"), `Money\n\n${LEAD}`, "the sibling lost the lead-in");
+  });
+
+  it("render_AnchorsWithNoHeadingsAtAll_StillShareTheirLeadIn", () => {
+    // Arrange — negative case, the other direction. A run of anchors with no heading between
+    // them is Day 4's four sentences, where the lead-in above all of them is the ask. The
+    // rule above must only fire for a question that HAS a heading of its own, or this shape
+    // loses its ask entirely.
+    const LEAD = "Finish these sentences (multiple times if needed):";
+
+    // Act
+    const asks = asksIn(`## 3. The contribution question\n\n${LEAD}\n\n${ANCHOR_ONE}\n\n${ANCHOR_TWO}\n`);
+
+    // Assert
+    assert.equal(asks.get("day1.chapters"), `3. The contribution question\n\n${LEAD}`);
+    assert.equal(asks.get("day1.peaks"), `3. The contribution question\n\n${LEAD}`);
+  });
+
   it("render_AHeadingBetweenTheProseAndTheAnchor_IsCarriedAsTheSubject", () => {
     // Arrange — Day 5 asks one question five times under `### Career`, `### Money` and so
     // on. Without the heading all five read identically; with only the heading none of them
