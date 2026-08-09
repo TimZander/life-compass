@@ -237,6 +237,89 @@ describe("claim", () => {
   });
 });
 
+describe("merge", () => {
+  it("merge_SeveralEntries_AreWrittenInOneTransaction", async () => {
+    // Arrange — the entire justification for this method existing. Assistant output (0015)
+    // touches a handful of keys across one or more groups, and writing them one at a time
+    // leaves a window where a failure produces a store that is neither what the reader had
+    // nor what they accepted, with nothing recording how far it got. That is the window
+    // `replaceAll` was written to close, reached by the merge path instead of the restore
+    // path — so "one transaction" is the property, not an implementation detail.
+    const ORDER = '["5f1c","9a34"]';
+    const TITLE = "The garage-band years";
+    const ONE_TRANSACTION = 1;
+    const fake = database();
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    await store.merge(
+      new Map([
+        ["day1.chapters", ORDER],
+        ["day1.chapters.5f1c.title", TITLE],
+      ]),
+    );
+
+    // Assert
+    assert.equal(fake.transactions, ONE_TRANSACTION);
+    assert.deepEqual(fake.calls, [
+      { op: "put", args: ["day1.chapters", ORDER] },
+      { op: "put", args: ["day1.chapters.5f1c.title", TITLE] },
+    ]);
+  });
+
+  it("merge_KeysItWasNotGiven_AreLeftAlone", async () => {
+    // Arrange — the one property that distinguishes this from `replaceAll`, and the one
+    // whose absence would be catastrophic: a merge that cleared would destroy the reader's
+    // whole workbook, and until this test nothing would have failed. 0007 · C3 forbids an
+    // absent field from removing a stored one, because assistant output is partial by
+    // construction.
+    const KEPT = "day4.eulogy";
+    const fake = database([[KEPT, "something I wrote myself"]]);
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    await store.merge(new Map([["day5.career.change", "a new answer"]]));
+
+    // Assert
+    assert.ok(
+      !fake.calls.some((call) => call.op === "clear"),
+      "a merge cleared the store",
+    );
+    assert.ok(
+      !fake.calls.some((call) => call.args[0] === KEPT),
+      "a merge touched a key it was not given",
+    );
+  });
+
+  it("merge_AnEmptyValue_DeletesRatherThanStoringBlankness", async () => {
+    // Arrange — negative case, and the branch whose own comment calls it "the second line of
+    // that defence" while nothing exercised it. `write`, `claim` and `replaceAll` each have
+    // this test; merge did not. The first line — 0015 refusing an empty value in a block so
+    // an assistant cannot express a delete — is tested in agent-answers.test.ts.
+    const KEY = "day1.chapters.5f1c.title";
+    const fake = database();
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act
+    await store.merge(new Map([[KEY, ""]]));
+
+    // Assert
+    assert.deepEqual(fake.calls, [{ op: "delete", args: [KEY] }]);
+  });
+
+  it("merge_NothingToWrite_DoesNotFail", async () => {
+    // Arrange — negative case. A plan whose every value matched what was already stored has
+    // nothing to write, and that is a successful import of an answer already given rather
+    // than an error.
+    const fake = database();
+    const store = fromDatabase(fake as unknown as IDBDatabase);
+
+    // Act & Assert
+    await assert.doesNotReject(() => store.merge(new Map()));
+    assert.deepEqual(fake.calls, []);
+  });
+});
+
 describe("replaceAll", () => {
   it("replaceAll_Entries_ClearsAndWritesInOneTransaction", async () => {
     // Arrange — the destructive operation, and the one place "never partially imports"

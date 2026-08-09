@@ -161,10 +161,16 @@ describe("shipped client scripts", () => {
     const modules = await buildClient(ROOT);
 
     // Assert
-    // answers.js and store.js are emitted and precached before anything imports them —
-    // app.js wires them up in the next slice. Listing them rather than allowing "at
-    // least these" keeps the check able to notice a module that should not be shipping.
+    // Listed rather than allowing "at least these", which keeps this able to notice a module
+    // that should not be shipping at all.
     assert.deepEqual(modules.map((module) => module.output).sort(), [
+      // Emitted and precached with NO consumer: nothing imports agent-answers.js on this
+      // branch, statically or dynamically, because the paste surface it exists for is the
+      // next slice. Emission walks the directory (build/client.ts), so this is a consequence
+      // of splitting the work rather than a choice — but it is the cost 0015 · C4a rules
+      // against, and the honest reading is that it is owed rather than free. The deferred
+      // check below is what stops it becoming worse than a download when its consumer lands.
+      "assets/js/agent-answers.js",
       "assets/js/agent.js",
       "assets/js/answers.js",
       "assets/js/app.js",
@@ -193,7 +199,11 @@ describe("shipped client scripts", () => {
     // exists so the "is it on" question can be answered without pulling any of that in.
     const eager = modules.find((module) => module.output === "assets/js/app.js");
     assert.ok(eager !== undefined);
-    for (const deferred of ["agent", "prompt", "schema"]) {
+    // agent-answers is in this list before anything imports it, deliberately: it reaches
+    // prompt.js and through it the 73 kB schema, so the day its consumer lands a static
+    // import here would ship all of that to every reader on every page. Adding the name now
+    // costs one word and makes that a failing test rather than a discovery.
+    for (const deferred of ["agent", "agent-answers", "prompt", "schema"]) {
       assert.ok(
         !eager.code.includes(`from "./${deferred}.js"`),
         `app.js statically imports ${deferred}.js, which every reader then downloads`,

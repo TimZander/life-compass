@@ -52,6 +52,17 @@ function recorder(initial: ReadonlyMap<string, string> = new Map(), failClaim: b
       }
       return true;
     },
+    async merge(entries) {
+      for (const [key, value] of entries) {
+        // Empty is absent, not blank — the real store deletes here, and a fake that
+        // stored "" would be more forgiving than the thing it stands in for.
+        if (value === "") {
+          kept.delete(key);
+        } else {
+          kept.set(key, value);
+        }
+      }
+    },
     async replaceAll(entries) {
       kept.clear();
       for (const [key, value] of entries) {

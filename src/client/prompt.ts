@@ -18,12 +18,20 @@
  */
 
 import type { Question, RepeatQuestion } from "../questions/types.ts";
-import { answerKey, orderKey, readOrder } from "./keys.ts";
+import { answerKey, fieldKey, orderKey, readOrder } from "./keys.ts";
 import { ASKS, WORKSHEETS } from "./schema.ts";
 
-/** The contract an assistant is asked to answer in — docs/decisions/0015. */
-const FORMAT = "life-compass/agent-answers";
-const VERSION = 1;
+/**
+ * The contract an assistant is asked to answer in — docs/decisions/0015.
+ *
+ * Exported so the reader that parses replies uses the same two values that the generator
+ * asked for. 0015 names two-copies-of-one-fact as the mistake behind 0009 · C6 and behind
+ * `keys.ts`'s `readOrder`/`answerKey` disagreement; a format string the writer and the reader
+ * each spell for themselves is that mistake with the round trip in between, where it would
+ * show up as replies that silently match nothing.
+ */
+export const FORMAT = "life-compass/agent-answers";
+export const VERSION = 1;
 
 /**
  * The `group` in the worked example, which the schema deliberately does not contain.
@@ -36,7 +44,7 @@ const VERSION = 1;
 const EXAMPLE_GROUP = "example.not_a_real_group";
 
 /** Everything except a checklist, which 0015 keeps out of the contract. */
-type Answerable = Exclude<Question, { readonly kind: "checklist" }>;
+export type Answerable = Exclude<Question, { readonly kind: "checklist" }>;
 
 export type Refusal =
   | { readonly kind: "unknown-group"; readonly group: string }
@@ -162,7 +170,7 @@ export function priorFrom(
     }
   } else {
     for (const field of question.fields) {
-      const value = entries.get(`${question.id}.${field.id}`);
+      const value = entries.get(fieldKey(question.id, field.id));
       if (value !== undefined && value !== "") {
         fields.set(field.id, value);
       }
@@ -195,7 +203,14 @@ function neutralise(answer: string, continuation = "    "): string {
   return answer.replace(/`/g, "'").replace(/\r?\n/g, `\n${continuation}`);
 }
 
-function labelFor(question: Answerable, field: string): string {
+/**
+ * What the reader sees a field called.
+ *
+ * Exported for agent-answers.ts, which needs the same answer for the review surface. It had
+ * its own byte-identical copy plus a checklist branch it could never reach, because its
+ * question was typed `Question` where the value had already been proven answerable.
+ */
+export function labelFor(question: Answerable, field: string): string {
   if (question.kind === "single") {
     return question.label;
   }
@@ -214,7 +229,7 @@ function labelFor(question: Answerable, field: string): string {
  * where a repeat holds as many instances as the reader has; when it lands, this asks for the
  * range and 0015's ceiling becomes `max`.
  */
-function slotsFor(question: RepeatQuestion): number {
+export function renderedSlots(question: RepeatQuestion): number {
   return question.min;
 }
 
@@ -230,8 +245,8 @@ function subject(question: Answerable): string {
 
   const shape =
     question.kind === "repeat"
-      ? `\n\nThis one repeats. Ask about ${slotsFor(question)} of them, one at a time. The page ` +
-        `has room for ${slotsFor(question)}, so ${slotsFor(question)} is what I need.`
+      ? `\n\nThis one repeats. Ask about ${renderedSlots(question)} of them, one at a time. The page ` +
+        `has room for ${renderedSlots(question)}, so ${renderedSlots(question)} is what I need.`
       : question.kind === "sentence"
         ? `\n\nIt is a sentence to complete, not a form to fill: "${question.template}"`
         : "";

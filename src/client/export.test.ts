@@ -37,6 +37,9 @@ function stored(entries: ReadonlyMap<string, string>): Store {
     async claim() {
       throw new Error("an export must not write");
     },
+    async merge() {
+      throw new Error("nothing here merges");
+    },
     async replaceAll() {
       throw new Error("an export must not write");
     },
@@ -424,6 +427,9 @@ describe("flushing before the file is built", () => {
       async claim() {
         return true;
       },
+      async merge() {
+        throw new Error("nothing here merges");
+      },
       async replaceAll() {
         throw new Error("an export must not write");
       },
@@ -495,6 +501,9 @@ describe("the control on the page", () => {
       async write() {},
       async claim() {
         return true;
+      },
+      async merge() {
+        throw new Error("nothing here merges");
       },
       async replaceAll() {
         throw new Error("an export must not write");
