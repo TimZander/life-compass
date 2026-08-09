@@ -11,7 +11,14 @@ import { createAnswers } from "./answers.ts";
 import { bindAnswers } from "./fields.ts";
 import { needsStore, saveBackup, wireBackup } from "./export.ts";
 import { bridgeIsOn, preferences } from "./bridge.ts";
-import { installed, lastBackup, persisted, recordBackup, showDurability } from "./durability.ts";
+import {
+  installed,
+  lastBackup,
+  persisted,
+  recordBackup,
+  requestPersistence,
+  showDurability,
+} from "./durability.ts";
 
 /** Where a just-completed restore leaves its count, to be reported after the reload. */
 const RESTORED_KEY = "life-compass:restored";
@@ -268,6 +275,12 @@ async function bindAnswerFields(): Promise<void> {
     });
   };
   void refreshDurability();
+  // Asked here, where the store has just been opened, so a reader on a page of prose never
+  // triggers it — Firefox PROMPTS on `persist()` and Chrome does not, so asking on a page
+  // with nothing to protect would put a permission dialog in front of somebody who came to
+  // read (0008's amendment, and 0001). Not awaited, for the same reason: a prompt on the
+  // load path would hold the field binding behind a dialog.
+  void requestPersistence(navigator).then(refreshDurability, () => {});
 
   wireBackup(document, answers, store, {
     onHandedOver: (filename) => {

@@ -19,6 +19,7 @@ import {
   lastBackup,
   persisted,
   recordBackup,
+  requestPersistence,
   showDurability,
   type Durability,
 } from "./durability.ts";
@@ -206,6 +207,58 @@ group("persisted", () => {
     // Act & Assert
     await assert.doesNotReject(() => persisted(hostile));
     assert.equal(await persisted(hostile), null);
+  });
+});
+
+group("requestPersistence", () => {
+  it("requestPersistence_ABrowserThatGrantsIt_ReportsTheGrant", async () => {
+    // Arrange — the whole reason this exists. 0008 said "installation is the mechanism" and
+    // specified only `persisted()`, which READS; nothing ever called `persist()`, which
+    // REQUESTS. A device then reported itself installed and unprotected, because nothing had
+    // asked. Installation makes the request likely to be granted; it is not the request.
+    const nav = { storage: { persist: () => Promise.resolve(true) } } as unknown as Navigator;
+
+    // Act & Assert
+    assert.equal(await requestPersistence(nav), true);
+  });
+
+  it("requestPersistence_ABrowserThatRefuses_ReportsTheRefusal", async () => {
+    // Arrange — negative case. A refusal is a real answer and must not read as an error.
+    const nav = { storage: { persist: () => Promise.resolve(false) } } as unknown as Navigator;
+
+    // Act & Assert
+    assert.equal(await requestPersistence(nav), false);
+  });
+
+  it("requestPersistence_NoApiOrAThrowingOne_IsUnknownAndDoesNotReject", async () => {
+    // Arrange — negative case, and the one that must not escape: this is called on the load
+    // path without being awaited, so a rejection here becomes an unhandled rejection on every
+    // page carrying blanks.
+    const bare = {} as unknown as Navigator;
+    const partial = { storage: {} } as unknown as Navigator;
+    const hostile = {
+      get storage(): StorageManager {
+        throw new Error("SecurityError");
+      },
+    } as unknown as Navigator;
+
+    // Act & Assert
+    for (const nav of [bare, partial, hostile]) {
+      await assert.doesNotReject(() => requestPersistence(nav));
+      assert.equal(await requestPersistence(nav), null);
+    }
+  });
+
+  it("requestPersistence_ABrowserThatRejects_IsUnknownRatherThanAnEscapedFailure", async () => {
+    // Arrange — negative case. Firefox prompts here, so a reader dismissing the dialog can
+    // produce a rejected promise rather than a false.
+    const dismissed = {
+      storage: { persist: () => Promise.reject(new Error("NotAllowedError")) },
+    } as unknown as Navigator;
+
+    // Act & Assert
+    await assert.doesNotReject(() => requestPersistence(dismissed));
+    assert.equal(await requestPersistence(dismissed), null);
   });
 });
 

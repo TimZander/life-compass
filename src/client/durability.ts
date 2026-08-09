@@ -70,6 +70,32 @@ export async function persisted(from: Navigator): Promise<boolean | null> {
   }
 }
 
+/**
+ * Ask the browser to exempt this origin from eviction.
+ *
+ * 0008's amendment of 2026-08-09 is why this exists: `persisted()` reads the state and
+ * `persist()` requests it, the record only ever specified the first, and a device duly
+ * reported itself **installed and not protected** — because nothing had ever asked.
+ * Installation is what makes the request likely to be granted; it is not the request.
+ *
+ * Returns what the browser decided, or null when it will not say — the same three states
+ * `persisted` reports, for the same reason.
+ *
+ * Callers must NOT await this. Firefox prompts, and a prompt awaited on the load path holds
+ * the field binding behind a dialog, which is the dictation surface 0001 makes primary.
+ */
+export async function requestPersistence(from: Navigator): Promise<boolean | null> {
+  try {
+    const storage = from.storage;
+    if (storage === undefined || typeof storage.persist !== "function") {
+      return null;
+    }
+    return await storage.persist();
+  } catch {
+    return null;
+  }
+}
+
 /** When a backup was last saved FROM THIS DEVICE, which is all this can honestly know. */
 export function lastBackup(storage: Storage | null): Date | null {
   if (storage === null) {
