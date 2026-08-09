@@ -183,7 +183,8 @@ describe("reading a reply", () => {
 
     // Assert
     assert.equal(view.confirm.hidden, false, "the reader was shown nothing");
-    assert.match(view.summary.textContent ?? "", /1 answer is new/);
+    assert.match(view.summary.textContent ?? "", /Nothing you have already written would change/);
+    assert.match(view.detail.textContent ?? "", /1 new answer/);
     assert.equal(fake.merged.length, 0, "answers were written before the reader agreed");
   });
 
@@ -205,7 +206,7 @@ describe("reading a reply", () => {
     const shown = view.detail.textContent ?? "";
     assert.ok(shown.includes(MINE), "the reader is not shown what they would lose");
     assert.ok(shown.includes(THEIRS), "the reader is not shown what would replace it");
-    assert.match(view.summary.textContent ?? "", /1 would change something you wrote/);
+    assert.match(view.summary.textContent ?? "", /1 answer would replace something you wrote/);
   });
 
   it("wirePaste_SeveralInstancesOfOneRepeat_AreToldApartInTheReview", async () => {
@@ -258,9 +259,76 @@ describe("reading a reply", () => {
     await settle();
 
     // Assert
-    const said = view.summary.textContent ?? "";
+    const said = `${view.summary.textContent ?? ""} ${view.detail.textContent ?? ""}`;
     assert.ok(!said.includes(SINGLE), `the reader is shown an identifier: ${said}`);
     assert.match(said, /eulogy test/i);
+  });
+
+  it("wirePaste_AWholeRepeatComingBack_IsCountedInEntriesRatherThanStoredFields", async () => {
+    // Arrange — found on a device. Day 1's peak experiences are five slots of four fields, so
+    // a reply filling them is twenty stored answers — and a reader who described five things
+    // was told "20 answers are new". Right arithmetic, wrong unit, and alarming in a way the
+    // number does not deserve. Entries are what the page shows and what they think they wrote.
+    const PEAKS = "day1.peaks";
+    const ENTRIES = 5;
+    const FIELDS = 20;
+    const fake = recorder();
+    const view = page(fake);
+    view.text.value = reply(
+      block(PEAKS, {
+        instances: Array.from({ length: ENTRIES }, (_unused, index) => ({
+          fields: {
+            moment: `moment ${index}`,
+            doing: `doing ${index}`,
+            with: `with ${index}`,
+            quality: `quality ${index}`,
+          },
+        })),
+      }),
+    );
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    const shown = view.detail.textContent ?? "";
+    assert.match(shown, new RegExp(`${ENTRIES} new entries`), `counted in the wrong unit: ${shown}`);
+    assert.match(shown, new RegExp(`${FIELDS} answers in all`), "the field total is not available");
+    assert.match(view.summary.textContent ?? "", /Nothing you have already written would change/);
+  });
+
+  it("wirePaste_ARepeatPartlyRewrittenAndPartlyNew_TellsThoseApartInTheTally", async () => {
+    // Arrange — the commonest real reply to "I started this by hand, help me finish": some
+    // entries come back rewritten and some are added. Counting them all as new tells the
+    // reader nothing of theirs is at risk when something is, which is the one thing the
+    // summary above exists to say.
+    const MINE = "5f1c8e2a-0000-4000-8000-000000000001";
+    const fake = recorder(
+      new Map([
+        [orderKey(REPEAT), writeOrder([MINE])],
+        [answerKey(REPEAT, MINE, "title"), "The garage-band years"],
+      ]),
+    );
+    const view = page(fake);
+    view.text.value = reply(
+      block(REPEAT, {
+        instances: [
+          { id: MINE, fields: { title: "The years in the garage" } },
+          { fields: { title: "Leaving home" } },
+        ],
+      }),
+    );
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    const shown = view.detail.textContent ?? "";
+    assert.match(shown, /1 new entry/, `the added entry is miscounted: ${shown}`);
+    assert.match(shown, /1 entry updated/, `the rewritten entry is counted as new: ${shown}`);
+    assert.match(view.summary.textContent ?? "", /would replace something you wrote/);
   });
 
   it("wirePaste_AReplyMatchingWhatIsSaved_SaysSoRatherThanOfferingAnEmptyConfirmation", async () => {

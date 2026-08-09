@@ -76,22 +76,55 @@ function rowFor(document: Document, change: Change): HTMLElement {
   return row;
 }
 
-/** What the plan would do, in one sentence a reader can decide on. */
-function summarise(plan: Plan): string {
+/**
+ * What one question would gain, counted the way its page counts.
+ *
+ * A repeat stores a field per slot, so day 1's five peak experiences are twenty stored
+ * answers — and telling a reader who gave five things that twenty are new is both alarming and
+ * in the wrong unit. Entries are what the page shows and what they think they wrote; the field
+ * total goes in brackets for anyone who wants it. Everything else has no slots, so its answers
+ * ARE its units and it counts them directly.
+ */
+function tallyFor(plan: Plan, group: string): string {
+  const mine = [...plan.additions, ...plan.changes].filter((one) => one.group === group);
+  const changedHere = plan.changes.filter((one) => one.group === group).length;
+  const slots = mine.filter((one) => one.slot !== undefined);
+
+  if (slots.length === 0) {
+    const total = mine.length;
+    const nouns = total === 1 ? "answer" : "answers";
+    return changedHere === 0
+      ? `${titleOf(group)} — ${total} new ${nouns}`
+      : `${titleOf(group)} — ${total} ${nouns}, ${changedHere} replacing what you wrote`;
+  }
+
+  // A slot counts as updated if ANY of its fields would replace something, and new otherwise.
+  const updated = new Set(
+    plan.changes.filter((one) => one.group === group).map((one) => one.slot),
+  );
+  const touched = new Set(slots.map((one) => one.slot));
+  const fresh = touched.size - updated.size;
   const parts: string[] = [];
-  if (plan.additions.length > 0) {
-    parts.push(`${plan.additions.length} ${plan.additions.length === 1 ? "answer is" : "answers are"} new`);
+  if (fresh > 0) {
+    parts.push(`${fresh} new ${fresh === 1 ? "entry" : "entries"}`);
   }
-  if (plan.changes.length > 0) {
-    parts.push(
-      `${plan.changes.length} would change ${plan.changes.length === 1 ? "something" : "things"} you wrote`,
-    );
+  if (updated.size > 0) {
+    parts.push(`${updated.size} ${updated.size === 1 ? "entry" : "entries"} updated`);
   }
-  if (plan.unchanged > 0) {
-    parts.push(`${plan.unchanged} ${plan.unchanged === 1 ? "matches" : "match"} what you already have`);
+  return `${titleOf(group)} — ${parts.join(", ")} (${mine.length} answers in all)`;
+}
+
+/** The one sentence the decision turns on: is anything you wrote at risk? */
+function summarise(plan: Plan): string {
+  const changed = plan.changes.length;
+  const settled =
+    plan.unchanged > 0
+      ? ` ${plan.unchanged} ${plan.unchanged === 1 ? "answer matches" : "answers match"} what you already have.`
+      : "";
+  if (changed === 0) {
+    return `Nothing you have already written would change.${settled}`;
   }
-  const where = plan.groups.map(titleOf).join(", ");
-  return `${parts.join(", ")}. This came back for: ${where}.`;
+  return `${changed} ${changed === 1 ? "answer would replace" : "answers would replace"} something you wrote — ${changed === 1 ? "it is" : "they are"} shown below.${settled}`;
 }
 
 /**
@@ -205,8 +238,20 @@ export function wirePaste(
 
     pending = planned.plan;
     summary.textContent = summarise(planned.plan);
-    // Overwrites in full, additions by count. `replaceChildren` rather than innerHTML.
-    detail.replaceChildren(...planned.plan.changes.map((change) => rowFor(document, change)));
+    // A line per question, then the overwrites in full. Additions are counted rather than
+    // listed: they fill blanks, and a whole day of them would put a screen of text between
+    // the reader and the button. `replaceChildren` rather than innerHTML, on both.
+    const tally = document.createElement("ul");
+    tally.className = "paste-tally";
+    for (const group of planned.plan.groups) {
+      const line = document.createElement("li");
+      line.textContent = tallyFor(planned.plan, group);
+      tally.append(line);
+    }
+    detail.replaceChildren(
+      tally,
+      ...planned.plan.changes.map((change) => rowFor(document, change)),
+    );
     confirm.hidden = false;
     go.removeAttribute("aria-disabled");
   };
