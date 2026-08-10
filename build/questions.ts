@@ -371,6 +371,26 @@ function labelled(
 }
 
 /**
+ * The section a question belongs to, stamped onto its container.
+ *
+ * #82: a reader works through a worksheet in numbered items, not in questions. Day 4 asks
+ * five things and renders fourteen controls, so the bridge offers fourteen separate
+ * conversations for what the page presents as five tasks. The client cannot group them
+ * without being told where the boundaries are — `data-question` is all it has, and the
+ * markup carries no notion of a section at all.
+ *
+ * The slug of the enclosing numbered heading. WHICH level that is belongs to the page and
+ * is decided in build/markdown.ts — `##` where a page has one, `###` where it numbers that
+ * way instead, as the one-page anchor does. What must not happen is `###` splitting a task
+ * on a page that numbers with `##`: day 5's five dimensions sit under one numbered item and
+ * are one piece of work.
+ */
+/** The attribute, or nothing when a question sits outside any numbered item. */
+function sectionAttr(section: string): string {
+  return section === "" ? "" : ` data-section="${escape(section)}"`;
+}
+
+/**
  * Render one question.
  *
  * `data-question`, `data-instance` and `data-field` are the seam the storage layer binds
@@ -382,23 +402,6 @@ function labelled(
  * blank's address is the pair — the `data-instance` on its nearest ancestor, and its
  * own `data-field` (0013).
  */
-/**
- * The section a question belongs to, stamped onto its container.
- *
- * #82: a reader works through a worksheet in numbered items, not in questions. Day 4 asks
- * five things and renders fourteen controls, so the bridge offers fourteen separate
- * conversations for what the page presents as five tasks. The client cannot group them
- * without being told where the boundaries are — `data-question` is all it has, and the
- * markup carries no notion of a section at all.
- *
- * The slug of the enclosing `##` heading, which is the level the worksheets number.
- * `###` is deliberately NOT a boundary: day 5's five dimensions sit under one numbered
- * item and are one task, which is exactly the grouping this is for.
- */
-/** The attribute, or nothing when a question sits outside any numbered item. */
-function sectionAttr(section: string): string {
-  return section === "" ? "" : ` data-section="${escape(section)}"`;
-}
 
 export function renderQuestion(question: Question, section = ""): string {
   // A single question renders as a bare answer line. Its label is NOT printed: the

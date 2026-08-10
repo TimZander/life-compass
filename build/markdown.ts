@@ -310,16 +310,29 @@ export function render(markdown: string, source: string, context: RenderContext)
   const fillMarkup: string[] = [];
   let title: string | null = null;
   /**
-   * The numbered item now being rendered, for #82.
-   *
-   * `h2` only. The worksheets number at that level, and a reader thinks in those units —
+   * The numbered item now being rendered, for #82. A reader thinks in these units —
    * "3. The contribution question" is one task whether it asks one question or four.
-   * `h3` is deliberately not a boundary: day 5's five dimensions sit under a single
-   * numbered item and are one piece of work.
    */
   let section = "";
-  /** Which heading level this page numbers at, decided by the first one it uses. */
-  let numbered: "h2" | "h3" | "" = "";
+  /**
+   * The level THIS page numbers at, decided before the walk begins.
+   *
+   * Decided up front rather than as headings arrive, because arriving order is not the
+   * question being asked. Reading it incrementally made the rule "`h3` counts until the
+   * first `h2`, then `h2` only" — which is not what the comment said and not what anyone
+   * would choose. rigorous/day-1-excavation.md opens with an `h3` well above its first
+   * `h2`, so under that rule the page's level depended on where its questions happened to
+   * fall; it grouped correctly only because no question sits in that region. A page that
+   * did would have had ten questions collapse into one section, with the suite green.
+   *
+   * `h2` when the page has one anywhere, otherwise `h3`. Most worksheets number with `##`
+   * and use `###` for sub-parts of one task — day 5's five dimensions sit under a single
+   * numbered item and are one piece of work. The one-page anchor numbers with `###` and
+   * has no `##` at all.
+   */
+  const numbered = tokens.some((one) => one.type === "heading_open" && one.tag === "h2")
+    ? "h2"
+    : "h3";
 
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
@@ -360,16 +373,7 @@ export function render(markdown: string, source: string, context: RenderContext)
       const id = slug(text);
       token.attrSet("id", id);
       headingIds.push(id);
-      // The level the page numbers at, not a fixed one. Most worksheets number with `##`
-      // and use `###` for sub-parts of a single task — day 5's five dimensions sit under
-      // one numbered item and are one piece of work, so `###` must not split them. The
-      // one-page anchor numbers with `###` and has no `##` at all, and reading only `##`
-      // left all eight of its questions in no section whatsoever.
-      if (token.tag === "h2") {
-        numbered = "h2";
-        section = id;
-      } else if (token.tag === "h3" && numbered !== "h2") {
-        numbered = "h3";
+      if (token.tag === numbered) {
         section = id;
       }
       if (token.tag === "h1" && title === null) {

@@ -193,16 +193,14 @@ describe("the numbered item a question belongs to", () => {
     // numbered items, not in questions: day 4 asks five things and renders fourteen
     // controls, so the bridge offered fourteen conversations for five tasks. The client
     // cannot group them without being told where the boundaries are.
-    const ALLOWED_WITHOUT = 1;
-
     // Act
     const byPage = await sectionsOf();
     const orphans = [...byPage.values()].flatMap((page) => page.get("") ?? []);
 
     // Assert — one exception, and it is deliberate: `values.additions` sits on a reference
-    // page above any heading, so it has no numbered item and keeps its own ask.
+    // page that has no `##` or `###` at all — only its `#` title — so it belongs to no
+    // numbered item and keeps its own ask.
     assert.deepEqual(orphans, ["values.additions"], "questions fell outside any numbered item");
-    assert.equal(orphans.length, ALLOWED_WITHOUT);
   });
 
   it("buildPages_DayFour_ResolvesToItsFiveNumberedItems", async () => {
@@ -249,6 +247,32 @@ describe("the numbered item a question belongs to", () => {
     assert.ok(together !== undefined, `the five dimensions were split across sections`);
   });
 
+  it("buildPages_AnH3AboveTheFirstH2_DoesNotDecideThePagesLevel", async () => {
+    // Arrange — the page that made the rule honest. rigorous day 1 opens with an `h3` well
+    // above its first `h2`, so a level decided as headings ARRIVE made "`h3` counts until
+    // the first `h2`, then `h2` only" — which is not a rule anyone would choose, and left
+    // the page grouping correctly only because no question happens to sit in that region.
+    // A page that did would have collapsed ten questions into one section with the suite
+    // green. The level is now decided before the walk: `h2` if the page has one anywhere.
+    // Act
+    const page = (await sectionsOf()).get("rigorous/day-1-excavation.md");
+
+    // Assert
+    assert.ok(page !== undefined, "rigorous day 1 rendered no questions");
+    assert.deepEqual(
+      [...page.keys()].sort(),
+      [
+        "1-life-chapters-timeline-20-min",
+        "2-peak-experiences-20-min",
+        "3-low-points-15-min",
+        "4-energy-audit-20-min",
+        "5-childhood-threads-10-min",
+        "6--fold-in-outside-input-optional-10-min",
+      ],
+      "an h3 above the first h2 decided the page's level",
+    );
+  });
+
   it("buildPages_APageNumberingWithH3_IsStillSectioned", async () => {
     // Arrange — negative case for the other direction, and a real failure this had. Reading
     // only `h2` left all eight of the one-page anchor's questions in no section whatsoever,
@@ -259,8 +283,16 @@ describe("the numbered item a question belongs to", () => {
 
     // Assert
     assert.ok(anchor !== undefined, "the anchor page rendered no questions");
-    assert.ok(!anchor.has(""), "the anchor page's questions have no numbered item");
-    assert.ok(anchor.size > 1, "the whole anchor page collapsed into one section");
+    assert.deepEqual(
+      [...anchor.keys()].sort(),
+      [
+        "1-three-values-10-min",
+        "2-a-theme-for-this-season-5-min",
+        "3-one-decision-rule-3-min",
+        "4-one-review-date-2-min",
+      ],
+      "the anchor page's numbered items are not its sections",
+    );
   });
 });
 
