@@ -52,7 +52,9 @@
 import type { RepeatQuestion } from "../questions/types.ts";
 import { answerKey, fieldKey, newInstanceId, orderKey, readOrder, writeOrder } from "./keys.ts";
 import {
+  EXAMPLE_ANSWER,
   EXAMPLE_GROUP,
+  EXAMPLE_ID,
   FORMAT,
   VERSION,
   findQuestion,
@@ -137,13 +139,17 @@ export type Reading =
       readonly ok: true;
       readonly blocks: readonly Block[];
       /**
-       * How many blocks were left out for still naming the example group.
+       * How many answers were left out for still naming the example group.
        *
        * Not a refusal and not a detail: it is the difference between "your reply landed" and
        * "three of your four questions landed". The confirmation surface says so, because a
        * missing group is otherwise visible only to a reader who counts the tally.
+       *
+       * Counts blocks carrying the READER's words, never the prompt's own example restated —
+       * see `isWorkedExample`. An assistant explaining itself is ordinary, and a warning that
+       * fires on ordinary is a warning that gets ignored on the day it matters.
        */
-      readonly skipped: number;
+      readonly stranded: number;
     }
   | { readonly ok: false; readonly refusal: Refusal };
 
@@ -308,10 +314,16 @@ function fieldsFrom(
  * explain, and a fence that will not parse is ordinary noise. A paste yielding NO matching
  * block is refused rather than reported as success, which is the silence 0015 forbids.
  *
- * A block that matches the format and is then malformed refuses the whole paste rather than
+ * A block that matches the format and is then MALFORMED refuses the whole paste rather than
  * being skipped. Partial acceptance would mean telling the reader some of their reply landed
  * and leaving them to work out which, and `import.ts` already establishes all-or-nothing as
  * the property this application keeps.
+ *
+ * The one block that is neither read nor refused is 0015 · C8a's worked example, which names a
+ * group the schema does not hold and is ignored so that a verbose reply stays usable. That is
+ * not a hole in the paragraph above — nothing about it can be imported — but it does mean this
+ * function can return successfully having set an answer aside, so it says how many it set aside
+ * that were carrying the reader's words rather than the example's. See `stranded`.
  */
 export function readBlocks(text: string): Reading {
   const scan = scanObjects(text);
@@ -335,24 +347,29 @@ export function readBlocks(text: string): Reading {
   }
   const blocks: Block[] = [];
   const seen = new Set<string>();
-  let skipped = 0;
+  let stranded = 0;
   for (const parsed of candidates) {
     // The worked example from the prompt, repeated back. 0015 · C8a put a group the schema
     // does not contain into the example precisely so it can never be imported, and refusing
     // the whole paste because an assistant helpfully restated the shape would make a verbose
-    // reply unusable. Ignored when there is something real beside it; still refused loudly
-    // when it is all there is, which is the mis-paste C8a actually describes.
+    // reply unusable.
     //
-    // COUNTED rather than merely skipped, since #82 made a prompt ask for one block per
-    // question of a numbered item. Every example it shows names this group, so an assistant
-    // that substitutes three of four and leaves the fourth produces a paste that imports
-    // three questions and drops one — and ignoring it silently told the reader their whole
-    // reply had landed. That is the loss 0008 calls the worst available to this application,
-    // arriving through the machinery that exists to make a verbose reply usable. The count
-    // travels so the confirmation surface can say a block was left out; refusing instead
-    // would take the three good answers away with it.
-    if (own(parsed, "group") === EXAMPLE_GROUP && candidates.length > 1) {
-      skipped += 1;
+    // Ignored whether or not something real sits beside it. It used to be ignored ONLY then,
+    // so a paste of nothing but examples fell through to "there is nothing from an assistant
+    // in that" — half true of a document that plainly is from one. Now the emptiness is what
+    // reports itself, in one sentence that fits both a mis-tapped prompt and a reply that
+    // substituted no groups at all.
+    if (own(parsed, "group") === EXAMPLE_GROUP) {
+      // …but an ignored block is not always an example. #82 asks for one block per question of
+      // a numbered item and shows one example each, all naming this group, so an assistant that
+      // substitutes three of four leaves a real answer wearing the placeholder — imported as
+      // nothing, and once reported as nothing too (0015 · C8b). What tells the two apart is the
+      // words: an echo carries the prompt's own placeholders and a stranded answer carries the
+      // reader's. Counting only the second is what keeps the warning worth reading, because a
+      // notice that fires on every thorough reply is a notice nobody reads by the third one.
+      if (!isWorkedExample(parsed)) {
+        stranded += 1;
+      }
       continue;
     }
     const read = readBlock(parsed);
@@ -373,9 +390,42 @@ export function readBlocks(text: string): Reading {
     // itself, mis-tapped back into the box seconds after copying (0015 · C8a), and a reply
     // that substituted none of the example groups. One sentence has to serve both, so it
     // names what is actually in the paste rather than guessing which happened.
-    return { ok: false, refusal: skipped > 0 ? { kind: "example-only" } : { kind: "no-blocks" } };
+    const anyExample = candidates.some((one) => own(one, "group") === EXAMPLE_GROUP);
+    return { ok: false, refusal: anyExample ? { kind: "example-only" } : { kind: "no-blocks" } };
   }
-  return { ok: true, blocks, skipped };
+  return { ok: true, blocks, stranded };
+}
+
+/**
+ * Whether an ignored block is the prompt's own example rather than an answer that lost its group.
+ *
+ * Every value equal to the placeholder the prompt printed, and no value that is not. An
+ * assistant restating the shape copies those words exactly; one that answered and forgot to
+ * change the group carries the reader's. The literals come from `prompt.ts` rather than being
+ * spelled again here — the generator and the reader disagreeing about what a placeholder looks
+ * like is the two-copies-of-one-fact mistake, and it would show up as a warning about lost
+ * answers over a reply that lost none.
+ */
+function isWorkedExample(parsed: Record<string, unknown>): boolean {
+  const values: unknown[] = [own(parsed, "answer")];
+  const fields = own(parsed, "fields");
+  if (isObject(fields)) {
+    values.push(...Object.values(fields));
+  }
+  const instances = own(parsed, "instances");
+  if (Array.isArray(instances)) {
+    for (const one of instances) {
+      if (!isObject(one)) {
+        return false;
+      }
+      const inner = own(one, "fields");
+      values.push(own(one, "id"), ...(isObject(inner) ? Object.values(inner) : []));
+    }
+  }
+  const said = values.filter((one) => one !== undefined);
+  return (
+    said.length > 0 && said.every((one) => one === EXAMPLE_ANSWER || one === EXAMPLE_ID)
+  );
 }
 
 /** One parsed object known to carry the right `format`. */

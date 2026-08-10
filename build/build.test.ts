@@ -714,6 +714,11 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     [".agent-preview:focus-visible", "outline:2px solid var(--accent-dark)", "the scrollable region gives no focus indication"],
     [".agent-note", "color:var(--ink)", "0007 · 3's one required sentence returns to 2.49:1 contrast"],
     [".agent-scroll", "color:var(--ink)", "the note saying the payload scrolls is the same 2.49:1 grey"],
+    // The one element on the paste surface that WARNS. Styled like `.paste-after` it read as
+    // another quotation of proposed text, which is the opposite of its job: it is the notice
+    // saying an answer never arrived, sitting above a tally of the ones that did.
+    [".paste-skipped", "border:2px dashed var(--accent-dark)", "the warning is indistinguishable from the quoted replacement text below it"],
+    [".paste-skipped", "font-weight:600", "the one line that is a caution reads at the same weight as the tally"],
   ];
 
   /**
@@ -748,6 +753,37 @@ describe("the stylesheet and the assistant controls agreeing", () => {
       assert.ok(
         body.includes(declaration),
         `${selector} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
+      );
+    }
+  });
+
+  it("styleSheet_EveryClassThePasteSurfaceSets_HasARuleToStyleIt", async () => {
+    // Arrange — the dead-`.backup`-rule failure from the other end. That rule was keyed on a
+    // class the markup never carried; this is the same drift with the halves swapped, and it is
+    // reachable by a typo in either file. `paste.ts` builds its whole surface in script, so
+    // nothing in the emitted HTML would ever show the mismatch — the notice simply ships
+    // unstyled, which for the one element on that surface that WARNS means it stops looking
+    // like a warning while every test stays green.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const source = await readFile(path.join(ROOT, "src/client/paste.ts"), "utf8");
+
+    // Act — every class name this module assigns, however it assigns it.
+    const assigned = [
+      ...source.matchAll(/(?:className\s*=\s*|classList\.add\()"([^"]+)"/g),
+    ].flatMap((match) => (match[1] ?? "").split(/\s+/));
+
+    // Assert — styled ANYWHERE, not necessarily by a rule of its own: `.paste-before` shares
+    // one with `.paste-after`, and a check that missed that would push the stylesheet around
+    // to suit the test.
+    assert.ok(assigned.length > 0, "no class names were found; the pattern has drifted");
+    assert.ok(assigned.includes("paste-skipped"), "the notice that warns is no longer set here");
+    const selectors = [...css.matchAll(/([^{}]+)\{[^}]*\}/g)].flatMap((rule) =>
+      (rule[1] ?? "").split(",").map((one) => one.trim()),
+    );
+    for (const name of new Set(assigned)) {
+      assert.ok(
+        selectors.some((one) => new RegExp(`\\.${name}(?![\\w-])`).test(one)),
+        `.${name} is set by paste.ts and nothing in the stylesheet matches it`,
       );
     }
   });

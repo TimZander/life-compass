@@ -177,6 +177,15 @@ export function wirePaste(
   /** The plan the reader has been SHOWN, which is the only thing Save may apply. */
   let pending: Plan | null = null;
   /**
+   * How many answers the reading set aside, carried alongside the plan it belongs to.
+   *
+   * Kept until the save, because the save is the last thing the reader is told and it used to
+   * end on unqualified success — with the reply cleared out of the box a line earlier, so the
+   * evidence of what was left out was gone at the same moment the reader was told everything
+   * had worked.
+   */
+  let pendingStranded = 0;
+  /**
    * Which read is current.
    *
    * Two can overlap — read, edit the box, read again — and without this the one that RESOLVES
@@ -189,12 +198,25 @@ export function wirePaste(
 
   const standDown = (): void => {
     pending = null;
+    pendingStranded = 0;
     confirm.hidden = true;
     detail.replaceChildren();
     summary.textContent = "";
     go.setAttribute("aria-disabled", "true");
   };
   standDown();
+
+  /**
+   * What the reader is told about answers left out for still naming the example question.
+   *
+   * One wording, built once, because the same fact is said on four paths — the confirmation
+   * surface, the nothing-to-change banner, a refusal, and the save that follows — and four
+   * sentences saying it would be four sentences that can drift apart.
+   */
+  const strandedNote = (count: number): string =>
+    count === 1
+      ? "One answer in that reply still named the example question, so it could not be matched to anything. If a question you talked about is missing, that is the one — ask your assistant to send it again with the question's own name."
+      : `${count} answers in that reply still named the example question, so they could not be matched to anything. If questions you talked about are missing, those are the ones — ask your assistant to send them again with each question's own name.`;
 
   const readReply = async (): Promise<void> => {
     const mine = (generation += 1);
@@ -224,28 +246,43 @@ export function wirePaste(
       return;
     }
 
+    // Said before anything else that follows, because every path from here can end without the
+    // reader ever seeing the confirmation surface. A refusal, a plan with nothing in it, or a
+    // save — each one used to be the last word, and each one used to omit this.
+    if (reading.stranded > 0) {
+      console.error("life-compass: answers were left out of a reply", reading.stranded);
+    }
+
     const planned = planFor(reading.blocks, entries);
     if (!planned.ok) {
-      say(explain(planned.refusal));
+      // Both, and the refusal first: the paste is being rejected, and separately some of it
+      // could not be matched at all. Telling the reader only the first sends them to fix a
+      // reply that has a second problem waiting behind it.
+      say(
+        reading.stranded === 0
+          ? explain(planned.refusal)
+          : `${explain(planned.refusal)} ${strandedNote(reading.stranded)}`,
+      );
       return;
     }
     if (planned.plan.writes.size === 0) {
       // A real outcome, not a failure: an assistant asked to review what the reader already
       // had, and it agreed with all of it. Saying nothing would read as the button not working.
       //
-      // The skipped-block half is said here too. This branch never reaches the confirmation
-      // surface, so without it a reply whose only NEW answer was the block left naming the
+      // The stranded half is said here too. This branch never reaches the confirmation
+      // surface, so without it a reply whose only NEW answer was the one left naming the
       // example group reports "nothing to change" — which is true of what was read and false
       // about what the reader dictated.
       say(
-        reading.skipped === 0
+        reading.stranded === 0
           ? "Those answers are already saved, word for word. There is nothing to change."
-          : "The answers that could be read are already saved, word for word. Some of that reply still named the example question, so it was left out — ask your assistant to send those again with each question's own name.",
+          : `The answers that could be read are already saved, word for word. ${strandedNote(reading.stranded)}`,
       );
       return;
     }
 
     pending = planned.plan;
+    pendingStranded = reading.stranded;
     summary.textContent = summarise(planned.plan);
     // A line per question, then the overwrites in full. Additions are counted rather than
     // listed: they fill blanks, and a whole day of them would put a screen of text between
@@ -264,13 +301,16 @@ export function wirePaste(
     // the tally lists what landed, and nothing about a list of three says a fourth was
     // expected. `textContent`, like everything else on this surface.
     const left: HTMLElement[] = [];
-    if (reading.skipped > 0) {
+    if (reading.stranded > 0) {
       const note = document.createElement("p");
       note.className = "paste-skipped";
-      note.textContent =
-        reading.skipped === 1
-          ? "One block in that reply still named the example question, so it was left out. If a question you talked about is missing below, that is the one — ask your assistant to send it again with the question's own name."
-          : `${reading.skipped} blocks in that reply still named the example question, so they were left out. If questions you talked about are missing below, those are the ones — ask your assistant to send them again with each question's own name.`;
+      // `role="status"` because this region is not otherwise announced: `#paste-confirm` has no
+      // live region and takes no focus when it appears, so a reader working by ear met the one
+      // warning that has to be read before an irreversible write with silence — while the
+      // banner, which carries less consequential news, is announced. 0001 makes that the wrong
+      // way round.
+      note.setAttribute("role", "status");
+      note.textContent = strandedNote(reading.stranded);
       left.push(note);
     }
     detail.replaceChildren(
@@ -299,6 +339,7 @@ export function wirePaste(
     // disabling the button somebody has just activated drops them to the document body
     // mid-flow. The same reasoning as the restore control.
     const applying = pending;
+    const applyingStranded = pendingStranded;
     if (applying === null) {
       return;
     }
@@ -319,7 +360,11 @@ export function wirePaste(
       standDown();
       text.value = "";
       const count = applying.changes.length + applying.additions.length;
-      say(`Saved ${count} ${count === 1 ? "answer" : "answers"}. Open the worksheet to see them.`);
+      const saved = `Saved ${count} ${count === 1 ? "answer" : "answers"}. Open the worksheet to see them.`;
+      // Repeated at the end, because this is the end. `standDown` has just cleared the notice
+      // and the box has just been emptied, so a reader who is told only "Saved 3 answers" has
+      // no way left to find out that a fourth never arrived.
+      say(applyingStranded === 0 ? saved : `${saved} ${strandedNote(applyingStranded)}`);
     })();
   });
 }

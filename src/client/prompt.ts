@@ -43,6 +43,20 @@ export const VERSION = 1;
  */
 export const EXAMPLE_GROUP = "example.not_a_real_group";
 
+/**
+ * The words standing in for a reader's answer in the worked example, and for an id to echo.
+ *
+ * Exported because the importer needs them to tell two pastes apart that would otherwise look
+ * identical: an assistant restating the example it was given, and an assistant that answered a
+ * question but left the placeholder group on the block. Both name `EXAMPLE_GROUP` and both are
+ * ignored; only the second means an answer was lost. An echo carries these strings and nothing
+ * else, so comparing values is the whole of the test — and it has to be one fact in one place,
+ * because a prompt and a reader that disagree about what a placeholder looks like would put a
+ * warning about missing answers over a reply that is complete.
+ */
+export const EXAMPLE_ANSWER = "what I said";
+export const EXAMPLE_ID = "the id from above";
+
 /** Everything except a checklist, which 0015 keeps out of the contract. */
 export type Answerable = Exclude<Question, { readonly kind: "checklist" }>;
 
@@ -53,25 +67,28 @@ export type Refusal =
   /**
    * One question twice in the same item — asked for, it produces a reply the importer refuses.
    *
-   * The same kind name `agent-answers.ts` uses, because it is the same fact seen from the other
-   * end: `readBlocks` and `planFor` both refuse a paste naming one group twice, so a prompt
-   * that asked for two blocks of one question would be asking for something that cannot be
-   * accepted. `planFor` re-checks its own precondition for this reason, and says why — an
-   * exported function whose only caller happens to be correct is where a precondition gets
-   * forgotten, and #82's third slice adds the second caller.
+   * The same kind name `agent-answers.ts` uses, because it is the same fact seen from the
+   * other end: a paste naming one group twice is refused there, so a prompt asking for two
+   * blocks of one question asks for something that cannot be accepted.
    */
   | { readonly kind: "repeated-group"; readonly group: string }
+  /**
+   * A stored instance identifier that cannot be printed in the prompt as it is.
+   *
+   * Refused rather than rewritten. `keys.ts` accepts any non-empty identifier without the
+   * separator, so a restored backup can hold one carrying a backtick or a line break — and
+   * either one has to be altered to sit in the list `priorSection` builds, which turns the
+   * identity 0015 · C3 carries outward into one the reply cannot match. Better no prompt than
+   * a prompt whose every answer comes back as a new instance beside the reader's own.
+   */
+  | { readonly kind: "unprintable-instance"; readonly group: string }
   /**
    * Nothing was handed over at all. No group to name, which is why this arm is the only one
    * without one — a caller that built an empty list has a bug the prompt cannot describe.
    *
-   * Not reachable from the controls today, and kept anyway. `agent.ts` records the opposite
-   * decision a few lines from its own call site — an unreachable `unknown-group` arm deleted
-   * because a mutation sweep found it carrying a message no reader could be shown — and the
-   * difference is what the arm does. That one duplicated a check its caller had already made;
-   * this one is the only thing standing between an empty list and a prompt whose "What to ask
-   * about" section is blank, which an assistant will fill by inventing something to interview
-   * about (0007 · C3). `planFor` keeps a precondition on the same reasoning.
+   * Unreachable from the controls today and kept anyway: it is the only thing between an empty
+   * list and a prompt whose "What to ask about" section is blank, which an assistant fills by
+   * inventing something to interview about (0007 · C3).
    */
   | { readonly kind: "nothing-to-ask" };
 
@@ -277,7 +294,8 @@ export function labelFor(question: Answerable, field: string): string {
 }
 
 /**
- * How many instances to ask for: `min`, the count the build prints, NOT `max`.
+ * How many instances to ask for. `max` since #74 — see the amendment below, which reversed
+ * what this line used to say.
  *
  * 0013 · Q2 is why — an instance order longer than the rendered slot count "is accepted
  * without comment, and the answers under its extra instances simply never appear". Day 1
@@ -296,6 +314,21 @@ export function renderedSlots(question: RepeatQuestion): number {
 /** The worksheet's own words for this question, and nothing else. */
 function ask(question: Answerable): string {
   return ASKS[question.id] ?? "";
+}
+
+/**
+ * Whether a question's prose is the one before it, and so can be pointed at rather than repeated.
+ *
+ * Exported for its own test rather than left inline, because the interesting half cannot be
+ * reached through `promptFor`: every question in the workbook has an ask, so nothing built from
+ * the schema can exercise two empty ones. Without the emptiness check they would compare equal
+ * and the second question would read "the same instruction as question 1 above" pointing at a
+ * question that says nothing either — a state that cannot ship, since the build refuses a
+ * question with no prose anywhere, but one that costs a condition rather than an argument to
+ * keep out.
+ */
+export function repeatsPrevious(prose: string, previous: string): boolean {
+  return prose !== "" && prose === previous;
 }
 
 /**
@@ -335,14 +368,14 @@ function shape(question: Answerable): string {
 
 /** The worked example, in the contract's shape but naming a group that cannot be imported. */
 function example(question: Answerable, prior: Prior | undefined): string {
-  const placeholder = (id: string): string => `"${id}": "what I said"`;
+  const placeholder = (id: string): string => `"${id}": "${EXAMPLE_ANSWER}"`;
   const body =
     question.kind === "repeat"
       ? `"instances": [\n    { ${
-          prior?.for === "instances" && prior.instances.length > 0 ? '"id": "the id from above", ' : ""
+          prior?.for === "instances" && prior.instances.length > 0 ? `"id": "${EXAMPLE_ID}", ` : ""
         }"fields": { ${question.fields.map((field) => placeholder(field.id)).join(", ")} } }\n  ]`
       : question.kind === "single"
-        ? `"answer": "what I said"`
+        ? `"answer": "${EXAMPLE_ANSWER}"`
         : `"fields": { ${question.fields.map((field) => placeholder(field.id)).join(", ")} }`;
 
   return `\`\`\`\n{\n  "format": "${FORMAT}",\n  "version": ${VERSION},\n  "group": "${EXAMPLE_GROUP}",\n  ${body}\n}\n\`\`\``;
@@ -365,7 +398,19 @@ function priorSection(question: Answerable, prior: Prior, level: "##" | "####"):
       //
       // Listed even where nothing has been written under it, so every slot has an id to come
       // back with. Skipping the empty ones is what made a half-finished group un-importable.
-      lines.push(`- id \`${neutralise(instance.id)}\``);
+      //
+      // VERBATIM, never neutralised. An identifier is structure rather than prose (0015 · C3),
+      // and rewriting one defeats the whole reason it travels: an id printed as `a(b)c` comes
+      // back as `a(b)c`, fails `planInstances`' lookup against the stored order, and 0015 mints
+      // a fresh instance beside the reader's — a duplicate slot, their answers orphaned under
+      // the old id, and the whole thing reported as "1 new entry". That is exactly the failure
+      // the paragraph below this list warns the assistant about, arriving through the defence.
+      // `promptFor` refuses an id that cannot be printed here instead.
+      //
+      // Safe to print raw: an id carrying braces cannot forge an importable block, because
+      // `keys.ts` forbids the separator in an identifier and every real group id contains one,
+      // so any object built out of an id names a group the schema does not hold.
+      lines.push(`- id \`${instance.id}\``);
       if (instance.fields.size === 0) {
         lines.push(
           instance.written
@@ -467,8 +512,16 @@ function questions(item: string, parts: readonly Asked[]): string {
   // function's own comment gives as the reason not to name a single question's item at all.
   // The reader's words are never edited to make room for ours (0004), so it is our line that
   // gives way; where the two do not match, both are printed and the prompt is merely repetitive.
+  // Compared with the emphasis taken off both sides. The two strings are one heading rendered
+  // twice — the caller reads it out of the DOM with its markup stripped, and #91 reads it out
+  // of the Markdown with its markup intact — so rigorous day 3's "weighted *least*" arrives as
+  // "weighted least" from one and "weighted *least*" from the other, `startsWith` fails, and
+  // the item gets named twice in two spellings three lines apart. That is the duplication this
+  // branch exists to prevent, so the comparison ignores what the two renderings disagree about.
+  // An empty name needs no guard of its own: every string starts with "".
   const first = parts[0];
-  const named = item !== "" && first !== undefined && !ask(first.question).startsWith(item);
+  const plain = (text: string): string => text.replace(/[*_`]/g, "");
+  const named = first !== undefined && !plain(ask(first.question)).startsWith(plain(item));
   const blocks: string[] = [
     // Two wrapped paragraphs rather than one with a swappable opening: the prompt is hard
     // wrapped, and prose wrapped for one lead-in reads as a wall when it is given another.
@@ -492,7 +545,7 @@ function questions(item: string, parts: readonly Asked[]): string {
   let said = "";
   for (const [index, part] of parts.entries()) {
     const prose = ask(part.question);
-    const repeated = prose !== "" && prose === said;
+    const repeated = repeatsPrevious(prose, said);
     blocks.push(
       `### Question ${index + 1} of ${parts.length} — \`${part.question.id}\`\n\n` +
         `${repeated ? `The same instruction as question ${saidAt} above.` : prose}` +
@@ -537,10 +590,11 @@ function howToAnswer(parts: readonly Asked[]): string {
   return (
     `## How to give the answers back\n\n` +
     `At the end, output one fenced block for each of the ${parts.length} questions above, in the same\n` +
-    `order — the last thing in your reply, and the only fenced blocks in it. Change two things\n` +
-    `in each: put the group named above it, and put my real answers where the placeholders\n` +
-    `are. If we never got to one of the questions, leave its block out altogether rather than\n` +
-    `sending an empty one.\n\n${shown.join("\n\n")}\n\n` +
+    `order — the last thing in your reply, and the only fenced blocks in it. In each one, put the\n` +
+    `group named above it where the example has its own, and replace every placeholder with what\n` +
+    `I actually said — including the id, where one is shown. If we never got to one of the\n` +
+    `questions, leave its block out altogether rather than sending an empty one.\n\n` +
+    `${shown.join("\n\n")}\n\n` +
     `Every value is plain text on one line. If I did not answer something, **leave that key\n` +
     `out entirely** — never send an empty string, a dash, or a guess. Say anything else you\n` +
     `want to say outside the blocks.\n`
@@ -588,6 +642,12 @@ export function promptFor(item: string, parts: readonly Part[]): Generated {
     if (asking.some((one) => one.question.id === question.id)) {
       return { ok: false, refusal: { kind: "repeated-group", group: part.group } };
     }
+    // A backtick would close the code span the id sits in; a line break would end the list item
+    // and open what looks like another instance, which is the forgery `neutralise`'s indent
+    // exists to stop. Neither can be defused without changing the identifier, so neither is.
+    if (part.prior?.for === "instances" && part.prior.instances.some((one) => /[`\r\n]/.test(one.id))) {
+      return { ok: false, refusal: { kind: "unprintable-instance", group: part.group } };
+    }
     asking.push({ question, prior: part.prior });
   }
 
@@ -614,6 +674,8 @@ export function explain(refusal: Refusal): string {
       return `The stored answers for ${refusal.group} are not the shape that question takes.`;
     case "repeated-group":
       return `${refusal.group} appears twice in this numbered item, and one question can only be answered once.`;
+    case "unprintable-instance":
+      return `The entries saved for ${refusal.group} are identified in a way that cannot be put into a message safely, so nothing can be asked about them.`;
     case "nothing-to-ask":
       return "There is no question here for an assistant to ask about.";
   }

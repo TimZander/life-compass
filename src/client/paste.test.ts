@@ -201,7 +201,7 @@ describe("reading a reply", () => {
     const view = page(fake);
     view.text.value =
       `Here you go.\n\n\`\`\`json\n${JSON.stringify(block(SINGLE, { answer: ANSWER }))}\n\`\`\`\n\n` +
-      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "what I said" }))}\n\`\`\``;
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the answer I gave for the other question" }))}\n\`\`\``;
 
     // Act
     view.read.click();
@@ -210,7 +210,7 @@ describe("reading a reply", () => {
     // Assert
     assert.equal(view.confirm.hidden, false, "the reader was shown nothing");
     const shown = view.detail.textContent ?? "";
-    assert.match(shown, /still named the example question/i, "the block left out is not mentioned");
+    assert.match(shown, /still named the example question/i, "the answer left out is not mentioned");
     assert.match(shown, /1 new answer/, "what did come back is no longer shown");
     assert.equal(fake.merged.length, 0, "answers were written before the reader agreed");
   });
@@ -227,7 +227,7 @@ describe("reading a reply", () => {
     const view = page(fake);
     view.text.value =
       `Here you go.\n\n\`\`\`json\n${JSON.stringify(block(SINGLE, { answer: MINE }))}\n\`\`\`\n\n` +
-      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the new one" }))}\n\`\`\``;
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the answer I gave for the other question" }))}\n\`\`\``;
 
     // Act
     view.read.click();
@@ -235,7 +235,124 @@ describe("reading a reply", () => {
 
     // Assert
     assert.equal(view.confirm.hidden, true, "there was something to approve after all");
-    assert.match(view.banner(), /still named the example question/i, "the block left out is not mentioned");
+    assert.match(view.banner(), /still named the example question/i, "the answer left out is not mentioned");
+    assert.equal(fake.merged.length, 0);
+  });
+
+  it("wirePaste_SeveralAnswersLeftOut_CountsThemAndSaysItInThePlural", async () => {
+    // Arrange — the plural branch had no test in either direction: forcing the singular, and
+    // forcing the plural onto a single one, both passed because the only assertion was a phrase
+    // both branches contain. The count is the part a reader acts on — two missing answers and
+    // one are different amounts of interview to redo.
+    const LEFT_OUT = 2;
+    const fake = recorder();
+    const view = page(fake);
+    view.text.value = [
+      `\`\`\`json\n${JSON.stringify(block(SINGLE, { answer: "the one that landed" }))}\n\`\`\``,
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the first that did not" }))}\n\`\`\``,
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the second that did not" }))}\n\`\`\``,
+    ].join("\n\n");
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    const shown = view.detail.textContent ?? "";
+    assert.ok(shown.includes(`${LEFT_OUT} answers in that reply`), `it did not say ${LEFT_OUT}: ${shown}`);
+    assert.ok(!shown.includes("One answer in that reply"), "two left out were reported as one");
+  });
+
+  it("wirePaste_AnAnswerLeftOut_SaysSoAboveTheListItIsMissingFrom", async () => {
+    // Arrange — the notice is about what is NOT in the tally, so it has to come before it. Put
+    // after, it reads as a footnote to a list that looks complete; the code comment argues the
+    // ordering and nothing held it. Announced too: this region has no live wrapper and takes no
+    // focus, so a reader working by ear would otherwise meet it only by going looking.
+    const fake = recorder();
+    const view = page(fake);
+    view.text.value =
+      `\`\`\`json\n${JSON.stringify(block(SINGLE, { answer: "the one that landed" }))}\n\`\`\`\n\n` +
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the one that did not" }))}\n\`\`\``;
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    const notices = view.detail.querySelectorAll(".paste-skipped");
+    assert.equal(notices.length, 1, "the notice is missing, or shown more than once");
+    assert.equal(notices[0]?.getAttribute("role"), "status", "the notice is not announced");
+    const shown = view.detail.textContent ?? "";
+    assert.ok(
+      shown.indexOf("still named the example question") < shown.indexOf("new answer"),
+      "the notice sits below the list it is about",
+    );
+  });
+
+  it("wirePaste_NothingToChangeAndNothingLeftOut_SaysOnlyThat", async () => {
+    // Arrange — negative case for the banner on that path. Collapsing its ternary to always
+    // emit the left-out variant passed, because the only assertion was a phrase both branches
+    // share — so a reply an assistant agreed with word for word would have told the reader some
+    // of it never arrived.
+    const MINE = "That I showed up for the people who needed it.";
+    const fake = recorder(new Map([[SINGLE, MINE]]));
+    const view = page(fake);
+    view.text.value = reply(block(SINGLE, { answer: MINE }));
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    assert.match(view.banner(), /already saved, word for word\. There is nothing to change\./);
+    assert.ok(!/example question/i.test(view.banner()), "a clean reply was told something was left out");
+  });
+
+  it("wirePaste_SavingAPlanThatLeftAnAnswerOut_SaysSoWithTheConfirmation", async () => {
+    // Arrange — the save is the last thing the reader is told, and it used to end on unqualified
+    // success: the notice cleared, the reply wiped out of the box a line earlier, and "Saved 1
+    // answer" as the final word. Whatever never arrived was unrecoverable and unmentioned at the
+    // same moment.
+    const fake = recorder();
+    const view = page(fake);
+    view.text.value =
+      `\`\`\`json\n${JSON.stringify(block(SINGLE, { answer: "the one that landed" }))}\n\`\`\`\n\n` +
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the one that did not" }))}\n\`\`\``;
+    view.read.click();
+    await settle();
+
+    // Act
+    view.go.click();
+    await settle();
+
+    // Assert
+    assert.equal(fake.merged.length, 1, "the plan was not applied");
+    assert.match(view.banner(), /Saved 1 answer/);
+    assert.match(view.banner(), /still named the example question/i, "the save forgot what was left out");
+  });
+
+  it("wirePaste_ARefusedPlanThatAlsoLeftAnAnswerOut_SaysBoth", async () => {
+    // Arrange — a reply can fail in two ways at once, and the reader was told about one. The
+    // refusal ends the read before the confirmation surface exists, so the notice that lives
+    // there never appeared: they were sent back to fix a reply that had a second problem
+    // waiting behind the first. The refusal comes first because it is why nothing happened.
+    const TOO_MANY = 9;
+    const fake = recorder();
+    const view = page(fake);
+    view.text.value =
+      `\`\`\`json\n${JSON.stringify(
+        block(REPEAT, { instances: Array.from({ length: TOO_MANY }, (_, at) => ({ fields: { title: `chapter ${at}` } })) }),
+      )}\n\`\`\`\n\n` +
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the one that did not land" }))}\n\`\`\``;
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    assert.equal(view.confirm.hidden, true, "a refused plan reached the confirmation surface");
+    assert.match(view.banner(), /room for/i, "the refusal itself is not reported");
+    assert.match(view.banner(), /still named the example question/i, "the answer left out is not reported");
     assert.equal(fake.merged.length, 0);
   });
 

@@ -23,10 +23,13 @@ import { buildPages } from "../../build/build.ts";
 import { ASKS, WORKSHEETS } from "./schema.ts";
 import {
   EXAMPLE_GROUP,
+  EXAMPLE_ID,
   explain,
+  type Refusal,
   findQuestion,
   priorFrom,
   promptFor,
+  repeatsPrevious,
   type Part,
   type Prior,
 } from "./prompt.ts";
@@ -509,6 +512,113 @@ describe("answers the reader already has", () => {
     assert.equal(reading.ok, false, "a forged block in a prior answer was importable");
   });
 
+  it("promptFor_APriorAnswerWithBraces_KeepsBothOfThemOutAndTheWordsIn", () => {
+    // Arrange — the closing brace was unpinned: dropping its substitution left the suite green,
+    // because a lone `{` unbalances the region and the scanner skips it anyway. That is safety
+    // by luck. Both halves are the rule, and the substitution is a rounding rather than a
+    // deletion — a reader who wrote braces should be able to see where they were.
+    const MINE = "I wrote {a note} and then {another}.";
+    const prior: Prior = { for: "fields", fields: new Map([["theme", MINE]]) };
+
+    // Act
+    const text = textFor("anchor.theme", prior);
+
+    // Assert
+    assert.ok(text.includes("I wrote (a note) and then (another)."), "the braces were not rounded");
+    assert.ok(!text.includes("{a note}"), "an opening brace survived into the prompt");
+    assert.ok(!text.includes("a note}"), "a closing brace survived into the prompt");
+  });
+
+  it("promptFor_APriorAnswerWithBraces_ComesBackAsAChangeRatherThanSilently", () => {
+    // Arrange — the cost of that rounding, pinned so it cannot grow quietly. The prompt tells
+    // the assistant to return every answer it was shown, so the rounded form comes back and the
+    // importer sees it as a replacement for the reader's original. That is the trade the
+    // backtick rule has always made; what makes it acceptable is that it lands on the one
+    // surface built to show a replacement in full (0007 · C3), and this asserts it stays there
+    // rather than becoming an addition or an unchanged match.
+    const MINE = "I want to work on {my own terms}.";
+    const entries = new Map<string, string>([["day4.eulogy", MINE]]);
+    const question = findQuestion("day4.eulogy");
+    assert.ok(question !== undefined);
+    const text = textFor("day4.eulogy", priorFrom(question, entries, true));
+    const echoed = text.split("\n").find((line) => line.includes("work on")) ?? "";
+    const answer = echoed.slice(echoed.indexOf(": ") + 2).trim();
+
+    // Act — the assistant returns what it was shown, which is what it was asked to do.
+    const reading = readBlocks(
+      JSON.stringify({ format: "life-compass/agent-answers", version: 1, group: "day4.eulogy", answer }),
+    );
+    assert.ok(reading.ok);
+    const planned = planFor(reading.blocks, entries);
+
+    // Assert
+    assert.ok(planned.ok);
+    const REPLACED = 1;
+    assert.equal(planned.plan.changes.length, REPLACED, "the rounded answer did not arrive as a replacement");
+    assert.equal(planned.plan.changes[0]?.before, MINE, "the reader would not be shown what they had");
+    assert.equal(planned.plan.additions.length, 0, "it was added beside the original instead");
+  });
+
+  it("promptFor_APriorInstanceIdentifier_TravelsExactlyAsItIsStored", () => {
+    // Arrange — an identifier is structure, not prose (0015 · C3), and rewriting one defeats
+    // the reason it travels. `keys.ts` accepts any identifier without the separator, so a
+    // restored backup can hold one carrying a brace; neutralising it produced `a(b)c`, which
+    // the assistant echoed, `planInstances` failed to match, and 0015 minted a fresh instance
+    // beside the reader's — a duplicate slot and their answers orphaned under the old id,
+    // reported as "1 new entry". Braces in an id cannot forge an importable block anyway,
+    // because every real group identifier contains the separator an id may not.
+    const ID = "a{b}c";
+    const entries = new Map<string, string>([
+      [orderKey("day1.chapters"), writeOrder([ID])],
+      [answerKey("day1.chapters", ID, "title"), "The garage-band years"],
+    ]);
+    const question = findQuestion("day1.chapters");
+    assert.ok(question !== undefined);
+
+    // Act
+    const text = textFor("day1.chapters", priorFrom(question, entries, true));
+
+    // Assert — and it round-trips, which is the whole point of carrying it.
+    assert.ok(text.includes(`- id \`${ID}\``), "the identifier was rewritten on its way out");
+    const REPLACED = 1;
+    const reading = readBlocks(
+      JSON.stringify({
+        format: "life-compass/agent-answers",
+        version: 1,
+        group: "day1.chapters",
+        instances: [{ id: ID, fields: { title: "The garage-band years, revised" } }],
+      }),
+    );
+    assert.ok(reading.ok);
+    const planned = planFor(reading.blocks, entries);
+    assert.ok(planned.ok);
+    assert.equal(planned.plan.additions.length, 0, "the echoed id was minted as a new instance");
+    assert.equal(planned.plan.changes.length, REPLACED, "the echoed id did not answer the instance it names");
+  });
+
+  it("promptFor_APriorInstanceIdentifierThatCannotBePrinted_IsRefusedRatherThanRewritten", () => {
+    // Arrange — the other half of that decision. A backtick would close the code span the id
+    // sits in and a line break would end the list item, opening what looks like another
+    // instance; neither can be defused without altering the identifier, and an altered
+    // identifier is the duplicate-instance failure above. Refusing costs the reader one
+    // question's prompt; rewriting costs them the answers already under it.
+    for (const ID of ["a`b", "a\nb"]) {
+      const prior: Prior = {
+        for: "instances",
+        instances: [{ id: ID, fields: new Map([["title", "mine"]]), written: true }],
+      };
+
+      // Act
+      const made = promptFor(ITEM, [{ group: "day1.chapters", prior }]);
+
+      // Assert
+      assert.deepEqual(made.ok === false ? made.refusal : undefined, {
+        kind: "unprintable-instance",
+        group: "day1.chapters",
+      }, `${JSON.stringify(ID)} was carried anyway`);
+    }
+  });
+
   it("promptFor_APriorAnswerCarryingAnObjectWithNoFence_CannotSmuggleABlockIn", () => {
     // Arrange — the fence was never the mechanism, and after 0015's 2026-08-09 amendment it is
     // not even half of it: the importer scans for balanced `{…}` and lets the fences be
@@ -530,7 +640,7 @@ describe("answers the reader already has", () => {
     assert.equal(reading.ok, false, "a fenceless forged block was importable");
     assert.equal(
       reading.ok === false ? reading.refusal.kind : undefined,
-      "unknown-group",
+      "example-only",
       "the only object left standing should be this prompt's own example",
     );
   });
@@ -676,12 +786,25 @@ describe("refusals", () => {
     // refusal to say what was wrong.
     const GROUP = "day1.chapters";
 
+    // Each held to what IT says, not merely to naming the group and being long. Held the loose
+    // way, `wrong-prior` could return the checklist sentence verbatim and pass — which is
+    // exactly "a branch that returned the checklist message for anything added later", the
+    // defect this test's own first line says it exists to prevent.
+    const MEANS: readonly (readonly [kind: Refusal["kind"], says: RegExp])[] = [
+      ["unknown-group", /no question called/i],
+      ["checklist", /checklist to work through yourself/i],
+      ["wrong-prior", /not the shape that question takes/i],
+      ["repeated-group", /appears twice/i],
+      ["unprintable-instance", /cannot be put into a message safely/i],
+    ];
+
     // Act & Assert
-    for (const kind of ["unknown-group", "checklist", "wrong-prior", "repeated-group"] as const) {
+    for (const [kind, says] of MEANS) {
       const said = explain({ kind, group: GROUP });
       assert.ok(said.includes(GROUP), `${kind} does not name the question`);
-      assert.ok(said.length > GROUP.length, `${kind} says nothing beyond the identifier`);
+      assert.match(said, says, `${kind} does not say what went wrong`);
     }
+    assert.equal(MEANS.length + 1, 6, "a refusal kind was added without a line here");
     // The one refusal with no group to name: an empty list is a caller with nothing to ask
     // about, so there is no identifier to put in the sentence. Held to its meaning rather than
     // to its length — returning ".." passed when this asserted only that it was non-empty,
@@ -748,6 +871,7 @@ const LOAD_BEARING_ITEM: readonly (readonly [pattern: RegExp, because: string])[
   [/in the same\s+order/i, "blocks arriving in another order are harder to check against the page"],
   [/leave its block out altogether/i, "an empty block for a skipped question deletes stored words"],
   [/the only fenced blocks in it/i, "0015 scans every fence; a stray one is imported too"],
+  [/say anything else you\s+want to say outside the blocks\./i, "the singular reads as licence to put the other three inside prose"],
 ];
 
 describe("a numbered item that asks several questions", () => {
@@ -798,6 +922,57 @@ describe("a numbered item that asks several questions", () => {
     assert.ok(!text.includes("****"), "an empty name was emphasised into nothing");
     assert.match(text, /one numbered item of the worksheet, and it asks 2 questions/);
     assert.match(text, /one exercise rather than 2 separate ones/, "the framing was lost with the name");
+  });
+
+  it("promptFor_AnItemNamedInDifferentMarkupFromItsAsk_StillOnlySaysItOnce", () => {
+    // Arrange — the two strings are one heading rendered twice: the caller reads it out of the
+    // DOM with the markup stripped, #91 reads it out of the Markdown with the markup intact.
+    // rigorous day 3's fourth item emphasises a word, so a plain prefix comparison failed and
+    // the prompt named it twice, three lines apart, in two spellings — the duplication this
+    // branch exists to prevent, on a real page.
+    const ASK = ASKS["rday3.hypothetical"] ?? "";
+    const HEADING = "4. ◆ The hypothetical — weighted least (15 min)";
+    const ONCE = 1;
+    assert.ok(ASK.startsWith("4. ◆ The hypothetical — weighted *least* (15 min)"), "the fixture heading changed");
+    assert.ok(!ASK.startsWith(HEADING), "the two renderings no longer differ, so this proves nothing");
+
+    // Act
+    const text = itemText(HEADING, { group: "rday3.hypothetical" }, { group: "rday3.reconciling" });
+
+    // Assert
+    assert.equal(text.split("The hypothetical").length - 1, ONCE, "the item is named twice over");
+  });
+
+  it("promptFor_AnItemWhoseNameAppearsLaterInAnAsk_IsStillNamed", () => {
+    // Arrange — negative case for the comparison, and the reason it is a PREFIX rather than a
+    // search. `includes` survived the whole suite: an item whose name happens to appear
+    // anywhere in its first question's prose would then be silently unnamed, and the questions
+    // in it would read as unrelated. Only the first LINE of an ask is the heading (#91), so
+    // only a prefix means "this ask already opens with the item's name".
+    const NAME = "What would you actually do?";
+    const ASK = ASKS["rday3.hypothetical"] ?? "";
+    assert.ok(ASK.includes(NAME) && !ASK.startsWith(NAME), "the fixture no longer contains the name mid-prose");
+
+    // Act
+    const text = itemText(NAME, { group: "rday3.hypothetical" }, { group: "rday3.reconciling" });
+
+    // Assert
+    assert.match(text, /This is one numbered item of the worksheet:/, "the item lost its name");
+    assert.ok(text.includes(`**${NAME}**`), "the name was not printed");
+  });
+
+  it("promptFor_AnItemOnlyALaterQuestionNames_IsStillNamed", () => {
+    // Arrange — the comparison reads the FIRST question's ask, because that is the one #91
+    // gives the heading to. Computing it from the last question instead survived the suite:
+    // every item in the workbook agrees all-or-nothing, so only a hand-built case can tell.
+    const NAME = "9. An item only its second question mentions (5 min)";
+    const parts = [{ group: "day4.who" }, { group: "day4.problem" }];
+
+    // Act — the name appears in neither ask, so it must be printed.
+    const text = itemText(NAME, ...parts);
+
+    // Assert
+    assert.ok(text.includes(`**${NAME}**`), "the item was not named");
   });
 
   it("promptFor_AnItemItsFirstQuestionAlreadyNames_DoesNotSayItTwice", () => {
@@ -851,6 +1026,10 @@ describe("a numbered item that asks several questions", () => {
 
     // Assert
     assert.equal(blocksIn(text).length, COUNT, "there is not one example per question");
+    assert.ok(
+      text.includes(`one fenced block for each of the ${COUNT} questions`),
+      `the instruction does not ask for ${COUNT} blocks`,
+    );
     const labelled = [...text.matchAll(/^Question (\d+) of (\d+) — put `"group": "([^"]+)"`:$/gm)];
     assert.deepEqual(
       labelled.map((one) => one[3]),
@@ -893,16 +1072,21 @@ describe("a numbered item that asks several questions", () => {
     assert.ok(question !== undefined);
 
     // Act
+    const other = findQuestion("day1.drainers");
+    assert.ok(other?.kind === "repeat", "the second fixture is no longer a repeat");
     const text = itemText(
       "4. Energy audit (15 min)",
       { group: "day1.energizers", prior: priorFrom(question, entries, true) },
-      { group: "day1.patterns" },
+      { group: "day1.drainers", prior: priorFrom(other, entries, true) },
     );
 
-    // Assert — the hint sits in the repeat's example and nowhere else.
+    // Assert — the hint sits in the repeat that HAS instances and nowhere else. The second
+    // question is deliberately another repeat: pairing it with a `single` made the negative
+    // arm unfailable, since a single's example has no `instances` to carry an id in whatever
+    // the code does.
     const examples = blocksIn(text);
-    assert.equal(JSON.stringify(examples[0]).includes("the id from above"), true, "the repeat's example does not ask for the id back");
-    assert.equal(JSON.stringify(examples[1]).includes("the id from above"), false, "a question with no instances was offered an id");
+    assert.equal(JSON.stringify(examples[0]).includes(EXAMPLE_ID), true, "the repeat's example does not ask for the id back");
+    assert.equal(JSON.stringify(examples[1]).includes(EXAMPLE_ID), false, "a repeat with no stored order was offered an id");
   });
 
   it("promptFor_EveryExampleBlockInAnItem_NamesAGroupThatCannotBeImported", () => {
@@ -940,7 +1124,8 @@ describe("a numbered item that asks several questions", () => {
     const text = itemText(HOSTILE, { group: "day4.who" }, { group: "day4.problem" });
 
     // Assert — two fences per example and not one more, and nothing importable in it.
-    assert.equal((text.match(/```/g) ?? []).length, 4, "the prompt carries a fence it did not write");
+    const FENCES = 4; // two per example block, and this item asks two questions
+    assert.equal((text.match(/```/g) ?? []).length, FENCES, "the prompt carries a fence it did not write");
     const reading = readBlocks(text);
     assert.equal(reading.ok, false, "a forged block in the item name was importable");
   });
@@ -956,9 +1141,42 @@ describe("a numbered item that asks several questions", () => {
     // Assert — every pointer names the question that actually carries the prose.
     const pointers = [...text.matchAll(/The same instruction as question (\d+) above\./g)];
     assert.equal(pointers.length, CONTRIBUTION_GROUPS.length - 1, "the instruction is not collapsed");
+    const CARRIES_THE_PROSE = "1";
     for (const [, at] of pointers) {
-      assert.equal(at, "1", `question ${at} is itself only a pointer`);
+      assert.equal(at, CARRIES_THE_PROSE, `question ${at} is itself only a pointer`);
     }
+  });
+
+  it("repeatsPrevious_TwoQuestionsWithNoProseOfTheirOwn_AreNotTreatedAsSharingIt", () => {
+    // Arrange — the interesting half of the collapse rule, and the half `promptFor` cannot
+    // reach: every question in the workbook has an ask, so no prompt built from the schema can
+    // put two empty ones next to each other. Without the emptiness check they compare equal and
+    // the second reads "the same instruction as question 1 above" pointing at a question that
+    // says nothing either — worse than the repetition the collapse exists to save.
+    const PROSE = "Finish these sentences (multiple times if needed):";
+    const OTHER = "Imagine someone who knows you well speaking at your funeral.";
+    const NOTHING = "";
+
+    // Act & Assert
+    assert.equal(repeatsPrevious(PROSE, PROSE), true, "a question does not point at the one above it");
+    assert.equal(repeatsPrevious(PROSE, OTHER), false, "two different instructions were collapsed");
+    assert.equal(repeatsPrevious(NOTHING, NOTHING), false, "a question with no prose points at one with none");
+    assert.equal(repeatsPrevious(PROSE, NOTHING), false, "prose was collapsed into an absence");
+  });
+
+  it("promptFor_ARepeatWithAnEmptyStoredOrder_IsNotToldToEchoAnIdItWasNeverGiven", () => {
+    // Arrange — the boundary on the id hint. `priorFrom` returns an instances prior with an
+    // empty list for a repeat whose stored order holds nothing, and `>= 0` instead of `> 0`
+    // then asks the assistant to return "the id from above" when no id is printed above. It
+    // echoes the placeholder, which matches no stored instance, and every answer is minted as
+    // new — the failure the id exists to prevent, from the other end.
+    const prior: Prior = { for: "instances", instances: [] };
+
+    // Act
+    const text = textFor("day1.chapters", prior);
+
+    // Assert
+    assert.ok(!text.includes(EXAMPLE_ID), "an id was asked for when none was offered");
   });
 
   it("promptFor_QuestionsSharingAnInstructionNonConsecutively_StateItAgain", () => {
@@ -979,7 +1197,8 @@ describe("a numbered item that asks several questions", () => {
     );
 
     // Assert
-    assert.equal(text.split(SHARED).length - 1, 2, "an ask two questions back was collapsed");
+    const STATED = 2; // once for each question that is not adjacent to its twin
+    assert.equal(text.split(SHARED).length - 1, STATED, "an ask two questions back was collapsed");
     assert.ok(!text.includes("The same instruction as question"), "it pointed backwards past another question");
   });
 
@@ -1023,9 +1242,10 @@ describe("a numbered item that asks several questions", () => {
     const text = itemText(CONTRIBUTION, ...CONTRIBUTION_GROUPS.map((group) => ({ group })));
 
     // Assert
+    const STATED_ONCE = 1;
     assert.equal(
       text.split(shared).length - 1,
-      1,
+      STATED_ONCE,
       "one instruction is repeated once per question that shares it",
     );
     for (const group of CONTRIBUTION_GROUPS) {
@@ -1082,7 +1302,8 @@ describe("a numbered item that asks several questions", () => {
     assert.equal(findQuestion(CHECKLIST)?.kind, "checklist", "the fixture is no longer a checklist");
 
     // Act & Assert — first, middle and last.
-    for (const at of [0, 1, 2]) {
+    const POSITIONS = [0, 1, 2];
+    for (const at of POSITIONS) {
       const parts = OTHERS.map((group) => ({ group }));
       parts.splice(at, 0, { group: CHECKLIST });
       const text = itemText("1. Assemble your compass (20 min)", ...parts);
@@ -1113,8 +1334,9 @@ describe("a numbered item that asks several questions", () => {
 
     // Assert
     assert.ok(text.includes("day5.career"), "the answerable question was dropped with the checklist");
+    const ONE_BLOCK = 1;
     assert.ok(!text.includes("Question 1 of"), "one question was numbered as though there were more");
-    assert.equal(blocksIn(text).length, 1, "one question asks for more than one block");
+    assert.equal(blocksIn(text).length, ONE_BLOCK, "one question asks for more than one block");
   });
 
   it("promptFor_AnItemOfNothingButChecklists_NamesTheFirstOfThem", () => {
@@ -1146,9 +1368,20 @@ describe("a numbered item that asks several questions", () => {
     const text = textFor("day4.statements");
 
     // Assert
+    const ONE_BLOCK = 1;
     assert.ok(!text.includes(ITEM), "a single question was given an item heading of its own");
     assert.ok(!text.includes("Question 1 of"), "a single question was numbered");
-    assert.equal(blocksIn(text).length, 1, "a single question asks for more than one block");
+    assert.equal(blocksIn(text).length, ONE_BLOCK, "a single question asks for more than one block");
+    // And NONE of the prose the several-question path adds. Asserted as the whole table rather
+    // than a sample: `count > 1` becoming `count > 0` put every one of these into every prompt
+    // in the workbook, contradicting the byte-identity this file's header claims, with the
+    // suite green — because every test that reads a one-question prompt was checking for the
+    // presence of things rather than the absence of these.
+    for (const [pattern, because] of LOAD_BEARING_ITEM) {
+      assert.ok(!pattern.test(text), `a single question was told: ${because}`);
+    }
+    assert.match(text, /offer me the block\.$/m, "a single question was asked for blocks plural");
+    assert.match(text, /outside the block\.$/m, "a single question was told to say things outside the blocks");
   });
 
   it("promptFor_AnItemWithAnUnknownGroup_RefusesTheWholeItem", () => {
@@ -1248,10 +1481,8 @@ type Item = {
   readonly groups: readonly string[];
 };
 
-let workbook: Promise<readonly Item[]> | undefined;
-
-function items(): Promise<readonly Item[]> {
-  workbook ??= (async () => {
+async function items(): Promise<readonly Item[]> {
+  {
     const { pages } = await buildPages({});
     const found: Item[] = [];
     for (const page of pages) {
@@ -1294,8 +1525,7 @@ function items(): Promise<readonly Item[]> {
       }
     }
     return found;
-  })();
-  return workbook;
+  }
 }
 
 /**
@@ -1371,9 +1601,19 @@ describe("every numbered item in the workbook", () => {
     );
 
     // Act & Assert
+    // The workbook as it stands, each one a claim about what this sweep is covering. 77 of the
+    // 113 questions take a written answer that is not a repeat's; 33 of the 34 repeats are in a
+    // numbered item (`values.additions` is the one outside every heading); and 10 of the 24
+    // several-question items have to name themselves, the other 14 being named already by the
+    // heading #91 gives their first question.
+    const WITH_FIELD_PRIORS = 77;
+    const WITH_INSTANCE_PRIORS = 33;
+    const NAMED = 10;
     let several = 0;
     let onlyChecklists = 0;
     let withFieldPriors = 0;
+    let withInstancePriors = 0;
+    let named = 0;
     for (const item of all) {
       const answerable = item.groups.filter((group) => findQuestion(group)?.kind !== "checklist");
       const { entries, instances, fields } = storeHolding(item.groups);
@@ -1412,6 +1652,8 @@ describe("every numbered item in the workbook", () => {
       // A dropped id is a reply the importer refuses: the assistant answers the slot it was
       // asked about, has no id to echo, and 0015 mints a new instance beside the existing one.
       for (const [group, ids] of instances) {
+        assert.ok(ids.length > 0, `${where} minted no identifiers for ${group} to carry`);
+        withInstancePriors += 1;
         for (const id of ids) {
           assert.ok(made.text.includes(id), `${where} dropped ${group}'s instance ${id}`);
         }
@@ -1446,6 +1688,23 @@ describe("every numbered item in the workbook", () => {
         for (const [pattern, because] of LOAD_BEARING_ITEM) {
           assert.match(made.text, pattern, `${where} is missing: ${because}`);
         }
+        // The number in that instruction, against this item's own count. The table can only
+        // check that A number is there, and a hardcoded one passes every item in the workbook.
+        assert.ok(
+          made.text.includes(`one fenced block for each of the ${answerable.length} questions`),
+          `${where} asks for the wrong number of blocks back`,
+        );
+        // Named, or named by its first question's ask — never neither, and never both.
+        const framed = made.text.includes("This is one numbered item of the worksheet:");
+        if (framed) {
+          named += 1;
+          assert.ok(made.text.includes(item.name), `${where} says it is named and then is not`);
+        }
+        const heading = (ASKS[answerable[0] ?? ""] ?? "").split("\n")[0] ?? "";
+        assert.ok(
+          framed || heading.replace(/[*_`]/g, "") === item.name,
+          `${where} named neither itself nor its first question's heading`,
+        );
       }
     }
     // Every branch above proved it ran. Without these, a change to the markup or the workbook
@@ -1453,6 +1712,11 @@ describe("every numbered item in the workbook", () => {
     // less than it says.
     assert.equal(several, SEVERAL_QUESTIONS, "the several-question items are not all swept");
     assert.equal(onlyChecklists, ONLY_CHECKLISTS, "the checklist-only refusal was never reached");
-    assert.ok(withFieldPriors > 0, "no item carried a prior that is not a repeat's");
+    // Exact, like the others. A floor here was the one counter that could quietly reach zero:
+    // emptying the identifiers `storeHolding` mints made the whole 0015 · C3 loop run no times
+    // across all 63 items with the suite green.
+    assert.equal(withFieldPriors, WITH_FIELD_PRIORS, "the questions carrying written answers changed");
+    assert.equal(withInstancePriors, WITH_INSTANCE_PRIORS, "the repeats carrying identifiers changed");
+    assert.equal(named, NAMED, "the split between items that name themselves and items whose first ask does changed");
   });
 });

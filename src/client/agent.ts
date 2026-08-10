@@ -267,7 +267,7 @@ function panelFor(
         // ordinary outcome — a group the schema does not hold means the markup and this build
         // disagree, which happens across a service worker activation — and the reader's copy
         // of the message says nothing a developer could act on.
-        console.error("life-compass: no message could be built", made.refusal);
+        console.error("life-compass: this question cannot be asked about", made.refusal);
         preview.textContent = explain(made.refusal);
         return;
       }
