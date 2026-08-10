@@ -250,6 +250,27 @@ describe("finding blocks in a reply", () => {
     assert.match(explain(refusal), /example question/i);
   });
 
+  it("readBlocks_AnEmptyBlockNamingTheExample_IsNotReportedAsAnAnswerThatWasLost", () => {
+    // Arrange — the boundary of the placeholder test. A block naming the example group and
+    // carrying no answers at all held nothing, so nothing was stranded in it; counting it told
+    // the reader an answer went missing when the block never had one. The other side of the
+    // boundary — a block carrying even one word of the reader's — is the case the count exists
+    // for, and is asserted beside it so neither can drift into the other.
+    const NONE = 0;
+    const ONE = 1;
+    const empty = { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group" };
+    const carrying = { ...empty, fields: { excess: "noise and hurry" } };
+
+    // Act
+    const withEmpty = readBlocks(pasteOf(block(SINGLE, { answer: "real" }), empty));
+    const withAnswer = readBlocks(pasteOf(block(SINGLE, { answer: "real" }), carrying));
+
+    // Assert
+    assert.ok(withEmpty.ok && withAnswer.ok);
+    assert.equal(withEmpty.stranded, NONE, "a block that held nothing was called a lost answer");
+    assert.equal(withAnswer.stranded, ONE, "a block holding the reader's words was not counted");
+  });
+
   it("readBlocks_EveryBlockStillNamingTheExample_SaysThatRatherThanNothingWasFound", () => {
     // Arrange — what a numbered item's prompt looks like pasted back: several example blocks
     // and no real one. Every one is skipped, so nothing is left — and "there is nothing from an

@@ -422,10 +422,12 @@ function isWorkedExample(parsed: Record<string, unknown>): boolean {
       values.push(own(one, "id"), ...(isObject(inner) ? Object.values(inner) : []));
     }
   }
+  // An empty block counts as the example rather than as a loss. Nothing was carried, so
+  // nothing was stranded — and `every` over no values is already true, so this is only saying
+  // that the emptiness is deliberate rather than an oversight. Warning about it would tell a
+  // reader an answer went missing when the block never held one.
   const said = values.filter((one) => one !== undefined);
-  return (
-    said.length > 0 && said.every((one) => one === EXAMPLE_ANSWER || one === EXAMPLE_ID)
-  );
+  return said.every((one) => one === EXAMPLE_ANSWER || one === EXAMPLE_ID);
 }
 
 /** One parsed object known to carry the right `format`. */
