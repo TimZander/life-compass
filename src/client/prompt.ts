@@ -246,9 +246,16 @@ function subject(question: Answerable): string {
 
   const shape =
     question.kind === "repeat"
-      ? `\n\nThis one repeats. The worksheet asks for between ${question.min} and ${question.max}, and ` +
-        `how many is my decision — ask me, and cover that many one at a time. Do not pad to reach ` +
-        `${question.max}, and do not stop at ${question.min} if I have more.`
+      ? question.min === question.max
+        // 31 of the 34 repeats have a single count. Phrased as a range they read "between
+        // 5 and 5 … do not stop at 5 if I have more", which is incoherent and actively
+        // invites the overflow `ceilingFor` then refuses — the prompt and the importer
+        // disagreeing, which is what sharing a ceiling exists to prevent.
+        ? `\n\nThis one repeats. The page holds ${question.min}, so ask about ${question.min} of ` +
+          `them, one at a time.`
+        : `\n\nThis one repeats. The worksheet asks for between ${question.min} and ${question.max}, ` +
+          `and how many is my decision — ask me, and cover that many one at a time. Do not pad ` +
+          `to reach ${question.max}, and do not stop at ${question.min} if I have more.`
       : question.kind === "sentence"
         ? `\n\nIt is a sentence to complete, not a form to fill: "${question.template}"`
         : "";

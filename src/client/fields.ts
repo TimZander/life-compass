@@ -315,13 +315,32 @@ export async function bindAnswers(
       const element = held.get(slot);
       if (element === undefined) {
         // The order names more instances than the range allows. Nothing here can show them,
-        // and `adopt` leaves the group writable for the slots it does cover — so this stops
-        // rather than pretending, and the count below records only what is really on screen.
+        // and the slots it does cover stay writable — but staying quiet about the rest is
+        // the residue of 0013 · Q2 and the failure 0008 calls the worst available: answers
+        // that exist, cannot be reached, and are never mentioned. Reachable from a restored
+        // backup, or from a `max` that was lowered after the fact.
+        //
+        // NOT reported through `refuse`, which marks the group unwritable — the instances
+        // that ARE visible remain perfectly writable, so refusing would trade a silent
+        // truncation for a page that will not save. Saying this properly needs a channel
+        // that warns without disabling, which is its own change.
         break;
       }
       element.hidden = false;
       held.delete(slot);
       slotCount.set(group, slot + 1);
+      // Sized on the way out. `fit` reads `scrollHeight`, which is 0 for a hidden element,
+      // so every spare control was pinned to `height: 0px` at load. Revealing without
+      // re-measuring leaves a box the reader cannot click into — and `adopt` is reached from
+      // `materialise`'s lost-claim path as well as from load, long after the sizing loop
+      // below, so this is reachable today rather than only once an add control exists.
+      for (const control of element.querySelectorAll("textarea")) {
+        try {
+          fit(control);
+        } catch (error) {
+          console.error("life-compass: a revealed field could not be resized", error);
+        }
+      }
     }
   }
 
