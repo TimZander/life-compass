@@ -83,8 +83,8 @@ One consequence follows, and is the reason this is an amendment rather than a fo
 object carrying the format is now found wherever it sits, including inside an assistant's
 prose explaining the shape. C8a's example group is what makes that safe — it names a group the
 schema does not contain, so a restated example cannot import. It is **ignored** — always, since
-C8b; a paste with nothing else in it then refuses because nothing is left, and says which of
-those two things happened. An assistant that illustrates with a REAL group instead would be
+C8b — and a paste holding nothing else then refuses for the reason that is actually true of it:
+every block in it named the example. An assistant that illustrates with a REAL group instead would be
 importable, and the confirmation surface is what stands between that and the reader's answers.
 
 **Anything that is not a matching block is ignored, and a paste with no matching block at all
@@ -361,16 +361,18 @@ structure is a block naming a question the schema holds.
 
 Two consequences follow, and the second is why this is a consequence rather than a footnote.
 
-*Which refusal a mis-tap gets, where an item asks more than one question.* `readBlocks` ignores
-an example-group block whenever another candidate sits beside it, so such a prompt pasted back
-is several example blocks and no real one, and nothing survives the ignoring. That used to
+*Which refusal a mis-tap gets.* `readBlocks` ignores an example-group block, so a prompt pasted
+back is nothing but example blocks and nothing survives the ignoring. That used to
 report "there is nothing from an assistant in that", which is half true — there plainly is,
 it just names the placeholder throughout. There is now a refusal for it that says so, and it
 has to serve two pastes the text cannot tell apart: the prompt itself, and a reply that
 substituted no groups at all — and it is now the answer for both, however many questions the
-prompt covered. Ignoring the example only when something real sat beside it meant the 37 items
-that ask a single question fell through to "there is nothing from an assistant in that", which
-is half true of a document that plainly is from one.
+prompt covered. Ignoring the example only when something real sat beside it split that in two:
+a single-question prompt pasted back reached the block reader and refused as `unknown-group`,
+naming the placeholder and suggesting "the identifier may have been altered" — advice about a
+fault that is not the reader's — while a several-question one was skipped down to nothing and
+refused as "there is nothing from an assistant in that", which is half true of a document that
+plainly is from one.
 
 *A reply that substitutes SOME of them.* This is the one that had to be designed rather than
 noted. An assistant that replaces three groups of four leaves an answer wearing the
@@ -381,10 +383,11 @@ instead would take the three good answers away with it. So the ignoring is **cou
 block carried the reader's words. An echo of the example carries the example's own placeholder
 text and nothing else, which is what tells the two apart; counting those as well would put a
 warning about lost answers over every thorough reply, and a warning that fires on the ordinary
-case is one nobody reads on the day it is true. The count then follows the reading to whichever
-surface the reader actually reaches — the confirmation, a refusal, the nothing-to-change
-notice, or the line that confirms the save — because each of those can be the last thing they
-are told. C1's "a whole day in one paste" carries
+case is one nobody reads on the day it is true. The count then follows the reading to each surface that can
+be the last thing the reader is told — the confirmation, a refused plan, the nothing-to-change
+notice, and the line that confirms the save. The paths it does not reach are the ones where the
+reply is still in the box and nothing was written: a store that would not open, a save that
+failed, and a paste refused before any of it was read. C1's "a whole day in one paste" carries
 this cost at every scale, and it is paid where the reader can see it.
 
 *None of this is what makes the mis-tap safe.* That is worth stating plainly because this

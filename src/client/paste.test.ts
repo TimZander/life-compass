@@ -259,8 +259,9 @@ describe("reading a reply", () => {
 
     // Assert
     const shown = view.detail.textContent ?? "";
-    assert.ok(shown.includes(`${LEFT_OUT} answers in that reply`), `it did not say ${LEFT_OUT}: ${shown}`);
-    assert.ok(!shown.includes("One answer in that reply"), "two left out were reported as one");
+    assert.ok(shown.includes(`${LEFT_OUT} blocks of that reply`), `it did not say ${LEFT_OUT}: ${shown}`);
+    assert.ok(!shown.includes("One block of that reply"), "two left out were reported as one");
+    assert.ok(view.banner().includes(`${LEFT_OUT} blocks of that reply`), "the plural was not announced");
   });
 
   it("wirePaste_AnAnswerLeftOut_SaysSoAboveTheListItIsMissingFrom", async () => {
@@ -279,9 +280,14 @@ describe("reading a reply", () => {
     await settle();
 
     // Assert
+    const ONCE = 1;
     const notices = view.detail.querySelectorAll(".paste-skipped");
-    assert.equal(notices.length, 1, "the notice is missing, or shown more than once");
-    assert.equal(notices[0]?.getAttribute("role"), "status", "the notice is not announced");
+    assert.equal(notices.length, ONCE, "the notice is missing, or shown more than once");
+    // Announced through the banner, which the layout renders statically. An element created
+    // and filled in one task is not announced however it is labelled — `banner.ts` records
+    // that rule — so a `role` on this note would certify an attribute rather than a reader
+    // hearing anything.
+    assert.match(view.banner(), /still named the example question/i, "the notice is not announced");
     const shown = view.detail.textContent ?? "";
     assert.ok(
       shown.indexOf("still named the example question") < shown.indexOf("new answer"),

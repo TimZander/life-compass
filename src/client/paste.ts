@@ -215,8 +215,8 @@ export function wirePaste(
    */
   const strandedNote = (count: number): string =>
     count === 1
-      ? "One answer in that reply still named the example question, so it could not be matched to anything. If a question you talked about is missing, that is the one — ask your assistant to send it again with the question's own name."
-      : `${count} answers in that reply still named the example question, so they could not be matched to anything. If questions you talked about are missing, those are the ones — ask your assistant to send them again with each question's own name.`;
+      ? "One block of that reply still named the example question, so nothing in it could be matched. If a question you talked about is missing, that is the one — ask your assistant to send it again with the question's own name."
+      : `${count} blocks of that reply still named the example question, so nothing in them could be matched. If questions you talked about are missing, those are the ones — ask your assistant to send them again with each question's own name.`;
 
   const readReply = async (): Promise<void> => {
     const mine = (generation += 1);
@@ -246,11 +246,11 @@ export function wirePaste(
       return;
     }
 
-    // Said before anything else that follows, because every path from here can end without the
-    // reader ever seeing the confirmation surface. A refusal, a plan with nothing in it, or a
-    // save — each one used to be the last word, and each one used to omit this.
+    // `warn`, not `error`: an assistant leaving a placeholder on a block is an ordinary reply
+    // fault the reader is told about directly, not the developer-facing disagreement `error` is
+    // reserved for in this tier. Logged at all so a device session shows it happened.
     if (reading.stranded > 0) {
-      console.error("life-compass: answers were left out of a reply", reading.stranded);
+      console.warn("life-compass: blocks were left out of a reply", reading.stranded);
     }
 
     const planned = planFor(reading.blocks, entries);
@@ -304,14 +304,16 @@ export function wirePaste(
     if (reading.stranded > 0) {
       const note = document.createElement("p");
       note.className = "paste-skipped";
-      // `role="status"` because this region is not otherwise announced: `#paste-confirm` has no
-      // live region and takes no focus when it appears, so a reader working by ear met the one
-      // warning that has to be read before an irreversible write with silence — while the
-      // banner, which carries less consequential news, is announced. 0001 makes that the wrong
-      // way round.
-      note.setAttribute("role", "status");
       note.textContent = strandedNote(reading.stranded);
       left.push(note);
+      // And SAID, through the banner. This element carries no `role` of its own because one
+      // would not work: `banner.ts` records the rule — "a screen reader only announces changes
+      // to a live region that existed before the change — creating the region and filling it
+      // in the same task is routinely missed entirely" — and this note is created, filled and
+      // inserted into a container that is still hidden, which is that mistake three times over.
+      // The banner is the region the layout renders statically for exactly this, and 0001 makes
+      // the one warning owed before an irreversible write the last one that may go unheard.
+      say(strandedNote(reading.stranded));
     }
     detail.replaceChildren(
       ...left,

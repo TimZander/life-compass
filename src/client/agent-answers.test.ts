@@ -271,6 +271,62 @@ describe("finding blocks in a reply", () => {
     assert.equal(withAnswer.stranded, ONE, "a block holding the reader's words was not counted");
   });
 
+  it("readBlocks_AnswersWearingTheExampleGroupInAShapeTheReaderCannotWalk_AreStillReported", () => {
+    // Arrange — the hole the empty-block exemption opened. "Carried nothing" and "carried
+    // something I could not read" are different answers, and the emptiness test collapsed them:
+    // a block whose words sat in a container `isWorkedExample` does not walk yielded no values,
+    // read as empty, and was passed over in silence — over the reader's own words, which is the
+    // loss the count exists to report. Every one of these under a REAL group is refused loudly
+    // by `readBlock`; wearing the example group must not turn a refusal into nothing at all.
+    const LEFT_OUT = 1;
+    const shapes: readonly (readonly [name: string, block: Record<string, unknown>])[] = [
+      ["fields as an array", { fields: ["my words", "more of my words"] }],
+      ["instances as an object", { instances: { fields: { title: "my words" } } }],
+      ["an instance's fields as a string", { instances: [{ fields: "my words" }] }],
+      ["an instance that is not an object", { instances: [null] }],
+      // The one shape the container guards decide by themselves: `Object.values` happens to
+      // read an array or a string, so most malformations are caught by their contents. An
+      // EMPTY one has no contents to catch it, and a container the contract does not permit is
+      // something this cannot read rather than something that held nothing.
+      ["an empty fields array", { fields: [] }],
+    ];
+
+    // Act & Assert
+    for (const [name, rest] of shapes) {
+      const read = readBlocks(
+        pasteOf(block(SINGLE, { answer: "the one that landed" }), {
+          format: "life-compass/agent-answers",
+          version: 1,
+          group: "example.not_a_real_group",
+          ...rest,
+        }),
+      );
+      assert.ok(read.ok, `${name} refused the whole paste`);
+      assert.equal(read.stranded, LEFT_OUT, `${name} was passed over in silence`);
+    }
+  });
+
+  it("readBlocks_ARepeatsAnswersWearingTheExampleGroup_AreReportedLikeAnyOther", () => {
+    // Arrange — the count was only ever tested against `answer` and `fields`. A repeat carries
+    // its words two levels down, so a mistake in walking `instances` would lose the shape that
+    // holds the MOST of them — day 1's chapters are five entries of three fields each — and
+    // every test would still pass.
+    const LEFT_OUT = 1;
+    const text = pasteOf(block(SINGLE, { answer: "the one that landed" }), {
+      format: "life-compass/agent-answers",
+      version: 1,
+      group: "example.not_a_real_group",
+      instances: [{ id: "5f1c8e2a-0000-4000-8000-000000000001", fields: { title: "The garage-band years" } }],
+    });
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok);
+    assert.equal(read.stranded, LEFT_OUT, "a repeat's answers were passed over in silence");
+  });
+
   it("readBlocks_EveryBlockStillNamingTheExample_SaysThatRatherThanNothingWasFound", () => {
     // Arrange — what a numbered item's prompt looks like pasted back: several example blocks
     // and no real one. Every one is skipped, so nothing is left — and "there is nothing from an

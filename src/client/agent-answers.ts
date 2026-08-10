@@ -355,10 +355,13 @@ export function readBlocks(text: string): Reading {
     // reply unusable.
     //
     // Ignored whether or not something real sits beside it. It used to be ignored ONLY then,
-    // so a paste of nothing but examples fell through to "there is nothing from an assistant
-    // in that" — half true of a document that plainly is from one. Now the emptiness is what
-    // reports itself, in one sentence that fits both a mis-tapped prompt and a reply that
-    // substituted no groups at all.
+    // which gave a mis-tapped prompt two different answers depending on how many questions it
+    // covered: one example block reached `readBlock` and refused as `unknown-group`, naming the
+    // placeholder and offering "the identifier may have been altered" — advice about a fault
+    // that is not the reader's; several were all skipped and left nothing, which refused as
+    // "there is nothing from an assistant in that", half true of a document that plainly is
+    // from one. One reading now, and the emptiness reports itself in a sentence that fits both
+    // a mis-tapped prompt and a reply that substituted no groups at all.
     if (own(parsed, "group") === EXAMPLE_GROUP) {
       // …but an ignored block is not always an example. #82 asks for one block per question of
       // a numbered item and shows one example each, all naming this group, so an assistant that
@@ -390,8 +393,12 @@ export function readBlocks(text: string): Reading {
     // itself, mis-tapped back into the box seconds after copying (0015 · C8a), and a reply
     // that substituted none of the example groups. One sentence has to serve both, so it
     // names what is actually in the paste rather than guessing which happened.
-    const anyExample = candidates.some((one) => own(one, "group") === EXAMPLE_GROUP);
-    return { ok: false, refusal: anyExample ? { kind: "example-only" } : { kind: "no-blocks" } };
+    // Every candidate that was not an example either pushed a block or returned a refusal, so
+    // reaching here with none means every one of them was an example.
+    return {
+      ok: false,
+      refusal: candidates.length > 0 ? { kind: "example-only" } : { kind: "no-blocks" },
+    };
   }
   return { ok: true, blocks, stranded };
 }
@@ -407,25 +414,46 @@ export function readBlocks(text: string): Reading {
  * answers over a reply that lost none.
  */
 function isWorkedExample(parsed: Record<string, unknown>): boolean {
-  const values: unknown[] = [own(parsed, "answer")];
+  const answer = own(parsed, "answer");
   const fields = own(parsed, "fields");
-  if (isObject(fields)) {
+  const instances = own(parsed, "instances");
+
+  // "Carried nothing" and "carried something I could not read" are different answers, and
+  // collapsing them is how this went wrong once already: the test was `values.length > 0`, so a
+  // block whose words sat in a shape this function does not walk — `fields` as an array,
+  // `instances` as an object — yielded no values, was read as empty, and was passed over in
+  // silence over the reader's own words. So an unreadable container returns false below rather
+  // than contributing nothing: the same shape under a REAL group is refused loudly by
+  // `readBlock`, and wearing the example group must not turn a refusal into nothing at all.
+  //
+  // A block carrying none of the three keys needs no branch of its own — nothing is collected
+  // and `every` over nothing is already true, which is the right answer: nothing was in it, so
+  // nothing was stranded in it.
+  const values: unknown[] = [];
+  if (answer !== undefined) {
+    values.push(answer);
+  }
+  if (fields !== undefined) {
+    if (!isObject(fields)) {
+      return false;
+    }
     values.push(...Object.values(fields));
   }
-  const instances = own(parsed, "instances");
-  if (Array.isArray(instances)) {
+  if (instances !== undefined) {
+    if (!Array.isArray(instances)) {
+      return false;
+    }
     for (const one of instances) {
       if (!isObject(one)) {
         return false;
       }
       const inner = own(one, "fields");
+      if (inner !== undefined && !isObject(inner)) {
+        return false;
+      }
       values.push(own(one, "id"), ...(isObject(inner) ? Object.values(inner) : []));
     }
   }
-  // An empty block counts as the example rather than as a loss. Nothing was carried, so
-  // nothing was stranded — and `every` over no values is already true, so this is only saying
-  // that the emptiness is deliberate rather than an oversight. Warning about it would tell a
-  // reader an answer went missing when the block never held one.
   const said = values.filter((one) => one !== undefined);
   return said.every((one) => one === EXAMPLE_ANSWER || one === EXAMPLE_ID);
 }

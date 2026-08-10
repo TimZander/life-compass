@@ -790,21 +790,25 @@ describe("refusals", () => {
     // way, `wrong-prior` could return the checklist sentence verbatim and pass — which is
     // exactly "a branch that returned the checklist message for anything added later", the
     // defect this test's own first line says it exists to prevent.
-    const MEANS: readonly (readonly [kind: Refusal["kind"], says: RegExp])[] = [
-      ["unknown-group", /no question called/i],
-      ["checklist", /checklist to work through yourself/i],
-      ["wrong-prior", /not the shape that question takes/i],
-      ["repeated-group", /appears twice/i],
-      ["unprintable-instance", /cannot be put into a message safely/i],
-    ];
+    // Keyed by the union rather than listed, so a kind added to `Refusal` without a line here
+    // is a COMPILE error. The previous guard was `MEANS.length + 1 === 6`, which is 5 + 1 and
+    // could only ever fail if somebody edited the table and forgot the literal — the opposite
+    // of what its message claimed, and an assertion that cannot fail in a file whose whole
+    // theme is assertions that cannot fail.
+    const MEANS: Readonly<Record<Exclude<Refusal["kind"], "nothing-to-ask">, RegExp>> = {
+      "unknown-group": /no question called/i,
+      checklist: /checklist to work through yourself/i,
+      "wrong-prior": /not the shape that question takes/i,
+      "repeated-group": /appears twice/i,
+      "unprintable-instance": /cannot be put into a message safely/i,
+    };
 
     // Act & Assert
-    for (const [kind, says] of MEANS) {
-      const said = explain({ kind, group: GROUP });
+    for (const [kind, says] of Object.entries(MEANS)) {
+      const said = explain({ kind, group: GROUP } as Refusal);
       assert.ok(said.includes(GROUP), `${kind} does not name the question`);
       assert.match(said, says, `${kind} does not say what went wrong`);
     }
-    assert.equal(MEANS.length + 1, 6, "a refusal kind was added without a line here");
     // The one refusal with no group to name: an empty list is a caller with nothing to ask
     // about, so there is no identifier to put in the sentence. Held to its meaning rather than
     // to its length — returning ".." passed when this asserted only that it was non-empty,
@@ -872,6 +876,10 @@ const LOAD_BEARING_ITEM: readonly (readonly [pattern: RegExp, because: string])[
   [/leave its block out altogether/i, "an empty block for a skipped question deletes stored words"],
   [/the only fenced blocks in it/i, "0015 scans every fence; a stray one is imported too"],
   [/say anything else you\s+want to say outside the blocks\./i, "the singular reads as licence to put the other three inside prose"],
+  [
+    /copy the id of\s+the entry you are answering exactly/i,
+    "an id replaced rather than echoed matches no stored entry, so every answer is minted beside the reader's own",
+  ],
 ];
 
 describe("a numbered item that asks several questions", () => {
@@ -891,7 +899,7 @@ describe("a numbered item that asks several questions", () => {
 
   it("promptFor_AnItemWhoseQuestionsDoNotNameIt_SaysWhichItemTheyBelongTo", () => {
     // Arrange — the item's name is the only thing that says four questions are one exercise,
-    // and on 11 of the 24 several-question items nothing else carries it: `rday3`'s second
+    // and on 10 of the 24 several-question items nothing else carries it: `rday3`'s second
     // item opens on the ask "**Calendar:**", which tells an assistant nothing about what is
     // being worked on. Asserted with a name NO ask contains, because the obvious fixture is
     // vacuous — day 4's item name is also the first line of its first question's ask, so a
@@ -978,7 +986,7 @@ describe("a numbered item that asks several questions", () => {
   it("promptFor_AnItemItsFirstQuestionAlreadyNames_DoesNotSayItTwice", () => {
     // Arrange — #91 gives a question with no prose of its own the prose above it, and for the
     // first question under a numbered heading that prose IS the heading. Printing our own line
-    // as well put the item's name twice, three lines apart, on 13 of the 24 several-question
+    // as well put the item's name twice, three lines apart, on 14 of the 24 several-question
     // items — the duplication `questions()` gives as its reason for not naming a single
     // question's item at all. The reader's words are never edited to make room for ours, so
     // ours is what gives way.
@@ -1482,8 +1490,7 @@ type Item = {
 };
 
 async function items(): Promise<readonly Item[]> {
-  {
-    const { pages } = await buildPages({});
+  const { pages } = await buildPages({});
     const found: Item[] = [];
     for (const page of pages) {
       // The decision records carry no questions; skipping them keeps the build's own pages
@@ -1524,8 +1531,7 @@ async function items(): Promise<readonly Item[]> {
         });
       }
     }
-    return found;
-  }
+  return found;
 }
 
 /**

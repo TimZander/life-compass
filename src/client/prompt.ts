@@ -505,7 +505,7 @@ function questions(item: string, parts: readonly Asked[]): string {
     );
   }
 
-  // Named unless the first question's ask already opens with that name, which it does on 13 of
+  // Named unless the first question's ask already opens with that name, which it does on 14 of
   // the 24 items that ask more than one question: #91 gives a question with no prose of its own
   // the prose above it, and for the first question under a numbered heading that prose IS the
   // heading. Printing both put the item's name twice, three lines apart — the duplication this
@@ -590,9 +590,11 @@ function howToAnswer(parts: readonly Asked[]): string {
   return (
     `## How to give the answers back\n\n` +
     `At the end, output one fenced block for each of the ${parts.length} questions above, in the same\n` +
-    `order — the last thing in your reply, and the only fenced blocks in it. In each one, put the\n` +
-    `group named above it where the example has its own, and replace every placeholder with what\n` +
-    `I actually said — including the id, where one is shown. If we never got to one of the\n` +
+    `order — the last thing in your reply, and the only fenced blocks in it. In each one, put\n` +
+    `the group named above it where the example has its own, and put what I actually said\n` +
+    `wherever the example says "${EXAMPLE_ANSWER}". Where a block shows an id, copy the id of\n` +
+    `the entry you are answering exactly as it is written above — that is what carries my\n` +
+    `answer to the right entry, and inventing one loses it. If we never got to one of the\n` +
     `questions, leave its block out altogether rather than sending an empty one.\n\n` +
     `${shown.join("\n\n")}\n\n` +
     `Every value is plain text on one line. If I did not answer something, **leave that key\n` +
@@ -675,7 +677,7 @@ export function explain(refusal: Refusal): string {
     case "repeated-group":
       return `${refusal.group} appears twice in this numbered item, and one question can only be answered once.`;
     case "unprintable-instance":
-      return `The entries saved for ${refusal.group} are identified in a way that cannot be put into a message safely, so nothing can be asked about them.`;
+      return `The entries saved for ${refusal.group} are identified in a way that cannot be put into a message safely, so nothing in this numbered item can be asked about.`;
     case "nothing-to-ask":
       return "There is no question here for an assistant to ask about.";
   }

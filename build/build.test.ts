@@ -757,6 +757,21 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     }
   });
 
+  /**
+   * Every selector the stylesheet actually styles, comments stripped and `@media` unwrapped.
+   *
+   * Comments are stripped because a scan that reads them reports `.backup` as styled — this
+   * file's own comment says every `.backup` rule is dead, which is the exact class the drift
+   * check exists for. A rule inside `@media` needs no unwrapping: `[^{}]*` cannot cross a
+   * brace, so the inner rule is the only thing that matches and it matches on its own.
+   */
+  function selectorsIn(css: string): readonly string[] {
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    return [...bare.matchAll(/([^{}]+)\{[^{}]*\}/g)].flatMap((rule) =>
+      (rule[1] ?? "").split(",").map((one) => one.trim()),
+    );
+  }
+
   it("styleSheet_EveryClassThePasteSurfaceSets_HasARuleToStyleIt", async () => {
     // Arrange — the dead-`.backup`-rule failure from the other end. That rule was keyed on a
     // class the markup never carried; this is the same drift with the halves swapped, and it is
@@ -777,15 +792,30 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     // to suit the test.
     assert.ok(assigned.length > 0, "no class names were found; the pattern has drifted");
     assert.ok(assigned.includes("paste-skipped"), "the notice that warns is no longer set here");
-    const selectors = [...css.matchAll(/([^{}]+)\{[^}]*\}/g)].flatMap((rule) =>
-      (rule[1] ?? "").split(",").map((one) => one.trim()),
-    );
+    const selectors = selectorsIn(css);
     for (const name of new Set(assigned)) {
       assert.ok(
         selectors.some((one) => new RegExp(`\\.${name}(?![\\w-])`).test(one)),
         `.${name} is set by paste.ts and nothing in the stylesheet matches it`,
       );
     }
+  });
+
+  it("styleSheet_AClassNamedOnlyInAComment_DoesNotCountAsStyled", () => {
+    // Arrange — negative case for the scan above, and not a hypothetical one: `.backup` appears
+    // in this stylesheet only inside a comment SAYING every `.backup` rule is dead, so a scan
+    // that read comments would report the one class the whole check was written about as
+    // styled. The nested-rule case is the other half — a class styled only inside `@media`
+    // must count, or the check fails a rule that is really there.
+    const CSS = "/* .ghost is gone */\n.real{color:red}\n@media print{.only-print{display:none}}";
+
+    // Act
+    const found = selectorsIn(CSS);
+
+    // Assert
+    assert.ok(!found.some((one) => one.includes(".ghost")), "a class named in a comment counted as styled");
+    assert.ok(found.includes(".real"), "an ordinary rule was missed");
+    assert.ok(found.includes(".only-print"), "a rule inside @media was missed");
   });
 
   it("styleSheet_ADeclarationWithTheRightPropertyButAWrongValue_IsNotAccepted", () => {
