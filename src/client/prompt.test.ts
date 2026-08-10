@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ASKS } from "./schema.ts";
+import { ASKS, WORKSHEETS } from "./schema.ts";
 import { explain, findQuestion, priorFrom, promptFor, type Prior } from "./prompt.ts";
 
 /** A prompt, or a failed assertion saying why there wasn't one. */
@@ -165,6 +165,38 @@ describe("the instructions the prompt is carrying", () => {
     assert.equal(example.format, FORMAT);
     assert.equal(example.version, VERSION);
     assert.equal(typeof example.version, "number", "a string version is refused on the way back");
+  });
+
+  it("promptFor_EveryRepeatInTheSchema_IsPhrasedForItsOwnRange", () => {
+    // Arrange — 31 of the 34 repeats have min === max, and both other prompt tests pick one
+    // of the three that does have a range. So the range wording shipped reading "between 5
+    // and 5 … do not stop at 5 if I have more" for 91% of repeats — incoherent, and it
+    // invites exactly the overflow the importer then refuses. Replacing that whole sentence
+    // with garbage left the suite green, which is how it got through.
+    const repeats = WORKSHEETS.flatMap((one) => one.questions).filter((one) => one.kind === "repeat");
+    assert.ok(repeats.length > 30, "the schema no longer has enough repeats to be worth sweeping");
+
+    // Act & Assert
+    for (const question of repeats) {
+      if (question.kind !== "repeat") {
+        continue;
+      }
+      const said = textFor(question.id);
+      const line = said.split("\n").find((one) => one.includes("This one repeats")) ?? "";
+      assert.notEqual(line, "", `${question.id} says nothing about repeating`);
+      if (question.min === question.max) {
+        assert.ok(
+          !line.includes("between"),
+          `${question.id} is offered a range it does not have: ${line}`,
+        );
+        assert.ok(line.includes(`${question.min}`), `${question.id} does not say how many`);
+      } else {
+        assert.ok(
+          line.includes(`between ${question.min} and ${question.max}`),
+          `${question.id} does not carry its range: ${line}`,
+        );
+      }
+    }
   });
 
   it("promptFor_ARepeatWithADifferentRange_CarriesItsOwnNumbers", () => {

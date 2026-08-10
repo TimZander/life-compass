@@ -255,7 +255,7 @@ function subject(question: Answerable): string {
           `them, one at a time.`
         : `\n\nThis one repeats. The worksheet asks for between ${question.min} and ${question.max}, ` +
           `and how many is my decision — ask me, and cover that many one at a time. Do not pad ` +
-          `to reach ${question.max}, and do not stop at ${question.min} if I have more.`
+          `to reach ${renderedSlots(question)}, and do not stop at ${question.min} if I have more.`
       : question.kind === "sentence"
         ? `\n\nIt is a sentence to complete, not a form to fill: "${question.template}"`
         : "";
