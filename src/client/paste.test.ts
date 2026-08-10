@@ -188,6 +188,76 @@ describe("reading a reply", () => {
     assert.equal(fake.merged.length, 0, "answers were written before the reader agreed");
   });
 
+  it("wirePaste_AReplyThatLeftABlockNamingTheExample_SaysSoBeforeTheReaderApproves", async () => {
+    // Arrange — the failure #82's prompt makes ordinary. A prompt covering a numbered item
+    // shows one worked example per question and every one names the same placeholder group, so
+    // an assistant that substitutes one of two leaves a block the importer cannot attribute.
+    // It is skipped rather than refused, because refusing would throw away the answer that DID
+    // come back — but skipping it in silence showed the reader a tally of one, which is a true
+    // statement about what was read and a false one about what they dictated. Said above the
+    // tally, because it is about what is missing from it.
+    const ANSWER = "That I showed up for the people who needed it.";
+    const fake = recorder();
+    const view = page(fake);
+    view.text.value =
+      `Here you go.\n\n\`\`\`json\n${JSON.stringify(block(SINGLE, { answer: ANSWER }))}\n\`\`\`\n\n` +
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "what I said" }))}\n\`\`\``;
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    assert.equal(view.confirm.hidden, false, "the reader was shown nothing");
+    const shown = view.detail.textContent ?? "";
+    assert.match(shown, /still named the example question/i, "the block left out is not mentioned");
+    assert.match(shown, /1 new answer/, "what did come back is no longer shown");
+    assert.equal(fake.merged.length, 0, "answers were written before the reader agreed");
+  });
+
+  it("wirePaste_NothingToChangeButABlockLeftOut_StillSaysABlockWasLeftOut", async () => {
+    // Arrange — the path that never reaches the confirmation surface, and so never reached the
+    // notice above it. An assistant asked to review what the reader already had agrees with it
+    // word for word, and leaves the one NEW question's block naming the example group: the
+    // plan is empty, the reader is told "there is nothing to change", and the question they
+    // spent the interview on is the one thing that did not come back. True about what was
+    // read, false about what they said.
+    const MINE = "That I showed up for the people who needed it.";
+    const fake = recorder(new Map([[SINGLE, MINE]]));
+    const view = page(fake);
+    view.text.value =
+      `Here you go.\n\n\`\`\`json\n${JSON.stringify(block(SINGLE, { answer: MINE }))}\n\`\`\`\n\n` +
+      `\`\`\`json\n${JSON.stringify(block("example.not_a_real_group", { answer: "the new one" }))}\n\`\`\``;
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    assert.equal(view.confirm.hidden, true, "there was something to approve after all");
+    assert.match(view.banner(), /still named the example question/i, "the block left out is not mentioned");
+    assert.equal(fake.merged.length, 0);
+  });
+
+  it("wirePaste_AReplyWithNothingLeftOut_SaysNothingAboutBlocksLeftOut", async () => {
+    // Arrange — the negative case, and the reason it matters more than it looks: a warning
+    // shown on every import is a warning nobody reads by the third one. This is the ordinary
+    // path, and it has to stay quiet.
+    const fake = recorder();
+    const view = page(fake);
+    view.text.value = reply(block(SINGLE, { answer: "Something plain." }));
+
+    // Act
+    view.read.click();
+    await settle();
+
+    // Assert
+    assert.ok(
+      !/example question/i.test(view.detail.textContent ?? ""),
+      "a clean reply was warned about anyway",
+    );
+  });
+
   it("wirePaste_AnOverwrite_IsShownInFullBeforeAndAfter", async () => {
     // Arrange — an addition fills a blank and needs no review; a change replaces the reader's
     // own words and is the case the surface exists for. Showing only the new text would ask

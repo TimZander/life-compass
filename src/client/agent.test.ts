@@ -156,6 +156,38 @@ describe("the controls against what the build actually renders", () => {
     assert.ok(previews[0]?.includes('"group": "day4.eulogy"'), "the first panel has the wrong question");
     assert.ok(previews[1]?.includes('"group": "day1.chapters"'), "the second panel has the wrong question");
   });
+
+  it("wireQuestionControls_EachControl_AsksAboutItsOwnQuestionAndNoOther", async () => {
+    // Arrange — #82 turned `promptFor` into a function over a LIST of questions, and nothing
+    // here held this call site to passing one. Duplicating the part — two entries for the same
+    // question, which is what a careless read of the next slice would produce — left every
+    // assertion above green while the panel offered "Question 1 of 2" and asked for two blocks
+    // about one question. A reply to that is refused by `readBlocks` as a repeated group, so
+    // the reader would interview, paste, and be told no.
+    const document = worksheet("day4.eulogy");
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
+    await settle();
+    const preview = document.querySelector(".agent-preview")?.textContent ?? "";
+
+    // Assert — one question, so the one-question prompt, down to it not being numbered.
+    assert.ok(preview.includes('"group": "day4.eulogy"'), "the panel has the wrong question");
+    assert.ok(!preview.includes("Question 1 of"), "one control asked about more than one question");
+    assert.equal(
+      (preview.match(/```/g) ?? []).length,
+      2,
+      "one control asked for more than one block back",
+    );
+    // And the item name is not this control's label. `nameFor` produces a screen-reader name —
+    // clipped, sometimes suffixed "(2)" — which is not what the worksheet calls a numbered
+    // item, so passing it here would print a button label as the page's own words.
+    assert.ok(
+      !preview.includes("one numbered item of the worksheet"),
+      "a single question was framed as a numbered item",
+    );
+  });
 });
 
 describe("the opt-in", () => {

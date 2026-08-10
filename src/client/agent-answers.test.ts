@@ -132,10 +132,16 @@ describe("finding blocks in a reply", () => {
     assert.equal(answerOf(blocks[0]), ANSWER);
   });
 
-  it("readBlocks_TheWorkedExampleRepeatedBesideARealAnswer_IsIgnored", () => {
+  it("readBlocks_TheWorkedExampleRepeatedBesideARealAnswer_IsIgnoredAndCounted", () => {
     // Arrange — an assistant restating the shape it was given. 0015 · C8a puts a group the
     // schema does not contain into the example precisely so it can never be imported; refusing
     // the whole paste because the assistant was thorough would make a verbose reply unusable.
+    //
+    // Counted as well as ignored, since #82. A prompt covering a numbered item shows one
+    // example per question and every one of them names this group, so "a block still named the
+    // example" stopped meaning "the assistant was chatty" and started also meaning "one of your
+    // four questions did not come back". Which of the two it is cannot be told apart from here
+    // — so the count travels and the confirmation surface says a block was left out.
     const ANSWER = "the real one";
     const ONE = 1;
     const text = pasteOf(
@@ -144,11 +150,52 @@ describe("finding blocks in a reply", () => {
     );
 
     // Act
-    const blocks = blocksIn(text);
+    const read = readBlocks(text);
 
     // Assert
-    assert.equal(blocks.length, ONE, "the worked example was imported");
-    assert.equal(answerOf(blocks[0]), ANSWER);
+    assert.ok(read.ok, "the paste was refused");
+    assert.equal(read.blocks.length, ONE, "the worked example was imported");
+    assert.equal(answerOf(read.blocks[0]), ANSWER);
+    assert.equal(read.skipped, ONE, "the block left out was not counted");
+  });
+
+  it("readBlocks_ARealAnswerForEveryQuestion_ReportsNothingLeftOut", () => {
+    // Arrange — the negative case for that count, and the ordinary one: a reply to a numbered
+    // item that substituted every group. A count that was always non-zero would put a warning
+    // about missing answers on every successful import, which is the surest way to teach a
+    // reader to ignore it.
+    const NONE = 0;
+    const text = pasteOf(block(SINGLE, { answer: "one" }), block(SENTENCE, { fields: { excess: "two" } }));
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok);
+    assert.equal(read.skipped, NONE, "a reply that left nothing out says it did");
+  });
+
+  it("readBlocks_SomeGroupsStillNamedTheExample_ImportsTheRestAndSaysOneWasLeftOut", () => {
+    // Arrange — the failure #82's prompt makes ordinary, and the reason the count exists at
+    // all. Every example in a several-question prompt names the placeholder group, so an
+    // assistant that substitutes two of three leaves one block that cannot be attributed. It
+    // used to be dropped in silence: the reader saw two questions in the tally, approved, and
+    // found the third still blank later. 0008 calls that the worst failure available here.
+    const IMPORTED = 2;
+    const LEFT_OUT = 1;
+    const text = pasteOf(
+      block(SINGLE, { answer: "one" }),
+      { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", fields: { excess: "two" } },
+      block(SENTENCE, { fields: { excess: "three" } }),
+    );
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok, "the answers that did come back were refused with the one that did not");
+    assert.equal(read.blocks.length, IMPORTED);
+    assert.equal(read.skipped, LEFT_OUT, "the question that did not come back is not reported");
   });
 
   it("readBlocks_TheWorkedExampleOnItsOwn_IsStillRefusedLoudly", () => {
@@ -167,6 +214,25 @@ describe("finding blocks in a reply", () => {
 
     // Assert
     assert.equal(refusal.kind, "unknown-group");
+  });
+
+  it("readBlocks_EveryBlockStillNamingTheExample_SaysThatRatherThanNothingWasFound", () => {
+    // Arrange — what a numbered item's prompt looks like pasted back: several example blocks
+    // and no real one. Every one is skipped, so nothing is left — and "there is nothing from an
+    // assistant in that" is only half true, because there plainly is, it just names the
+    // placeholder throughout. One sentence has to serve this and a reply that substituted no
+    // groups at all, since the text cannot tell them apart.
+    const text = pasteOf(
+      { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", answer: "what I said" },
+      { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", fields: { excess: "…" } },
+    );
+
+    // Act
+    const refusal = refusalFor(text);
+
+    // Assert
+    assert.equal(refusal.kind, "example-only");
+    assert.match(explain(refusal), /example question/i, "the refusal does not say what is wrong with it");
   });
 
   it("readBlocks_AWholeDayInOnePaste_ReadsEveryBlockInOrder", () => {
@@ -979,6 +1045,7 @@ describe("what the reader is told", () => {
     // reply about words they dictated.
     const EVERY: readonly (readonly [Refusal, RegExp])[] = [
       [{ kind: "no-blocks" }, /code block/],
+      [{ kind: "example-only" }, /example question/],
       [{ kind: "cut-off" }, /cut off/],
       [{ kind: "repeated-group", group: REPEAT }, /twice/],
       [{ kind: "repeated-instance", group: REPEAT }, /same entry/],

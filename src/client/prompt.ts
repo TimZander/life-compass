@@ -1,5 +1,5 @@
 /**
- * The prompt one question group becomes.
+ * The prompt one numbered item becomes.
  *
  * The copy-out half of the bridge (docs/decisions/0007). It builds the text a reader hands to
  * an assistant of their choosing, and it builds it here — as a value, from the schema — so
@@ -49,7 +49,31 @@ export type Answerable = Exclude<Question, { readonly kind: "checklist" }>;
 export type Refusal =
   | { readonly kind: "unknown-group"; readonly group: string }
   | { readonly kind: "checklist"; readonly group: string }
-  | { readonly kind: "wrong-prior"; readonly group: string };
+  | { readonly kind: "wrong-prior"; readonly group: string }
+  /**
+   * One question twice in the same item — asked for, it produces a reply the importer refuses.
+   *
+   * The same kind name `agent-answers.ts` uses, because it is the same fact seen from the other
+   * end: `readBlocks` and `planFor` both refuse a paste naming one group twice, so a prompt
+   * that asked for two blocks of one question would be asking for something that cannot be
+   * accepted. `planFor` re-checks its own precondition for this reason, and says why — an
+   * exported function whose only caller happens to be correct is where a precondition gets
+   * forgotten, and #82's third slice adds the second caller.
+   */
+  | { readonly kind: "repeated-group"; readonly group: string }
+  /**
+   * Nothing was handed over at all. No group to name, which is why this arm is the only one
+   * without one — a caller that built an empty list has a bug the prompt cannot describe.
+   *
+   * Not reachable from the controls today, and kept anyway. `agent.ts` records the opposite
+   * decision a few lines from its own call site — an unreachable `unknown-group` arm deleted
+   * because a mutation sweep found it carrying a message no reader could be shown — and the
+   * difference is what the arm does. That one duplicated a check its caller had already made;
+   * this one is the only thing standing between an empty list and a prompt whose "What to ask
+   * about" section is blank, which an assistant will fill by inventing something to interview
+   * about (0007 · C3). `planFor` keeps a precondition on the same reasoning.
+   */
+  | { readonly kind: "nothing-to-ask" };
 
 export type Generated =
   | { readonly ok: true; readonly text: string }
@@ -81,6 +105,26 @@ export type PriorInstance = {
 export type Prior =
   | { readonly for: "fields"; readonly fields: ReadonlyMap<string, string> }
   | { readonly for: "instances"; readonly instances: readonly PriorInstance[] };
+
+/**
+ * One question inside a numbered item, with whatever the reader already has for it.
+ *
+ * A prompt covers a list of these rather than a section identifier, because section
+ * membership lives in the markup — `data-section`, which #93 taught the build to emit — and
+ * nowhere else. Copying it into `schema.ts` as well would be a second statement of a fact the
+ * page already carries, which is the mistake 0009 · C6 and 0013 · `keys.ts` both record. The
+ * caller reads the grouping off the DOM it is already walking, and this stays a function from
+ * values to a string that can be checked by running it over every item in the workbook.
+ */
+export type Part = {
+  readonly group: string;
+  /**
+   * Explicitly `| undefined` as well as optional: `exactOptionalPropertyTypes` is on, and the
+   * caller builds this from `priorFrom`, which returns `undefined` when there is nothing
+   * stored. Without it every call site would have to delete the key instead of setting it.
+   */
+  readonly prior?: Prior | undefined;
+};
 
 /** The question with this identifier, from the definitions the pages were rendered from. */
 export function findQuestion(group: string): Question | undefined {
@@ -186,9 +230,20 @@ export function priorFrom(
  * An answer containing a fence and a JSON body would otherwise arrive in the prompt as a
  * second, valid-looking contract block naming a real group — and 0015's importer scans every
  * fence in a paste. So a reader who wrote about code, or who was fed something to write,
- * could hand back a prompt that imports answers to a question they were not looking at. The
- * backtick is the whole of the mechanism for THAT attack, and it happens before the preview,
- * so what 0007 · 1 shows is what is sent.
+ * could hand back a prompt that imports answers to a question they were not looking at. This
+ * happens before the preview, so what 0007 · 1 shows is what is sent.
+ *
+ * The backtick was called "the whole of the mechanism for THAT attack" here, and that stopped
+ * being true when 0015 was amended after the first device test: the importer now scans for
+ * balanced `{…}` regions and "lets the fences be whatever they are", because copying a
+ * rendered chat message gives you the JSON without any backticks at all. A one-line contract
+ * object needs no fence to be found, so stripping backticks alone left the attack intact — I
+ * confirmed a stored answer carrying one made a pasted-back prompt import a different
+ * question. The braces are what the scanner keys on, so the braces are what give way. Rounding
+ * them to parentheses is visible in the reader's own words, which is the same trade the
+ * backtick rule already makes, and it is a trade worth making: dictated reflection almost
+ * never contains a brace, and the alternative is a document that can rewrite an answer the
+ * reader never opened.
  *
  * The newline is the other half, and it was missed. Every answer is interpolated into a
  * Markdown list item, and answers are multi-line by construction — fields.ts treats `\n` as
@@ -200,7 +255,11 @@ export function priorFrom(
  * rather than one escape per character that happens to be special.
  */
 function neutralise(answer: string, continuation = "    "): string {
-  return answer.replace(/`/g, "'").replace(/\r?\n/g, `\n${continuation}`);
+  return answer
+    .replace(/`/g, "'")
+    .replace(/\{/g, "(")
+    .replace(/\}/g, ")")
+    .replace(/\r?\n/g, `\n${continuation}`);
 }
 
 /**
@@ -234,9 +293,20 @@ export function renderedSlots(question: RepeatQuestion): number {
   return question.max;
 }
 
-/** What the assistant is being asked about, in the worksheet's own words. */
-function subject(question: Answerable): string {
-  const ask = ASKS[question.id] ?? "";
+/** The worksheet's own words for this question, and nothing else. */
+function ask(question: Answerable): string {
+  return ASKS[question.id] ?? "";
+}
+
+/**
+ * What the answer has to contain: its named parts, and — for a repeat — how many of them.
+ *
+ * Split from the prose above it because consecutive questions can share one instruction and
+ * never share a shape. Day 4's contribution question is four sentences under a single line of
+ * prose, so all four carry the same ask and four different templates — stating the ask once
+ * needs the two halves separable.
+ */
+function shape(question: Answerable): string {
   const fields =
     question.kind === "single"
       ? ""
@@ -244,7 +314,7 @@ function subject(question: Answerable): string {
           .map((field) => `- **${field.label}** — key \`${field.id}\``)
           .join("\n")}`;
 
-  const shape =
+  const kindNote =
     question.kind === "repeat"
       ? question.min === question.max
         // 31 of the 34 repeats have a single count. Phrased as a range they read "between
@@ -260,7 +330,7 @@ function subject(question: Answerable): string {
         ? `\n\nIt is a sentence to complete, not a form to fill: "${question.template}"`
         : "";
 
-  return `${ask}${fields}${shape}`;
+  return `${fields}${kindNote}`;
 }
 
 /** The worked example, in the contract's shape but naming a group that cannot be imported. */
@@ -278,7 +348,13 @@ function example(question: Answerable, prior: Prior | undefined): string {
   return `\`\`\`\n{\n  "format": "${FORMAT}",\n  "version": ${VERSION},\n  "group": "${EXAMPLE_GROUP}",\n  ${body}\n}\n\`\`\``;
 }
 
-function priorSection(question: Answerable, prior: Prior): string {
+/**
+ * `level` is the heading depth this sits at: `##` when the prompt covers one question, `####`
+ * when it sits under a `###` per-question heading. A prior nested under a question it does not
+ * belong to is the one thing a several-question prompt can get wrong that a single one cannot,
+ * and heading depth is what a reader — and an assistant — resolve that by.
+ */
+function priorSection(question: Answerable, prior: Prior, level: "##" | "####"): string {
   const lines: string[] = [];
 
   if (prior.for === "instances") {
@@ -316,7 +392,7 @@ function priorSection(question: Answerable, prior: Prior): string {
 
   if (prior.for === "instances") {
     return (
-      `\n## The ones I already have, and their ids\n\n${lines.join("\n")}\n\n` +
+      `\n${level} The ones I already have, and their ids\n\n${lines.join("\n")}\n\n` +
       `Return **every** id above, each with its own answers — the ones already written as they` +
       ` are unless I change them, and the empty ones filled in. Keep each id with the answer it` +
       ` belongs to. An answer that comes back without its id is treated as a new one and added` +
@@ -324,38 +400,18 @@ function priorSection(question: Answerable, prior: Prior): string {
     );
   }
   return (
-    `\n## What I have already written\n\n${lines.join("\n")}\n\n` +
+    `\n${level} What I have already written\n\n${lines.join("\n")}\n\n` +
     `Ask me about these too — I may want to change them. Return every one you and I discussed,` +
     ` changed or not.\n`
   );
 }
 
-/**
- * Build the prompt for one question group.
- *
- * `prior` is omitted unless the reader opted in, per 0007 · 2 — generating a prompt for one
- * task must never quietly bundle four days of reflection, and the default is off rather than
- * a setting somebody has to find.
- */
-export function promptFor(group: string, prior?: Prior): Generated {
-  const question = findQuestion(group);
-  if (question === undefined) {
-    return { ok: false, refusal: { kind: "unknown-group", group } };
-  }
-  // 0015 keeps checklists out of the contract: readiness ticks are the reader's to work
-  // through, not something to answer on their behalf. Refused rather than filtered silently,
-  // so a control that should not exist fails loudly if one ever does.
-  if (question.kind === "checklist") {
-    return { ok: false, refusal: { kind: "checklist", group } };
-  }
-  // A caller holding the wrong shape has read the store wrongly; saying so beats rendering a
-  // repeat's answers as though the question had none.
-  const wants = question.kind === "repeat" ? "instances" : "fields";
-  if (prior !== undefined && prior.for !== wants) {
-    return { ok: false, refusal: { kind: "wrong-prior", group } };
-  }
+/** One question of a numbered item, resolved against the schema. */
+type Asked = { readonly question: Answerable; readonly prior: Prior | undefined };
 
-  const text =
+/** How to run the interview. The extra rule is only true where there is an order to keep. */
+function howToRunIt(count: number): string {
+  return (
     `You are interviewing me about one part of a values workbook, so that I can answer it by\n` +
     `talking instead of typing.\n\n` +
     `How to run it:\n\n` +
@@ -369,18 +425,182 @@ export function promptFor(group: string, prior?: Prior): Generated {
     `- Do not invent answers, and do not improve mine. Give me back my own words, tidied only\n` +
     `  where dictation garbled them. If an answer is short because that is what I said, leave\n` +
     `  it short.\n` +
-    `- When we have covered everything below, say so and offer me the block.\n\n` +
-    `## What to ask about\n\n${subject(question)}\n` +
-    `${prior === undefined ? "" : priorSection(question, prior)}\n` +
+    (count > 1
+      ? // "Question" now means two things in one prompt — a numbered question of the worksheet,
+        // and a thing you ask in a message — so the rule that separates them is spelled out.
+        // Without the last sentence an assistant can read "work through them in order" as
+        // licence to put a whole numbered question in one message, which is the wall of text
+        // 0001 exists to prevent.
+        `- The numbered questions below are one exercise. Work through them in the order given\n` +
+        `  and finish one before starting the next — the worksheet's order is how it builds.\n` +
+        `  That is about the order you cover them in, not about how much you ask at once: it is\n` +
+        `  still one thing per message.\n`
+      : "") +
+    `- When we have covered everything below, say so and offer me the ${count > 1 ? "blocks" : "block"}.\n\n`
+  );
+}
+
+/**
+ * The questions themselves, in the order the page asks them.
+ *
+ * One question is the whole of its numbered item, and its own ask is all the context there is —
+ * so that prompt is byte for byte the prompt this file produced before items existed, checked
+ * across all 113 questions with answers carried and withheld. (The one deliberate exception is
+ * `neutralise` now defusing braces, which changes any prompt carrying an answer that has one.)
+ * Naming the item over a single question would put a heading above prose that is already the
+ * heading: every ask is read back off the page (0004 · C8), and the first question under a
+ * numbered heading carries that heading in its ask already.
+ */
+function questions(item: string, parts: readonly Asked[]): string {
+  const only = parts.length === 1 ? parts[0] : undefined;
+  if (only !== undefined) {
+    return (
+      `## What to ask about\n\n${ask(only.question)}${shape(only.question)}\n` +
+      `${only.prior === undefined ? "" : priorSection(only.question, only.prior, "##")}`
+    );
+  }
+
+  // Named unless the first question's ask already opens with that name, which it does on 13 of
+  // the 24 items that ask more than one question: #91 gives a question with no prose of its own
+  // the prose above it, and for the first question under a numbered heading that prose IS the
+  // heading. Printing both put the item's name twice, three lines apart — the duplication this
+  // function's own comment gives as the reason not to name a single question's item at all.
+  // The reader's words are never edited to make room for ours (0004), so it is our line that
+  // gives way; where the two do not match, both are printed and the prompt is merely repetitive.
+  const first = parts[0];
+  const named = item !== "" && first !== undefined && !ask(first.question).startsWith(item);
+  const blocks: string[] = [
+    // Two wrapped paragraphs rather than one with a swappable opening: the prompt is hard
+    // wrapped, and prose wrapped for one lead-in reads as a wall when it is given another.
+    // The item's name gets a line of its own for the same reason — its length is the one
+    // thing not known here, so wrapping fixed prose around it would put the break in a
+    // different place on every worksheet.
+    `## What to ask about\n\n` +
+      (named
+        ? `This is one numbered item of the worksheet:\n\n**${neutralise(item)}**\n\n` +
+          `It asks ${parts.length} questions. They are one exercise rather than ${parts.length} separate ones,\n` +
+          `so what I say about an earlier question is context for the ones after it.\n`
+        : `This is one numbered item of the worksheet, and it asks ${parts.length} questions. They are\n` +
+          `one exercise rather than ${parts.length} separate ones, so what I say about an earlier question\n` +
+          `is context for the ones after it.\n`),
+  ];
+  // Which question last printed the shared prose, so a third question sharing it points at the
+  // one that HAS it. Day 4's contribution question is four sentences under one line of prose;
+  // pointing each at "the question above" made questions 3 and 4 point at question 2, which is
+  // itself only a pointer, so an assistant had to hop twice to reach an instruction.
+  let saidAt = 0;
+  let said = "";
+  for (const [index, part] of parts.entries()) {
+    const prose = ask(part.question);
+    const repeated = prose !== "" && prose === said;
+    blocks.push(
+      `### Question ${index + 1} of ${parts.length} — \`${part.question.id}\`\n\n` +
+        `${repeated ? `The same instruction as question ${saidAt} above.` : prose}` +
+        `${shape(part.question)}\n` +
+        `${part.prior === undefined ? "" : priorSection(part.question, part.prior, "####")}`,
+    );
+    if (!repeated) {
+      said = prose;
+      saidAt = index + 1;
+    }
+  }
+  return blocks.join("\n");
+}
+
+/**
+ * The contract, and a worked example of it per question.
+ *
+ * Every example names `EXAMPLE_GROUP` rather than the question it stands for, which is
+ * 0015 · C8a: a reader who mis-taps and pastes the prompt back gets a refusal instead of an
+ * example silently imported as their answers. The real identifier is named in the prose above
+ * each example, where no `{` can carry it into a block the importer would scan.
+ */
+function howToAnswer(parts: readonly Asked[]): string {
+  const only = parts.length === 1 ? parts[0] : undefined;
+  if (only !== undefined) {
+    return (
+      `## How to give the answers back\n\n` +
+      `At the end, output one fenced block — the last thing in your reply, and the only fenced\n` +
+      `block in it. Change two things from this example: put \`"group": "${only.question.id}"\`, and\n` +
+      `put my real answers where the placeholders are.\n\n${example(only.question, only.prior)}\n\n` +
+      `Every value is plain text on one line. If I did not answer something, **leave that key\n` +
+      `out entirely** — never send an empty string, a dash, or a guess. Say anything else you\n` +
+      `want to say outside the block.\n`
+    );
+  }
+
+  const shown = parts.map(
+    (part, index) =>
+      `Question ${index + 1} of ${parts.length} — put \`"group": "${part.question.id}"\`:\n\n` +
+      example(part.question, part.prior),
+  );
+  return (
     `## How to give the answers back\n\n` +
-    `At the end, output one fenced block — the last thing in your reply, and the only fenced\n` +
-    `block in it. Change two things from this example: put \`"group": "${question.id}"\`, and\n` +
-    `put my real answers where the placeholders are.\n\n${example(question, prior)}\n\n` +
+    `At the end, output one fenced block for each of the ${parts.length} questions above, in the same\n` +
+    `order — the last thing in your reply, and the only fenced blocks in it. Change two things\n` +
+    `in each: put the group named above it, and put my real answers where the placeholders\n` +
+    `are. If we never got to one of the questions, leave its block out altogether rather than\n` +
+    `sending an empty one.\n\n${shown.join("\n\n")}\n\n` +
     `Every value is plain text on one line. If I did not answer something, **leave that key\n` +
     `out entirely** — never send an empty string, a dash, or a guess. Say anything else you\n` +
-    `want to say outside the block.\n`;
+    `want to say outside the blocks.\n`
+  );
+}
 
-  return { ok: true, text };
+/**
+ * Build the prompt for one numbered item — every question it asks, in page order.
+ *
+ * `item` is what the worksheet calls it, e.g. "3. The contribution question (15 min)", read
+ * off the heading by the caller. It is unused where the item holds a single question; see
+ * `questions` for why.
+ *
+ * A part's `prior` is omitted unless the reader opted in, per 0007 · 2 — generating a prompt
+ * for one task must never quietly bundle four days of reflection, and the default is off
+ * rather than a setting somebody has to find.
+ */
+export function promptFor(item: string, parts: readonly Part[]): Generated {
+  const asking: Asked[] = [];
+  let checklist: string | undefined;
+
+  for (const part of parts) {
+    const question = findQuestion(part.group);
+    if (question === undefined) {
+      // Refused rather than skipped, and it refuses the whole item: an identifier on the page
+      // that this build cannot resolve means the markup and the schema disagree, which is
+      // reachable across a service worker activation. Asking about the rest would hide it.
+      return { ok: false, refusal: { kind: "unknown-group", group: part.group } };
+    }
+    if (question.kind === "checklist") {
+      // 0015 keeps checklists out of the contract: readiness ticks are the reader's to work
+      // through, not something to answer on their behalf. Dropped rather than refused, because
+      // a numbered item may hold one beside real questions and refusing would cost the reader
+      // the whole item over a part that was never on offer. Where it is ALL the item holds,
+      // the refusal below still says so by name.
+      checklist ??= part.group;
+      continue;
+    }
+    // A caller holding the wrong shape has read the store wrongly; saying so beats rendering a
+    // repeat's answers as though the question had none.
+    const wants = question.kind === "repeat" ? "instances" : "fields";
+    if (part.prior !== undefined && part.prior.for !== wants) {
+      return { ok: false, refusal: { kind: "wrong-prior", group: part.group } };
+    }
+    if (asking.some((one) => one.question.id === question.id)) {
+      return { ok: false, refusal: { kind: "repeated-group", group: part.group } };
+    }
+    asking.push({ question, prior: part.prior });
+  }
+
+  if (asking.length === 0) {
+    return checklist === undefined
+      ? { ok: false, refusal: { kind: "nothing-to-ask" } }
+      : { ok: false, refusal: { kind: "checklist", group: checklist } };
+  }
+
+  return {
+    ok: true,
+    text: `${howToRunIt(asking.length)}${questions(item, asking)}\n${howToAnswer(asking)}`,
+  };
 }
 
 /** What a refusal says. Each names what went wrong; none of them changes anything. */
@@ -392,5 +612,9 @@ export function explain(refusal: Refusal): string {
       return `${refusal.group} is a checklist to work through yourself, not a question to be interviewed about.`;
     case "wrong-prior":
       return `The stored answers for ${refusal.group} are not the shape that question takes.`;
+    case "repeated-group":
+      return `${refusal.group} appears twice in this numbered item, and one question can only be answered once.`;
+    case "nothing-to-ask":
+      return "There is no question here for an assistant to ask about.";
   }
 }

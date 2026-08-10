@@ -232,7 +232,16 @@ export function wirePaste(
     if (planned.plan.writes.size === 0) {
       // A real outcome, not a failure: an assistant asked to review what the reader already
       // had, and it agreed with all of it. Saying nothing would read as the button not working.
-      say("Those answers are already saved, word for word. There is nothing to change.");
+      //
+      // The skipped-block half is said here too. This branch never reaches the confirmation
+      // surface, so without it a reply whose only NEW answer was the block left naming the
+      // example group reports "nothing to change" — which is true of what was read and false
+      // about what the reader dictated.
+      say(
+        reading.skipped === 0
+          ? "Those answers are already saved, word for word. There is nothing to change."
+          : "The answers that could be read are already saved, word for word. Some of that reply still named the example question, so it was left out — ask your assistant to send those again with each question's own name.",
+      );
       return;
     }
 
@@ -248,7 +257,24 @@ export function wirePaste(
       line.textContent = tallyFor(planned.plan, group);
       tally.append(line);
     }
+    // Above the tally, because it is about what is MISSING from it. A prompt covering a
+    // numbered item shows one example per question and every example names the same
+    // placeholder group, so an assistant that substitutes three of four leaves a block that
+    // `readBlocks` cannot attribute and does not import. Said before the reader approves:
+    // the tally lists what landed, and nothing about a list of three says a fourth was
+    // expected. `textContent`, like everything else on this surface.
+    const left: HTMLElement[] = [];
+    if (reading.skipped > 0) {
+      const note = document.createElement("p");
+      note.className = "paste-skipped";
+      note.textContent =
+        reading.skipped === 1
+          ? "One block in that reply still named the example question, so it was left out. If a question you talked about is missing below, that is the one — ask your assistant to send it again with the question's own name."
+          : `${reading.skipped} blocks in that reply still named the example question, so they were left out. If questions you talked about are missing below, those are the ones — ask your assistant to send them again with each question's own name.`;
+      left.push(note);
+    }
     detail.replaceChildren(
+      ...left,
       tally,
       ...planned.plan.changes.map((change) => rowFor(document, change)),
     );

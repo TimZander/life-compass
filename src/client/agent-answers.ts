@@ -73,6 +73,8 @@ import {
  */
 export type Refusal =
   | { readonly kind: "no-blocks" }
+  /** Every block in the paste still named the example group, so none of them could be read. */
+  | { readonly kind: "example-only" }
   | { readonly kind: "cut-off" }
   | { readonly kind: "repeated-group"; readonly group: string }
   | { readonly kind: "repeated-instance"; readonly group: string }
@@ -131,7 +133,18 @@ export type Block =
     };
 
 export type Reading =
-  | { readonly ok: true; readonly blocks: readonly Block[] }
+  | {
+      readonly ok: true;
+      readonly blocks: readonly Block[];
+      /**
+       * How many blocks were left out for still naming the example group.
+       *
+       * Not a refusal and not a detail: it is the difference between "your reply landed" and
+       * "three of your four questions landed". The confirmation surface says so, because a
+       * missing group is otherwise visible only to a reader who counts the tally.
+       */
+      readonly skipped: number;
+    }
   | { readonly ok: false; readonly refusal: Refusal };
 
 /** One field an import would write, with what is there now. */
@@ -322,13 +335,24 @@ export function readBlocks(text: string): Reading {
   }
   const blocks: Block[] = [];
   const seen = new Set<string>();
+  let skipped = 0;
   for (const parsed of candidates) {
     // The worked example from the prompt, repeated back. 0015 · C8a put a group the schema
     // does not contain into the example precisely so it can never be imported, and refusing
     // the whole paste because an assistant helpfully restated the shape would make a verbose
     // reply unusable. Ignored when there is something real beside it; still refused loudly
     // when it is all there is, which is the mis-paste C8a actually describes.
+    //
+    // COUNTED rather than merely skipped, since #82 made a prompt ask for one block per
+    // question of a numbered item. Every example it shows names this group, so an assistant
+    // that substitutes three of four and leaves the fourth produces a paste that imports
+    // three questions and drops one — and ignoring it silently told the reader their whole
+    // reply had landed. That is the loss 0008 calls the worst available to this application,
+    // arriving through the machinery that exists to make a verbose reply usable. The count
+    // travels so the confirmation surface can say a block was left out; refusing instead
+    // would take the three good answers away with it.
     if (own(parsed, "group") === EXAMPLE_GROUP && candidates.length > 1) {
+      skipped += 1;
       continue;
     }
     const read = readBlock(parsed);
@@ -345,9 +369,13 @@ export function readBlocks(text: string): Reading {
     blocks.push(read.block);
   }
   if (blocks.length === 0) {
-    return { ok: false, refusal: { kind: "no-blocks" } };
+    // Two pastes arrive here and they are indistinguishable from the text alone: the prompt
+    // itself, mis-tapped back into the box seconds after copying (0015 · C8a), and a reply
+    // that substituted none of the example groups. One sentence has to serve both, so it
+    // names what is actually in the paste rather than guessing which happened.
+    return { ok: false, refusal: skipped > 0 ? { kind: "example-only" } : { kind: "no-blocks" } };
   }
-  return { ok: true, blocks };
+  return { ok: true, blocks, skipped };
 }
 
 /** One parsed object known to carry the right `format`. */
@@ -653,6 +681,8 @@ export function explain(refusal: Refusal): string {
   switch (refusal.kind) {
     case "no-blocks":
       return `There is nothing from an assistant in that. Copy the whole reply, including the part in a code block, and paste it again.${UNTOUCHED}`;
+    case "example-only":
+      return `Every block in that still names the example question, which is the placeholder the message you copied asks to be replaced. If that was the message itself, paste your assistant's reply instead; if it was the reply, ask for each question's own name in its block.${UNTOUCHED}`;
     case "cut-off":
       return `That reply looks cut off — an answer starts and never finishes, so the rest of it cannot be read. Copy the whole reply and paste it again.${UNTOUCHED}`;
     case "repeated-group":
