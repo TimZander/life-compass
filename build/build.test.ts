@@ -88,7 +88,10 @@ const NAV_HREFS: readonly string[] = [
  * instances and not others, so all five get the same, which adds two blanks each time and
  * removes an inconsistency that read as arbitrary rather than deliberate.
  */
-const EXPECTED_FILL_MARKERS = 447;
+// Every blank the build emits, including the instances past `min` that ship hidden so a
+// reader can reach the ceiling of a range (#74). 447 of these print on a blank worksheet;
+// the other 28 belong to the eleven instances three questions invite and could not hold.
+const EXPECTED_FILL_MARKERS = 475;
 
 /** Built once and shared: rendering 29 pages per test is pure waste. */
 let cached: Promise<BuildResult> | undefined;
@@ -1380,9 +1383,20 @@ describe("repeat instances", () => {
         );
         assert.deepEqual(
           slots.map((slot) => Number(slot.slice(0, slot.indexOf('"')))),
-          Array.from({ length: question.min }, (_, index) => index),
+          Array.from({ length: question.max }, (_, index) => index),
           `${question.id}: slots are not one marker each, numbered 0 upward`,
         );
+        // Everything past `min` ships hidden, so a blank worksheet still prints the floor
+        // of the range while the reader can reach the ceiling (#74). Asserted per slot
+        // rather than by counting, because the WRONG ones being hidden reads identically
+        // to the right ones in a total.
+        for (const [index, slot] of slots.entries()) {
+          assert.equal(
+            slot.slice(0, slot.indexOf(">")).includes(" hidden"),
+            index >= question.min,
+            `${question.id} slot ${index}: hidden does not match the printed range`,
+          );
+        }
         for (const [index, slot] of slots.entries()) {
           assert.equal(
             slot.match(/data-field=/g)?.length ?? 0,
@@ -1400,7 +1414,7 @@ describe("repeat instances", () => {
     // what the markers say once there is the address test below.
     const expected = WORKSHEETS.flatMap((worksheet) => worksheet.questions)
       .filter((question) => question.kind === "repeat")
-      .reduce((total, question) => total + question.min, 0);
+      .reduce((total, question) => total + question.max, 0);
 
     // Act
     const result = await site();
@@ -1429,7 +1443,8 @@ describe("repeat instances", () => {
     // blanks sit inside repeat instances, and 113 sit outside every marker — those
     // belong to single-valued questions, whose data-field is unique by itself, so "no
     // enclosing marker" is a valid address component there rather than a defect.
-    const EXPECTED_INSIDE_INSTANCES = 334;
+    // Blanks that live inside a repeat instance, including the hidden ones past `min` (#74).
+const EXPECTED_INSIDE_INSTANCES = 362;
     const EXPECTED_OUTSIDE_INSTANCES = 113;
 
     // Act

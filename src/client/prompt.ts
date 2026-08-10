@@ -225,12 +225,13 @@ export function labelFor(question: Answerable, field: string): string {
  * asks for "5–8 chapters" in its prose and prints five, so asking an assistant for the
  * worksheet's range would invite three answers nothing on the page can show.
  *
- * A workaround for a missing capability rather than the shape anyone would choose. #74 is
- * where a repeat holds as many instances as the reader has; when it lands, this asks for the
- * range and 0015's ceiling becomes `max`.
+ * *Updated with #74.* The sheet now renders every instance the range allows and reveals the
+ * ones a stored order names, so a reply carrying eight chapters has somewhere to go. This is
+ * therefore `max` rather than `min`, and the prompt asks for the range instead of a number the
+ * reader never chose. 0015's ceiling moves with it.
  */
 export function renderedSlots(question: RepeatQuestion): number {
-  return question.min;
+  return question.max;
 }
 
 /** What the assistant is being asked about, in the worksheet's own words. */
@@ -245,8 +246,16 @@ function subject(question: Answerable): string {
 
   const shape =
     question.kind === "repeat"
-      ? `\n\nThis one repeats. Ask about ${renderedSlots(question)} of them, one at a time. The page ` +
-        `has room for ${renderedSlots(question)}, so ${renderedSlots(question)} is what I need.`
+      ? question.min === question.max
+        // 31 of the 34 repeats have a single count. Phrased as a range they read "between
+        // 5 and 5 … do not stop at 5 if I have more", which is incoherent and actively
+        // invites the overflow `ceilingFor` then refuses — the prompt and the importer
+        // disagreeing, which is what sharing a ceiling exists to prevent.
+        ? `\n\nThis one repeats. The page holds ${question.min}, so ask about ${question.min} of ` +
+          `them, one at a time.`
+        : `\n\nThis one repeats. The worksheet asks for between ${question.min} and ${question.max}, ` +
+          `and how many is my decision — ask me, and cover that many one at a time. Do not pad ` +
+          `to reach ${renderedSlots(question)}, and do not stop at ${question.min} if I have more.`
       : question.kind === "sentence"
         ? `\n\nIt is a sentence to complete, not a form to fill: "${question.template}"`
         : "";

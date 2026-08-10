@@ -469,7 +469,15 @@ export function renderQuestion(question: Question): string {
       return "";
     }
     const sections: string[] = [];
-    for (let index = 0; index < question.min; index += 1) {
+    // Up to `max`, with everything past `min` shipped hidden. #74: the worksheet says
+    // "5–8 chapters" and printed five, which quietly changed the question it asked.
+    //
+    // Rendered here rather than built on the client, because the build already knows how to
+    // number an instance, compose its anchor id and speak its fields — and a second copy of
+    // that in TypeScript would drift from this one the first time either changed. Hidden
+    // costs eleven instances of markup across the whole workbook and keeps one definition.
+    for (let index = 0; index < question.max; index += 1) {
+      const spare = index >= question.min;
       // Every other heading on the site is given an id by the slugger, which never sees
       // this markup — it is injected after parsing. Composing one from the identifier and
       // the instance number keeps these linkable and keeps the build's anchor check able
@@ -485,7 +493,7 @@ export function renderQuestion(question: Question): string {
         )
         .join("\n");
       sections.push(
-        `<div class="q-instance" data-instance="${index}">\n${heading}\n<ul>\n${fields}\n</ul>\n</div>`,
+        `<div class="q-instance" data-instance="${index}"${spare ? " hidden" : ""}>\n${heading}\n<ul>\n${fields}\n</ul>\n</div>`,
       );
     }
     return (
@@ -518,11 +526,14 @@ export function renderQuestion(question: Question): string {
   };
 
   const items: string[] = [];
-  for (let index = 0; index < question.min; index += 1) {
+  for (let index = 0; index < question.max; index += 1) {
+    // See the section shape above. `hidden` on an `<li>` also keeps it out of the ordered
+    // list's numbering, so revealing one later numbers it correctly with nothing to update.
+    const spare = index >= question.min ? " hidden" : "";
     if (question.instances === "line") {
       // Every field on the one line. The em dash is the separator the worksheets already
       // used for this shape, and it survives a line wrap better than a comma.
-      items.push(`<li data-instance="${index}">${question.fields.map((x) => cell(x, index)).join(" — ")}</li>`);
+      items.push(`<li data-instance="${index}"${spare}>${question.fields.map((x) => cell(x, index)).join(" — ")}</li>`);
       continue;
     }
     if (question.fields.length === 1) {
@@ -530,7 +541,7 @@ export function renderQuestion(question: Question): string {
       if (field === undefined) {
         continue;
       }
-      items.push(`<li data-instance="${index}">${cell(field, index)}</li>`);
+      items.push(`<li data-instance="${index}"${spare}>${cell(field, index)}</li>`);
       continue;
     }
     // The first field sits inline with the list number and the rest nest beneath it.
@@ -542,7 +553,7 @@ export function renderQuestion(question: Question): string {
     }
     const head = cell(first, index);
     const nested = rest.map((x) => `<li>${cell(x, index)}</li>`).join("\n");
-    items.push(`<li data-instance="${index}">${head}\n<ul>\n${nested}\n</ul>\n</li>`);
+    items.push(`<li data-instance="${index}"${spare}>${head}\n<ul>\n${nested}\n</ul>\n</li>`);
   }
 
   // The permitted range is carried as data, not printed. Rendering "(5–8)" advertises

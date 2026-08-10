@@ -186,13 +186,22 @@ appear". Day 1's chapters are min 5 / max 8, so bounding at `max` would let an a
 for "5–8 chapters" return eight and store three chapters of dictated words that nothing on the
 page will ever show.
 
-So the ceiling is the rendered slot count, not `max`, until Q2 is answered — which is
-[#74](https://github.com/TimZander/life-compass/issues/74)'s job, and this bound is standing
-in for it rather than describing what the workbook should do. A worksheet asking for "5–8
+*Superseded 2026-08-09 — see the amendment below.* The ceiling was the rendered slot count
+rather than `max`, standing in for Q2 until #74 answered it.
+
+*Amended 2026-08-09, when #74's first half landed.* **The ceiling is now `max`.** The sheet
+renders every instance the range allows and reveals the ones a stored order names, so eight
+chapters have somewhere to go and the reason for the smaller bound is gone. The prompt asks
+for the range rather than a fixed count, because how many falls inside it was always the
+reader's decision and answering it for them was the workaround, not the design.
+
+What has NOT changed is that excess is refused rather than truncated. Past `max` there is
+still nothing to display, and truncating silently is still the loss this bound exists to
+prevent. A worksheet asking for "5–8
 chapters" means the reader decides. Excess instances are refused rather than truncated —
 truncating is the silent loss this rule exists to prevent.
-The prompt generator asks for the rendered count rather than the worksheet's range, so the
-refusal is a backstop rather than an ordinary outcome.
+The prompt generator asks for the worksheet's range, so the refusal is a backstop rather than
+an ordinary outcome.
 
 Fewer instances than the page renders is allowed and already has a defined behaviour: 0013 · Q2
 adopts a short order for the slots it covers, and the slots past its end refuse writes and say

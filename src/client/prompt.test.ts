@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ASKS } from "./schema.ts";
+import { ASKS, WORKSHEETS } from "./schema.ts";
 import { explain, findQuestion, priorFrom, promptFor, type Prior } from "./prompt.ts";
 
 /** A prompt, or a failed assertion saying why there wasn't one. */
@@ -167,18 +167,51 @@ describe("the instructions the prompt is carrying", () => {
     assert.equal(typeof example.version, "number", "a string version is refused on the way back");
   });
 
-  it("promptFor_ARepeatOfTenSlots_AsksForTenAndNotAFixedFive", () => {
-    // Arrange — `slotsFor` returning a constant 5 passed every test, because every repeat
-    // asserted against happened to have five slots.
+  it("promptFor_EveryRepeatInTheSchema_IsPhrasedForItsOwnRange", () => {
+    // Arrange — 31 of the 34 repeats have min === max, and both other prompt tests pick one
+    // of the three that does have a range. So the range wording shipped reading "between 5
+    // and 5 … do not stop at 5 if I have more" for 91% of repeats — incoherent, and it
+    // invites exactly the overflow the importer then refuses. Replacing that whole sentence
+    // with garbage left the suite green, which is how it got through.
+    const repeats = WORKSHEETS.flatMap((one) => one.questions).filter((one) => one.kind === "repeat");
+    assert.ok(repeats.length > 30, "the schema no longer has enough repeats to be worth sweeping");
+
+    // Act & Assert
+    for (const question of repeats) {
+      if (question.kind !== "repeat") {
+        continue;
+      }
+      const said = textFor(question.id);
+      const line = said.split("\n").find((one) => one.includes("This one repeats")) ?? "";
+      assert.notEqual(line, "", `${question.id} says nothing about repeating`);
+      if (question.min === question.max) {
+        assert.ok(
+          !line.includes("between"),
+          `${question.id} is offered a range it does not have: ${line}`,
+        );
+        assert.ok(line.includes(`${question.min}`), `${question.id} does not say how many`);
+      } else {
+        assert.ok(
+          line.includes(`between ${question.min} and ${question.max}`),
+          `${question.id} does not carry its range: ${line}`,
+        );
+      }
+    }
+  });
+
+  it("promptFor_ARepeatWithADifferentRange_CarriesItsOwnNumbers", () => {
+    // Arrange — negative case for a constant. A hardcoded 5 passed every test once, because
+    // every repeat asserted against happened to have five slots.
     const question = findQuestion("rday2.generated");
-    const slots = question?.kind === "repeat" ? question.min : 0;
-    assert.ok(slots > 5, "the fixture group no longer has more than five slots");
+    const floor = question?.kind === "repeat" ? question.min : 0;
+    const ceiling = question?.kind === "repeat" ? question.max : 0;
+    assert.ok(floor > 5, "the fixture group no longer has more than five slots");
 
     // Act
     const text = textFor("rday2.generated");
 
     // Assert
-    assert.ok(text.includes(`Ask about ${slots} of them`), `it did not ask for ${slots}`);
+    assert.ok(text.includes(`between ${floor} and ${ceiling}`), `it did not carry ${floor}–${ceiling}`);
   });
 
   it("promptFor_EveryFieldListed_CarriesTheKeyToReturnItUnder", () => {
@@ -226,21 +259,27 @@ describe("the shape the answers come back in", () => {
     }
   });
 
-  it("promptFor_ARepeat_AsksForInstancesAndForTheRenderedSlotCount", () => {
-    // Arrange — 0015 · C8 and 0013 · Q2: the page prints `min`, and an instance order longer
-    // than that is accepted in silence with its extra answers never shown. #74 is where the
-    // reader gets the range they were offered.
+  it("promptFor_ARepeat_AsksForTheRangeAndLeavesTheCountToTheReader", () => {
+    // Arrange — #74. The prompt used to ask for `min` and say "the page has room for 5, so 5
+    // is what I need", because anything past the printed slots could not be displayed. The
+    // sheet now renders the whole range, so asking for a fixed five would be the application
+    // answering a question the worksheet put to the reader.
     const question = findQuestion("day1.chapters");
-    const slots = question?.kind === "repeat" ? question.min : 0;
+    const floor = question?.kind === "repeat" ? question.min : 0;
     const ceiling = question?.kind === "repeat" ? question.max : 0;
+    assert.ok(ceiling > floor, "the fixture group no longer has a range");
 
     // Act
     const text = textFor("day1.chapters");
 
     // Assert
     assert.match(text, /"instances": \[/);
-    assert.ok(text.includes(`Ask about ${slots} of them`), "it does not say how many");
-    assert.ok(!text.includes(`Ask about ${ceiling} of them`), "it asked for the unreachable max");
+    assert.ok(
+      text.includes(`between ${floor} and ${ceiling}`),
+      "the prompt does not carry the range the worksheet offers",
+    );
+    assert.ok(text.includes("how many is my decision"), "it decides the count for the reader");
+    assert.ok(!text.includes("is what I need"), "it still states a fixed count");
   });
 
   it("promptFor_ASentence_ShowsTheSentenceItself", () => {
