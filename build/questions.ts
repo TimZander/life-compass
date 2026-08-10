@@ -371,6 +371,26 @@ function labelled(
 }
 
 /**
+ * The section a question belongs to, stamped onto its container.
+ *
+ * #82: a reader works through a worksheet in numbered items, not in questions. Day 4 asks
+ * five things and renders fourteen controls, so the bridge offers fourteen separate
+ * conversations for what the page presents as five tasks. The client cannot group them
+ * without being told where the boundaries are — `data-question` is all it has, and the
+ * markup carries no notion of a section at all.
+ *
+ * The slug of the enclosing numbered heading. WHICH level that is belongs to the page and
+ * is decided in build/markdown.ts — `##` where a page has one, `###` where it numbers that
+ * way instead, as the one-page anchor does. What must not happen is `###` splitting a task
+ * on a page that numbers with `##`: day 5's five dimensions sit under one numbered item and
+ * are one piece of work.
+ */
+/** The attribute, or nothing when a question sits outside any numbered item. */
+function sectionAttr(section: string): string {
+  return section === "" ? "" : ` data-section="${escape(section)}"`;
+}
+
+/**
  * Render one question.
  *
  * `data-question`, `data-instance` and `data-field` are the seam the storage layer binds
@@ -382,14 +402,15 @@ function labelled(
  * blank's address is the pair — the `data-instance` on its nearest ancestor, and its
  * own `data-field` (0013).
  */
-export function renderQuestion(question: Question): string {
+
+export function renderQuestion(question: Question, section = ""): string {
   // A single question renders as a bare answer line. Its label is NOT printed: the
   // prose immediately above it already asks the question ("Patterns — what kind of
   // work…"), so printing the label repeats the word and reads like a stutter. The label
   // is kept in the schema for the form field's accessible name (#24).
   if (question.kind === "single") {
     return (
-      `<p class="q-single" data-question="${escape(question.id)}">` +
+      `<p class="q-single" data-question="${escape(question.id)}"${sectionAttr(section)}>` +
       `${blank(question.id, question.size, question.label)}</p>`
     );
   }
@@ -405,7 +426,7 @@ export function renderQuestion(question: Question): string {
           `<li>${labelled(x.label, `${question.id}.${x.id}`, x.size, spoken.get(x.id))}</li>`,
       )
       .join("\n");
-    return `<ul class="q-group" data-question="${escape(question.id)}">\n${items}\n</ul>`;
+    return `<ul class="q-group" data-question="${escape(question.id)}"${sectionAttr(section)}>\n${items}\n</ul>`;
   }
 
   if (question.kind === "checklist") {
@@ -421,7 +442,7 @@ export function renderQuestion(question: Question): string {
       )
       .join("\n");
     return (
-      `<ul class="task-list q-checklist" data-question="${escape(question.id)}">\n${items}\n</ul>`
+      `<ul class="task-list q-checklist" data-question="${escape(question.id)}"${sectionAttr(section)}>\n${items}\n</ul>`
     );
   }
 
@@ -447,7 +468,7 @@ export function renderQuestion(question: Question): string {
           // ("Optimizing for", "Over") because that is what the gap is asking for.
           blank(`${question.id}.${part}`, field.size, spoken.get(field.id) ?? field.label);
     }
-    return `<p class="q-sentence" data-question="${escape(question.id)}">${html}</p>`;
+    return `<p class="q-sentence" data-question="${escape(question.id)}"${sectionAttr(section)}>${html}</p>`;
   }
 
   // A section-weight repeat gives each instance a heading: "Value 1 — ______", composed
@@ -497,7 +518,7 @@ export function renderQuestion(question: Question): string {
       );
     }
     return (
-      `<div class="q-repeat" data-question="${escape(question.id)}"` +
+      `<div class="q-repeat" data-question="${escape(question.id)}"${sectionAttr(section)}` +
       ` data-min="${question.min}" data-max="${question.max}">\n${sections.join("\n")}\n</div>`
     );
   }
@@ -560,7 +581,7 @@ export function renderQuestion(question: Question): string {
   // an affordance the page does not yet have — nothing can add a sixth chapter until
   // #24 — and it appeared as unstyled debris between the list and the next heading.
   return (
-    `<ol class="q-repeat" data-question="${escape(question.id)}"` +
+    `<ol class="q-repeat" data-question="${escape(question.id)}"${sectionAttr(section)}` +
     ` data-min="${question.min}" data-max="${question.max}">\n${items.join("\n")}\n</ol>`
   );
 }

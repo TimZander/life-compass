@@ -165,6 +165,137 @@ describe("the stylesheet and the markup agreeing", () => {
   });
 });
 
+describe("the numbered item a question belongs to", () => {
+  /** Every question on the built pages, with the section it was stamped with. */
+  async function sectionsOf(): Promise<Map<string, Map<string, string[]>>> {
+    const { pages } = await site();
+    const byPage = new Map<string, Map<string, string[]>>();
+    for (const page of pages) {
+      if (page.source.startsWith("docs/")) {
+        continue;
+      }
+      const found = new Map<string, string[]>();
+      for (const [, id, section] of page.html.matchAll(
+        /data-question="([^"]+)"(?: data-section="([^"]+)")?/g,
+      )) {
+        const key = section ?? "";
+        found.set(key, [...(found.get(key) ?? []), id ?? ""]);
+      }
+      if (found.size > 0) {
+        byPage.set(page.source, found);
+      }
+    }
+    return byPage;
+  }
+
+  it("buildPages_EveryQuestionUnderANumberedHeading_CarriesThatSection", async () => {
+    // Arrange — #82's one genuinely new structure. A reader works through a worksheet in
+    // numbered items, not in questions: day 4 asks five things and renders fourteen
+    // controls, so the bridge offered fourteen conversations for five tasks. The client
+    // cannot group them without being told where the boundaries are.
+    // Act
+    const byPage = await sectionsOf();
+    const orphans = [...byPage.values()].flatMap((page) => page.get("") ?? []);
+
+    // Assert — one exception, and it is deliberate: `values.additions` sits on a reference
+    // page that has no `##` or `###` at all — only its `#` title — so it belongs to no
+    // numbered item and keeps its own ask.
+    assert.deepEqual(orphans, ["values.additions"], "questions fell outside any numbered item");
+  });
+
+  it("buildPages_DayFour_ResolvesToItsFiveNumberedItems", async () => {
+    // Arrange — the page that made this visible on a device: five numbered tasks, fourteen
+    // controls. Asserted by name rather than by count, because the right total split the
+    // wrong way reads identically in a number.
+    // Act
+    const day4 = (await sectionsOf()).get("days/day-4-purpose.md");
+
+    // Assert
+    assert.ok(day4 !== undefined, "day 4 rendered no questions at all");
+    assert.deepEqual(
+      [...day4.keys()].sort(),
+      [
+        "1-unfair-advantages-15-min",
+        "2-who-and-what-20-min",
+        "3-the-contribution-question-15-min",
+        "4-draft-three-purpose-statements-20-min",
+        "5-the-eulogy-test-10-min",
+      ],
+      "day 4 no longer groups into its five numbered items",
+    );
+    assert.equal(
+      [...day4.values()].flat().length,
+      14,
+      "day 4 does not have the fourteen questions this grouping exists to gather",
+    );
+  });
+
+  it("buildPages_SubHeadingsInsideOneTask_DoNotSplitIt", async () => {
+    // Arrange — negative case, and the reason the level is not simply `h3`. Day 5 asks one
+    // question under five `###` dimensions — Career, Money, Place, People, Time — which sit
+    // inside a single numbered item and are one piece of work. Splitting them would put the
+    // reader back where they started with five controls for one task.
+    const DIMENSIONS = ["day5.career", "day5.money", "day5.place", "day5.people", "day5.time"];
+
+    // Act
+    const day5 = (await sectionsOf()).get("days/day-5-synthesis.md");
+    const together = [...(day5?.entries() ?? [])].find(([, ids]) =>
+      DIMENSIONS.every((one) => ids.includes(one)),
+    );
+
+    // Assert
+    assert.ok(together !== undefined, `the five dimensions were split across sections`);
+  });
+
+  it("buildPages_AnH3AboveTheFirstH2_DoesNotDecideThePagesLevel", async () => {
+    // Arrange — the page that made the rule honest. rigorous day 1 opens with an `h3` well
+    // above its first `h2`, so a level decided as headings ARRIVE made "`h3` counts until
+    // the first `h2`, then `h2` only" — which is not a rule anyone would choose, and left
+    // the page grouping correctly only because no question happens to sit in that region.
+    // A page that did would have collapsed ten questions into one section with the suite
+    // green. The level is now decided before the walk: `h2` if the page has one anywhere.
+    // Act
+    const page = (await sectionsOf()).get("rigorous/day-1-excavation.md");
+
+    // Assert
+    assert.ok(page !== undefined, "rigorous day 1 rendered no questions");
+    assert.deepEqual(
+      [...page.keys()].sort(),
+      [
+        "1-life-chapters-timeline-20-min",
+        "2-peak-experiences-20-min",
+        "3-low-points-15-min",
+        "4-energy-audit-20-min",
+        "5-childhood-threads-10-min",
+        "6--fold-in-outside-input-optional-10-min",
+      ],
+      "an h3 above the first h2 decided the page's level",
+    );
+  });
+
+  it("buildPages_APageNumberingWithH3_IsStillSectioned", async () => {
+    // Arrange — negative case for the other direction, and a real failure this had. Reading
+    // only `h2` left all eight of the one-page anchor's questions in no section whatsoever,
+    // because that page numbers with `###` and has no `##` anywhere. The level is the one
+    // the page numbers at, decided by the first heading it uses.
+    // Act
+    const anchor = (await sectionsOf()).get("one-page-anchor.md");
+
+    // Assert
+    assert.ok(anchor !== undefined, "the anchor page rendered no questions");
+    assert.deepEqual(
+      [...anchor.keys()].sort(),
+      [
+        "1-three-values-10-min",
+        "2-a-theme-for-this-season-5-min",
+        "3-one-decision-rule-3-min",
+        "4-one-review-date-2-min",
+      ],
+      "the anchor page's numbered items are not its sections",
+    );
+  });
+});
+
 describe("the prose that introduces a question", () => {
   /** Render one page's worth of Markdown and read back what each anchor claimed. */
   function asksIn(markdown: string): Map<string, string> {
