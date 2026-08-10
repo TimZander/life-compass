@@ -327,6 +327,29 @@ describe("finding blocks in a reply", () => {
     assert.equal(read.stranded, LEFT_OUT, "a repeat's answers were passed over in silence");
   });
 
+  it("readBlocks_AnEchoCarryingARealIdButNoRealAnswers_IsStillReported", () => {
+    // Arrange — the id is part of what the block carried, so it is part of what decides. The
+    // prompt tells an assistant to copy the id of the entry it is answering, so a half-done
+    // reply — real id, answers left as the placeholder — is the shape that instruction
+    // produces when it is followed for the id and forgotten for the group. Nothing asserted
+    // that a REAL id counts: dropping the id from the values compared left the suite green,
+    // and this block would then read as an echo and be passed over.
+    const LEFT_OUT = 1;
+    const text = pasteOf(block(SINGLE, { answer: "the one that landed" }), {
+      format: "life-compass/agent-answers",
+      version: 1,
+      group: "example.not_a_real_group",
+      instances: [{ id: "5f1c8e2a-0000-4000-8000-000000000001", fields: { title: "what I said" } }],
+    });
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok);
+    assert.equal(read.stranded, LEFT_OUT, "a block carrying a real id was read as the example");
+  });
+
   it("readBlocks_EveryBlockStillNamingTheExample_SaysThatRatherThanNothingWasFound", () => {
     // Arrange — what a numbered item's prompt looks like pasted back: several example blocks
     // and no real one. Every one is skipped, so nothing is left — and "there is nothing from an

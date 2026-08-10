@@ -602,7 +602,7 @@ describe("answers the reader already has", () => {
     // instance; neither can be defused without altering the identifier, and an altered
     // identifier is the duplicate-instance failure above. Refusing costs the reader one
     // question's prompt; rewriting costs them the answers already under it.
-    for (const ID of ["a`b", "a\nb"]) {
+    for (const ID of ["a`b", "a\nb", "a\rb"]) {
       const prior: Prior = {
         for: "instances",
         instances: [{ id: ID, fields: new Map([["title", "mine"]]), written: true }],
@@ -969,14 +969,19 @@ describe("a numbered item that asks several questions", () => {
     assert.ok(text.includes(`**${NAME}**`), "the name was not printed");
   });
 
-  it("promptFor_AnItemOnlyALaterQuestionNames_IsStillNamed", () => {
-    // Arrange — the comparison reads the FIRST question's ask, because that is the one #91
-    // gives the heading to. Computing it from the last question instead survived the suite:
-    // every item in the workbook agrees all-or-nothing, so only a hand-built case can tell.
-    const NAME = "9. An item only its second question mentions (5 min)";
+  it("promptFor_AnItemOnlyALaterQuestionOpensWith_IsStillNamed", () => {
+    // Arrange — the comparison reads the FIRST question's ask, because #91 gives the heading to
+    // that one. The fixture has to make first and last DISAGREE or it proves nothing: a name
+    // neither ask opens with is a name both readings print, so the earlier version of this test
+    // passed under `parts[parts.length - 1]` in isolation and killed nothing. This name is the
+    // opening line of the SECOND question's ask, so reading the last question would suppress it
+    // and the item would go unnamed.
+    const NAME = (ASKS["day4.problem"] ?? "").split("\n")[0] ?? "";
     const parts = [{ group: "day4.who" }, { group: "day4.problem" }];
+    assert.notEqual(NAME, "", "the fixture question has no ask to borrow a name from");
+    assert.ok(!(ASKS["day4.who"] ?? "").startsWith(NAME), "the first ask opens with it too, so this proves nothing");
 
-    // Act — the name appears in neither ask, so it must be printed.
+    // Act
     const text = itemText(NAME, ...parts);
 
     // Assert

@@ -790,8 +790,14 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     // Assert — styled ANYWHERE, not necessarily by a rule of its own: `.paste-before` shares
     // one with `.paste-after`, and a check that missed that would push the stylesheet around
     // to suit the test.
-    assert.ok(assigned.length > 0, "no class names were found; the pattern has drifted");
-    assert.ok(assigned.includes("paste-skipped"), "the notice that warns is no longer set here");
+    // The classes this surface is known to set, exactly. A floor (`length > 0`) is what the
+    // workbook sweep's own comment condemns: move a name into a template literal or a const and
+    // the scrape shrinks silently, leaving the check green over a surface it no longer reads.
+    assert.deepEqual(
+      [...new Set(assigned)].sort(),
+      ["paste-after", "paste-before", "paste-change", "paste-change-title", "paste-label", "paste-skipped", "paste-tally"],
+      "the classes paste.ts sets have changed, or the scrape stopped seeing some of them",
+    );
     const selectors = selectorsIn(css);
     for (const name of new Set(assigned)) {
       assert.ok(
