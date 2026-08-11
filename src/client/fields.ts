@@ -101,7 +101,47 @@ function widthOf(control: HTMLTextAreaElement): number {
 const GROWN = "fill-grown";
 
 /**
- * Size a control to what is in it, so nothing said is hidden by its box.
+ * The class a blank wears once it holds something the reader said.
+ *
+ * The whole of #97 rests on this one bit: a line means the page is waiting, a fill means
+ * the words are yours. The stylesheet cannot work it out alone — `:empty` reads child
+ * nodes, and a control's value is not one, so there is no selector for "has a value". The
+ * state has to be published.
+ *
+ * Set from the value rather than from an event, so it is equally right for a word just
+ * dictated, an answer restored from a previous visit, and an answer deleted back to
+ * nothing. An earlier sketch toggled it on `input` alone and left every restored answer
+ * wearing the waiting treatment — the page telling a reader it wanted an answer that was
+ * sitting on the screen in front of them.
+ *
+ * Trimmed, because whitespace is not an answer. A lone newline is easy to leave behind while
+ * correcting a dictated phrase, and it is worst exactly where it is least visible: it also
+ * satisfies the `includes("\n")` test below, so a 6rem gap in a sentence takes a full-width
+ * line of its own. That much is this function's long-standing behaviour and is left alone —
+ * what trimming stops is the empty block then being COLOURED as something the reader said.
+ */
+const SAID = "fill-said";
+
+/**
+ * What storage should hold for a control — nothing at all when nothing was said.
+ *
+ * `store.ts` treats "" as absent and DELETES on it, so this is the one expression that
+ * decides whether a blank exists in the store. It has to agree with `SAID` above, and for a
+ * while it did not: the class was trimmed and the write was not, so a field showing the
+ * dashed waiting box had whitespace sitting in storage — and everything downstream reads
+ * storage, not the screen. `prompt.ts` told the assistant "I have answered this one already"
+ * about a blank the reader could see was empty, and a reply to it was counted as REPLACING
+ * the reader's words and quoted whitespace back at them as their own. One rule, one place.
+ */
+function toStore(control: HTMLTextAreaElement): string {
+  return control.value.trim() === "" ? "" : control.value;
+}
+
+/**
+ * Size a control to what is in it, and say whether it holds anything.
+ *
+ * Two jobs, together because every caller needs both and the four call sites are exactly the
+ * moments a value can have changed.
  *
  * Both directions. A short blank was given a fixed 6rem, which any real answer overruns —
  * the text then scrolls out of sight while the reader is still talking, which is the
@@ -121,6 +161,11 @@ const GROWN = "fill-grown";
  * ever feels it, this is the first place to look.
  */
 function fit(control: HTMLTextAreaElement): void {
+  // First, and ahead of everything below that can throw. This is cosmetic in the same sense
+  // the rest of `fit` is — which is to say the caller treats a failure here as survivable —
+  // but a field left wearing the wrong state tells the reader something false about their
+  // own work, so it should not be downstream of a `getComputedStyle` that might not answer.
+  control.classList.toggle(SAID, control.value.trim() !== "");
   if (control.classList.contains("fill-sm")) {
     // The width the answer would need on a single line, measured independently of how the
     // control is laid out right now — so this cannot oscillate between the two states by
@@ -156,7 +201,7 @@ function fit(control: HTMLTextAreaElement): void {
  * grows, which is what the size difference should have meant all along. `fill-sm` and
  * `fill` now differ only in how style.css lays them out.
  *
- * The class comes across so the control keeps the ruled-line look, and style.css has a
+ * The class comes across so the control keeps the blank's own treatment, and style.css has a
  * matching `textarea.fill` rule that undoes the parts of `.fill` which exist only to hide
  * the printed underscores. Without that rule this line renders every answer 9999px
  * off-screen — it shipped that way once, past a green suite, because nothing here had been
@@ -410,7 +455,7 @@ export async function bindAnswers(
     }
     const entries = new Map([
       [orderKey(group), writeOrder(minted)],
-      [answerKey(group, instance, field.field), field.element.value],
+      [answerKey(group, instance, field.field), toStore(field.element)],
     ]);
     if (await store.claim(orderKey(group), entries)) {
       instances.set(group, minted);
@@ -430,14 +475,14 @@ export async function bindAnswers(
   function record(field: Field): void {
     const repeat = field.repeat;
     if (repeat === undefined) {
-      answers.set(field.field, field.element.value);
+      answers.set(field.field, toStore(field.element));
       return;
     }
     const key = keyFor(field);
     if (key !== undefined) {
       // A key exists, so this slot saves — even in a group refused as `short`, where the
       // slots the stored order does cover are as writable as they ever were.
-      answers.set(key, field.element.value);
+      answers.set(key, toStore(field.element));
       return;
     }
     if (unwritable.has(repeat.group)) {
@@ -457,7 +502,7 @@ export async function bindAnswers(
         const settled = keyFor(field);
         if (settled !== undefined) {
           failing.delete(group);
-          answers.set(settled, field.element.value);
+          answers.set(settled, toStore(field.element));
           return;
         }
         // Materialising resolved and the field still has no key. `adopt` has already told
@@ -550,9 +595,13 @@ export async function bindAnswers(
     // see their stored answer, and their first phrase would save over it — the answer
     // lost silently rather than merely appearing at a surprising moment. An empty field
     // holds nothing of theirs to protect.
-    if (value !== undefined && field.element.value === "") {
+    // Trimmed, for the same reason `toStore` is: whitespace is not something of the reader's to
+    // protect. Untrimmed, a field holding a stray newline both blocked its own answer from
+    // being restored AND fell to the branch below, which wrote that whitespace over it.
+    const held = field.element.value.trim();
+    if (value !== undefined && held === "") {
       field.element.value = value;
-    } else if (field.element.value !== "") {
+    } else if (held !== "") {
       // Dictated while `load` was in flight. The `input` event for it has already fired
       // and been recorded, but a group that materialised in between would have keyed it
       // under nothing — recording again now that the order is known costs one redundant

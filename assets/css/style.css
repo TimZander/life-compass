@@ -5,6 +5,16 @@
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --bg:#f6f4ee;--ink:#33373a;--ink-strong:#23262a;--muted:#9a948a;
   --accent:#9a6b3f;--accent-dark:#7c5430;--rule:#e3ded2;--quote-bg:#efe9dc;
+  /* Behind the reader's own words, and nothing else (#97). Deliberately not --quote-bg:
+     the worksheet quotes things AT the reader constantly, and a colour that means both
+     "we said this" and "you said this" means neither. */
+  --answer:#eae2ce;
+  /* A blank waiting to be written on, on paper. Darker than anything on screen, because a
+     hairline that reads on a backlit display disappears into physical paper. 3.81:1 against
+     white, which clears the 3:1 this file holds every field boundary to. Named rather than
+     left as a hex inside the print block: an unexamined hard-coded #b9b1a0 is what this
+     change set out to fix. */
+  --print-rule:#8a8272;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:1.22rem;line-height:1.85;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -28,39 +38,153 @@ blockquote p:last-child{margin-bottom:0}
 hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
 .eg{font-size:.82em;color:var(--muted);font-style:italic;margin:-.3em 0 1.15em}
 .wm-mark{vertical-align:-1px}
-/* Fill-in blanks: uniform, fixed-width underlines. Underscores inside the
-   span keep a real blank on GitHub; on the site they're hidden and the
-   border draws a clean, consistent line. */
-.fill,.fill-sm{display:inline-block;max-width:100%;border-bottom:1px solid #b9b1a0;overflow:hidden;white-space:nowrap;vertical-align:baseline;text-indent:-9999px}
+/* Fill-in blanks. Underscores inside the span keep a real blank on GitHub; on the site
+   they're hidden and the outline draws the box instead.
+                        ────────────────────────────────
+   Two states, one rule, and it governs every field on the site (#97): A LINE MEANS THE
+   PAGE IS WAITING, A FILL MEANS THE WORDS ARE YOURS. Nothing wears both. So a half-answered
+   sentence shows what is left without a legend, and an empty field needs no separate
+   decision about whether it counts as the reader's — it plainly does not.
+
+   Dashed, and in the accent, because the old #b9b1a0 hairline measured 1.94:1 against the
+   paper. WCAG 1.4.11 wants 3:1 for anything that identifies where a control is, and this
+   line is the only thing that does. No grey reaches it without reading as ink; the accent
+   clears it at one pixel (4.20:1) and already means "the app wants something from you"
+   everywhere else on the page. The dash carries the same distinction by SHAPE, which is
+   what survives being printed without colour.
+
+   That fix is for the WAITING state only, and the limit is worth stating plainly rather than
+   leaving to be discovered. An ANSWERED inline blank is marked by its tint, and --answer is
+   1.17:1 against the paper — lower than the hairline this replaced. A filled field is
+   identified by the words in it, which is why the trade is acceptable here, but it is a trade
+   and not a second win. The forced-colors block below is what keeps the answered state
+   legible where a background cannot be relied on at all. */
+.fill,.fill-sm{display:inline-block;max-width:100%;outline:1px dashed var(--accent);outline-offset:1px;overflow:hidden;white-space:nowrap;text-indent:-9999px}
 .fill{width:15rem}
 .fill-sm{width:6rem}
 /* Once the page loads, every blank above is replaced by a real control carrying the
    same class (src/client/fields.ts). Everything in the rule above that exists to hide
    the printed underscores would then hide what the READER typed — text-indent alone
-   pushes a dictated paragraph 9999px off-screen — so a control undoes all of it and
-   keeps only the ruled line. Without these rules the site looks correct and is
-   unusable, which is exactly what shipped before a device saw it. */
-textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;border-bottom:1px solid #b9b1a0;border-radius:0;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
+   pushes a dictated paragraph 9999px off-screen — so a control undoes all of it and keeps
+   only the marking that says which state the blank is in. Without these rules the site looks
+   correct and is unusable, which is exactly what shipped before a device saw it.
+
+   `outline:0` is part of that undoing and is not optional. `.fill` above is a CLASS selector,
+   so it matches the control as surely as it matched the span it replaced — and while the base
+   rule resets `border`, an outline left standing rides straight through onto an ANSWERED
+   field, which then wears the dashed box AND the tint at once. That is the one thing the rule
+   at the top of this file forbids. Reasoning about the cascade will not find it: the question
+   is never which rule WINS the outline, it is that nothing revoked one. The waiting outline is
+   re-applied below, by a selector that knows about the state. */
+textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;outline:0;border-radius:2px;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
+/* Waiting. An OUTLINE rather than a border, and this is load-bearing rather than a taste:
+   `fit` in fields.ts sizes a short blank to the pixel width of its own text, and
+   `box-sizing:border-box` would then take any horizontal border or padding out of the
+   space the text needs — clipping the last glyph of every answer, on the device only,
+   where nothing in the suite can see it (0014 · C3). An outline occupies no layout at all.
+   The focus ring below is a later rule with the same specificity, so it wins while the
+   reader is in the field, which is the state that should read as active. */
+textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:1px dashed var(--accent);outline-offset:1px}
+/* Yours. */
+textarea.fill.fill-said,textarea.fill-sm.fill-said{background:var(--answer)}
+/* 31 of the 74 short blanks sit inside a sentence, where a tint that stops hard against the
+   neighbouring word reads as a highlighter slip rather than as an answer. So it is pushed a
+   little past the glyphs — with a shadow rather than padding, for the border-box reason
+   above: a shadow paints outside the box without being part of it.
+
+   Not once it has grown, though: a grown short answer is a full-width block, and a spread on
+   a box that wide pushes the tint past the column edge.
+
+   Sideways only. A spread on all four sides reaches into the line above and below — these sit
+   in prose set at line-height 1.85, and the vertical half of the halo lands on other people's
+   descenders. The sentence needs the breathing room at the two ends of the answer, which is
+   where the tint would otherwise stop hard against the neighbouring word. */
+textarea.fill-sm.fill-said:not(.fill-grown){box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
 /* Long answers are dictated paragraphs: full width, wrapping, growing downward. */
 textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
 /* Short answers sit inside a sentence — "The world has enough ___" — so they stay in the
    line and grow along it as they fill (fields.ts sets the width where the browser will
    not). A fixed-width input was tried here and scrolled the answer out of sight while the
    reader was still speaking; the cap is the line, and past that it wraps rather than hides. */
-textarea.fill-sm{display:inline-block;width:6rem;min-width:6rem;max-width:100%;vertical-align:baseline;margin:0}
+textarea.fill-sm{display:inline-block;width:6rem;min-width:6rem;max-width:100%;margin:0}
 /* Past one line it stops sitting in the sentence and takes its own, because an
    inline-block that wraps leaves its later lines starting mid-paragraph and the rest of
    the sentence stranded on the first line. fields.ts adds the class. */
 textarea.fill-sm.fill-grown{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
 /* Except in a heading — Day 2 puts five of them in an h3 ("Value 1 — ____"), where a
-   full-width block box breaks the heading in half. These hold a name, not a paragraph. */
-h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0}
-textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px;border-bottom-color:var(--accent-dark)}
+   full-width block box breaks the heading in half. These hold a name, not a paragraph. Day 3
+   names five themes the same way and both rigorous variants repeat the pair, so it is twenty
+   fields rather than the five the count above suggests. Every one is a `fill`; nothing puts a
+   `fill-sm` in a heading today, which is why this selector does not mention one.
+   A name in a heading is a short answer wearing a big font, so it gets the tint and the same
+   breathing room either side that a blank in a sentence gets. */
+h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;margin:0}
+h3 textarea.fill.fill-said{box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
+/* Sitting the box ON the line it belongs to, rather than above it.
+   An inline-block whose `overflow` is anything but `visible` takes its baseline from its
+   BOTTOM MARGIN EDGE instead of from the text inside it (CSS 2.1 §10.8.1). These have
+   `overflow:hidden` and must keep it — it is what stops a dictated answer scrolling out of
+   sight, which fields.ts calls its primary failure — so the whole box rides about half a line
+   high. Nothing showed it while the only mark was a bottom border, because that border landed
+   exactly on the outer baseline and looked correct; outlining the real box revealed it.
+   The box is lowered by the distance from its own bottom edge up to the text baseline inside
+   it, which is half the leading plus the descender. `lh` makes that self-adjusting: these sit
+   in prose at line-height 1.85 and in headings at 1.2, and one fixed nudge cannot serve both.
+   The .29em is NOT the descender on its own — it is half an em MINUS the descender, the two
+   terms bundled. Turning it up moves the box down. It is an approximation of whichever serif
+   the device resolved, so it is the number to adjust if a real screen shows this over- or
+   under-shooting.
+   `baseline` first as a fallback, and it is not decoration: `lh` is Chromium 133, Firefox 120,
+   Safari 16.4, so an older Android WebView drops the calc entirely. Gecko's UA sheet sets
+   `textarea{vertical-align:text-bottom}`, so without this line those engines would land on
+   text-bottom rather than on the alignment this file used to declare explicitly — worse than
+   before the change rather than merely unimproved.
+   `.fill,.fill-sm` alone: a class selector matches the control as well as the span, and every
+   grown or heading blank with it. Naming the shapes separately only implied a state-awareness
+   this rule does not have. It must also stay the ONLY vertical-align on a blank outside
+   `@media`, which is guarded — an earlier version of this fix was silently beaten by a
+   `vertical-align:baseline` four rules later at equal specificity, and failed precisely in the
+   heading it was written for. */
+.fill,.fill-sm{vertical-align:baseline;vertical-align:calc(.29em - .5lh)}
+/* Forced colours — Windows High Contrast and friends. The system discards backgrounds and
+   box-shadows outright and repaints borders and outlines in the user's own palette. Every
+   mark on an ANSWERED field here is a background or a shadow, so without this the two states
+   collapse into one for the readers most likely to depend on the difference. Nothing survives
+   on its own: the rail that once carried a paragraph was removed, so an answered paragraph is
+   as background-only as an inline blank.
+   An OUTLINE, not a border. `box-sizing:border-box` is in force and `fit` pins the height from
+   `scrollHeight`, which excludes borders — so a bottom border eats two pixels out of the
+   content box and `overflow:hidden` clips the last line's descenders. That is the same trap
+   this file documents on the horizontal axis, and it would land only on forced-colors users,
+   where nothing in the suite can see it.
+   The waiting state needs nothing here: forced colours already repaint the dashed outline
+   above. Saying it again cost the FOCUS RING — the restated rule sat after the focus rule at
+   equal specificity and beat it, so a focused empty field looked exactly like an unfocused
+   one. Solid against dashed is a difference in SHAPE, which is what survives a palette being
+   taken away. */
+@media (forced-colors: active){
+  textarea.fill.fill-said,textarea.fill-sm.fill-said{outline:2px solid}
+}
+/* AFTER every state rule above, so the reader's own position always wins the outline. */
+textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* Printing a bound page. The height fields.ts pins is for the screen's column width, and
    a print column is narrower, so the answer rewraps longer than the box and overflow:hidden
    would cut it off on paper. Print lets the box grow instead — 0010 makes printing a
    supported output, and an answer that prints truncated is worse than an ugly one. */
-@media print{textarea.fill,textarea.fill-sm{height:auto!important;overflow:visible;white-space:pre-wrap}}
+@media print{
+  textarea.fill,textarea.fill-sm{height:auto!important;overflow:visible;white-space:pre-wrap}
+  /* And that `overflow:visible` undoes the reason the boxes are lowered at all: with it, a
+     control takes its baseline from its own text again, so the correction above would push it
+     a further half-line down the page. Only the controls — the spans keep `overflow:hidden`
+     and still need lowering. */
+  textarea.fill,textarea.fill-sm{vertical-align:baseline}
+  /* On paper a blank is a line to write on rather than a box to tap. */
+  .fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:0;border-bottom:1px solid var(--print-rule)}
+  /* Browsers strip backgrounds from printed pages unless asked not to, and the tint is now the
+     ONLY thing marking an answer on paper for every shape — the rail that used to carry a
+     paragraph is gone. 0010 makes printing a supported output, so this asks. */
+  textarea.fill.fill-said,textarea.fill-sm.fill-said{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 code{font-family:var(--mono);font-size:.84em;background:#ece6d8;padding:.12em .38em;border-radius:4px}
 pre{background:#f0ebdd;color:#3a352c;border:1px solid var(--rule);padding:1em 1.15em;border-radius:8px;overflow:auto;font-size:.82rem;line-height:1.6;font-style:normal}
 pre code{background:none;padding:0;color:inherit}
@@ -176,6 +300,15 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .paste-change{margin:0 0 1.2em}
 .paste-change-title{font-family:var(--sans);font-size:.88rem;font-weight:600;color:var(--ink);margin:0 0 .3em}
 .paste-label{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:.4em 0 .15em}
+/* Only ONE of these is the reader's words. `.paste-before` is what they already had, so it
+   takes the colour that means exactly that. `.paste-after` is the assistant's proposal, which
+   they have not accepted yet — paste.ts says so in as many words ("one is the reader's own
+   words and the other came out of a paste"), and this is the one screen where telling those
+   two apart is the entire question. Painting both with the token defined above as "the
+   reader's own words, and nothing else" would invert the rule this file just established, on
+   the surface that needs it most. So the proposal keeps the quote tint: something being shown
+   to you, not something of yours (#97). */
 .paste-before,.paste-after{margin:0;padding:.5em .7em;border-radius:4px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--rule);background:var(--quote-bg)}
+.paste-before{background:var(--answer)}
 .paste-after{border-left-color:var(--accent)}
 @media print{.agent-open,.agent-panel,#agent,#paste{display:none}}

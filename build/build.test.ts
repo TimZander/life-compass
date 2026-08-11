@@ -694,7 +694,7 @@ describe("which page carries which controls", () => {
   });
 });
 
-describe("the stylesheet and the assistant controls agreeing", () => {
+describe("the stylesheet and the page agreeing", () => {
   /**
    * Every `.agent-*` rule was independently deletable with the suite green — including whole
    * rules — because nothing in the project asserts on this stylesheet except the one backup
@@ -732,15 +732,76 @@ describe("the stylesheet and the assistant controls agreeing", () => {
    * commit above it claims to have fixed. `"white-space:pre-wrap"` also matched the invalid
    * `pre-wrap-x`, which browsers discard. Five of nine rows could not fail.
    */
-  function declarationsFor(css: string, selector: string): readonly string[] {
+  /**
+   * Every rule in the stylesheet, with the at-rule it sits inside.
+   *
+   * Hand-walked rather than matched with one regex, and that is the whole point. The regex
+   * this replaced used `([^}]+)\{([^}]*)\}` — a body group that CAN cross an opening brace —
+   * so the first rule inside every `@media` block was swallowed into a match whose selector
+   * was the `@media` prelude. Two guards were built on it and both let through exactly the
+   * failure they were written to stop: a `vertical-align:baseline` planted as the FIRST rule
+   * of a media block was invisible while the same line as the second rule was caught, and
+   * `background:var(--answer)` could be moved out of the screen rule into `@media print` —
+   * killing the answered tint on every screen — with every build test green.
+   *
+   * Context matters as much as the selector. `textarea.fill.fill-said,textarea.fill-sm.fill-said`
+   * exists three times over: on screen, in forced colours, and in print. A check that unions
+   * them cannot tell which one holds the declaration a reader depends on.
+   */
+  type Rule = { readonly context: string; readonly selector: string; readonly declarations: readonly string[] };
+
+  function rulesIn(css: string): readonly Rule[] {
     // Comments stripped first: this stylesheet carries a long one above most rules, and a
     // naive scan folds it into the selector it precedes.
     const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
-    return [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
-      .filter((rule) => (rule[1] ?? "").trim() === selector)
-      .flatMap((rule) => (rule[2] ?? "").split(";"))
-      .map((declaration) => declaration.replace(/\s+/g, " ").trim())
-      .filter((declaration) => declaration !== "");
+    const rules: Rule[] = [];
+    let context = "";
+    let index = 0;
+    let start = 0;
+    while (index < bare.length) {
+      const character = bare[index];
+      if (character === "{") {
+        const prelude = bare.slice(start, index).trim();
+        if (prelude.startsWith("@")) {
+          context = prelude;
+          index += 1;
+          start = index;
+          continue;
+        }
+        const close = bare.indexOf("}", index);
+        if (close === -1) {
+          break;
+        }
+        rules.push({
+          context,
+          selector: prelude,
+          declarations: bare
+            .slice(index + 1, close)
+            .split(";")
+            .map((declaration) => declaration.replace(/\s+/g, " ").trim())
+            .filter((declaration) => declaration !== ""),
+        });
+        index = close + 1;
+        start = index;
+        continue;
+      }
+      if (character === "}") {
+        // The close of an at-rule block; a plain rule's own close was consumed above.
+        context = "";
+        index += 1;
+        start = index;
+        continue;
+      }
+      index += 1;
+    }
+    return rules;
+  }
+
+  /** The declarations of one rule, identified by BOTH the at-rule it is in and its selector. */
+  function declarationsFor(css: string, selector: string, context = ""): readonly string[] {
+    return rulesIn(css)
+      .filter((rule) => rule.selector === selector && rule.context === context)
+      .flatMap((rule) => rule.declarations);
   }
 
   it("styleSheet_TheAssistantControls_KeepTheDeclarationsAReaderDependsOn", async () => {
@@ -866,6 +927,87 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     // what the dead `.backup` rule did not.
     for (const selector of ["#backup", "#restore", "#agent", ".agent-open", ".agent-panel"]) {
       assert.ok(hidden.includes(selector), `${selector} is not hidden in print`);
+    }
+  });
+
+  /**
+   * The half of #97 that nobody will ever catch by looking.
+   *
+   * Deliberately NOT a table of everything this feature paints. Most of it — the tint, the
+   * dashed blank, the heading treatment — fails loudly the moment anyone opens a page, and
+   * this branch proved it three times over: every real defect in it was found on a phone in
+   * seconds, and none by a test. Pinning that on screen buys nothing and taxes every future
+   * restyle.
+   *
+   * These six are the exceptions. A printed worksheet and a forced-colours screen are states
+   * no one here passes through casually, so a rule that stops matching in either is silent
+   * for good. That is the whole bar for being in this list.
+   */
+  const PRINT = "@media print";
+  const FORCED = "@media (forced-colors: active)";
+
+  const UNSEEN: readonly (readonly [
+    context: string,
+    selector: string,
+    declaration: string,
+    because: string,
+  ])[] = [
+    [FORCED, "textarea.fill.fill-said,textarea.fill-sm.fill-said", "outline:2px solid", "forced colours discard the tint, so an answered field becomes indistinguishable from a waiting one for the readers most likely to depend on the difference"],
+    [PRINT, "textarea.fill,textarea.fill-sm", "vertical-align:baseline", "print makes these `overflow:visible`, which restores their natural baseline — so the screen correction pushes every blank a further half-line down the page"],
+    [PRINT, ".fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "border-bottom:1px solid var(--print-rule)", "a printed worksheet has no line to write on, and 0010 makes printing a supported output"],
+    [PRINT, ".fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "outline:0", "a printed blank carries the dashed tap-target box on top of the line meant to be written on"],
+    [PRINT, "textarea.fill.fill-said,textarea.fill-sm.fill-said", "print-color-adjust:exact", "browsers strip backgrounds when printing, and the tint is the only thing marking an answer on paper"],
+    [PRINT, "textarea.fill.fill-said,textarea.fill-sm.fill-said", "-webkit-print-color-adjust:exact", "the same, on the engines that only understand the prefixed property"],
+  ];
+
+  it("styleSheet_TheStatesNobodySees_KeepTheDeclarationsThatCarryThem", async () => {
+    // Arrange
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act & Assert
+    for (const [context, selector, declaration, because] of UNSEEN) {
+      const body = declarationsFor(css, selector, context);
+      assert.ok(body.length > 0, `${selector} inside ${context} has no rule at all: ${because}`);
+      assert.ok(
+        body.includes(declaration),
+        `${selector} inside ${context} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
+      );
+    }
+  });
+
+  it("styleSheet_EveryClassTheFieldsSet_HasARuleToStyleIt", async () => {
+    // Arrange — the one screen-visible check kept, because it is the only one whose failure a
+    // reader could not report usefully. These classes are named in TypeScript constants and
+    // NEITHER ever appears in built HTML, so a rename on one side leaves every answer on the
+    // site looking unanswered with nothing in the diff to show it — the dead-`.backup`-rule
+    // failure from the other end.
+    const EXPECTED_CLASSES = 2;
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const source = await readFile(path.join(ROOT, "src/client/fields.ts"), "utf8");
+
+    // Act — read the names out of the constants, so this cannot agree with a stale copy of
+    // what fields.ts is believed to set.
+    const assigned = [...source.matchAll(/^const [A-Z_]+ = "(fill-[a-z-]+)";$/gm)].map(
+      (match) => match[1] ?? "",
+    );
+    const rules = rulesIn(css);
+
+    // Assert
+    assert.equal(
+      assigned.length,
+      EXPECTED_CLASSES,
+      `expected ${EXPECTED_CLASSES} field classes declared as consts, found ${assigned.length}: ${assigned.join(", ")}`,
+    );
+    for (const name of assigned) {
+      // Selected by a rule, not merely mentioned: `.fill-grown` was found alive only through
+      // the `:not(.fill-grown)` in an unrelated selector while its own rule was deleted.
+      const styled = rules.some((rule) =>
+        rule.selector.replace(/:not\([^)]*\)/g, "").includes(`.${name}`),
+      );
+      assert.ok(
+        styled,
+        `fields.ts sets "${name}" and no rule selects it: every field wearing it renders as if it were in the other state`,
+      );
     }
   });
 });

@@ -44,7 +44,7 @@ export type RenderResult = {
    *
    * Every blank is generated from a question definition (docs/decisions/0004), which is
    * what gives it a data-field and a storage address. A hand-written one still renders,
-   * still draws its underline, and is invisible to storage — and if it copies an
+   * still looks like a field, and is invisible to storage — and if it copies an
    * existing data-field it silently shares that field's address. Collected from the
    * token stream, not the raw source, because the decision records legitimately discuss
    * this markup inside code spans and fences; only html_block and html_inline tokens are
