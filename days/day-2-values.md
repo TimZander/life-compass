@@ -10,13 +10,25 @@ operationalized values.
 
 ## 1. Brainstorm from the list (15 min)
 
-Open the [values starter list](../reference/values-list.md) and circle (or copy below)
-every word that feels like **you** — not who you wish you were, who you actually are at
-your best. Add your own.
+Circle (or copy below) every word that feels like **you** — not who you wish you were, who
+you actually are at your best. Add your own.
+
+> Adventure · Authenticity · Autonomy · Beauty · Belonging · Boldness · Calm · Challenge ·
+> Citizenship · Community · Competence · Connection · Contribution · Courage ·
+> Craftsmanship · Creativity · Curiosity · Discipline · Discovery · Excellence · Fairness ·
+> Family · Freedom · Friendship · Fun · Generosity · Growth · Health · Honesty · Humility ·
+> Humor · Independence · Integrity · Justice · Kindness · Knowledge · Leadership · Learning
+> · Legacy · Love · Loyalty · Mastery · Nature · Openness · Order · Patience · Peace ·
+> Persistence · Play · Pragmatism · Privacy · Purpose · Reliability · Resilience · Respect ·
+> Responsibility · Risk · Self-reliance · Service · Simplicity · Solitude · Spirituality ·
+> Stability · Stewardship · Strength · Tradition · Truth · Vitality · Wisdom · Wonder
 
 **Words that feel like me:**
 
 <!-- questions: day2.brainstorm -->
+
+The same list has [a page of its own](../reference/values-list.md) if you would rather work
+from it there, and it is where your own additions are kept.
 
 ---
 
