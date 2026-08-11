@@ -74,78 +74,9 @@ export async function collectAsks(root: string): Promise<ReadonlyMap<string, str
   return asks;
 }
 
-/**
- * The page an ask sends the reader to, and how much of it travels.
- *
- * Day 2 asks the reader to "Open the [values starter list](../reference/values-list.md) and
- * circle every word that feels like you". The prompt carried that sentence and nothing else, so
- * an assistant was handed a relative link it cannot follow — the application is offline by
- * design (0006) — and told to work from a list it could not see. One control of 62 produced a
- * prompt that could not be acted on as written (#96).
- *
- * ONE page, named here, rather than any page an ask happens to link to. The other two links in
- * the workbook are cross-references rather than material — `values.additions` points at Day 2
- * as background, and carrying a whole worksheet into a prompt for "add your own values" is the
- * failure this would be trying to prevent. Which links are material, how much of a page to
- * take, and what bound to put on it are three decisions with one example to decide them from,
- * and 0009 · C6 is the record of what that produces: "format machinery with no consumer gets
- * frozen before anything has tested what it is for". The second worksheet that wants material
- * inlined is what will say which of those rules is right; until then this is small enough to
- * throw away.
- *
- * WHICH questions get it is still derived rather than named, because that part costs nothing:
- * any ask linking to the page gets the list, so moving the link moves the material with it.
- */
-const MATERIAL_PAGE = "reference/values-list.md";
-
-/** Longest the material may be before it is a preview problem rather than a help (#96 · AC3). */
-const LONGEST_MATERIAL = 2000;
-
-/**
- * The list itself, without the page's own furniture.
- *
- * The words are the exercise; the title, the sentence explaining what to do with them, and the
- * question anchor at the foot of the page are not. They are picked out by the separator the
- * list is written with, which is what makes this fail loudly rather than quietly if the page is
- * ever rewritten: no paragraph carrying it means no material, and the caller refuses.
- */
-export function materialIn(markdown: string): string {
-  const paragraphs = markdown.split(/\n\s*\n/).map((one) => one.trim());
-  return paragraphs.filter((one) => one.includes("·")).join("\n\n");
-}
-
-/**
- * Question id -> the material its ask sends the reader to.
- *
- * Refuses rather than shipping nothing: an empty result means the page was rewritten out from
- * under this, and a prompt quietly losing the list is the defect #96 exists to fix arriving
- * again. The same reasoning as `writeSchemaModule` refusing a broken schema.
- */
-export async function collectMaterial(
-  root: string,
-  asks: ReadonlyMap<string, string>,
-): Promise<ReadonlyMap<string, string>> {
-  const wanted = [...asks].filter(([, ask]) => ask.includes(MATERIAL_PAGE));
-  if (wanted.length === 0) {
-    return new Map();
-  }
-  const list = materialIn(await readFile(path.join(root, MATERIAL_PAGE), "utf8"));
-  if (list === "") {
-    throw new Error(`refusing to write the client schema; ${MATERIAL_PAGE} carries no list to send`);
-  }
-  if (list.length > LONGEST_MATERIAL) {
-    throw new Error(
-      `refusing to write the client schema; ${MATERIAL_PAGE} is ${list.length} characters, ` +
-        `and more than ${LONGEST_MATERIAL} makes a prompt no reader can check before copying it`,
-    );
-  }
-  return new Map(wanted.map(([id]) => [id, list]));
-}
-
 export function schemaSource(
   worksheets: readonly Worksheet[],
   asks: ReadonlyMap<string, string>,
-  material: ReadonlyMap<string, string> = new Map(),
 ): string {
   const toQuestions = path.posix.relative(path.posix.dirname(SCHEMA_MODULE), "src/questions");
   return (
@@ -159,12 +90,6 @@ export function schemaSource(
     `/** Question id -> the prose that introduces it on its page (docs/decisions/0004 · C8). */\n` +
     `export const ASKS: Readonly<Record<string, string>> = ${JSON.stringify(
       Object.fromEntries(asks),
-      null,
-      2,
-    )};\n\n` +
-    `/** Question id -> the material its ask sends the reader to, inlined so it travels (#96). */\n` +
-    `export const MATERIAL: Readonly<Record<string, string>> = ${JSON.stringify(
-      Object.fromEntries(material),
       null,
       2,
     )};\n`
@@ -196,8 +121,7 @@ export async function writeSchemaModule(
   // to whatever root it was given. A guard that cannot fail is worse than none, because it
   // reads as protection.
   const asks = await collectAsks(root);
-  const material = await collectMaterial(root, asks);
-  await writeFile(path.join(root, SCHEMA_MODULE), schemaSource(worksheets, asks, material), "utf8");
+  await writeFile(path.join(root, SCHEMA_MODULE), schemaSource(worksheets, asks), "utf8");
 }
 
 if (process.argv[1] !== undefined && import.meta.filename === path.resolve(process.argv[1])) {
