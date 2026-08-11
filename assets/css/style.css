@@ -66,8 +66,17 @@ hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
    the printed underscores would then hide what the READER typed — text-indent alone
    pushes a dictated paragraph 9999px off-screen — so a control undoes all of it and keeps
    only the marking that says which state the blank is in. Without these rules the site looks
-   correct and is unusable, which is exactly what shipped before a device saw it. */
-textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;border-radius:2px;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
+   correct and is unusable, which is exactly what shipped before a device saw it.
+
+   `outline:0` is part of that undoing and is not optional. `.fill` above is a CLASS selector,
+   so it matches the control as surely as it matched the span it replaced — and while the base
+   rule resets `border`, an outline left standing rides straight through onto an ANSWERED
+   field, which then wears the dashed box AND the tint at once. That is the one thing the rule
+   at the top of this file forbids, and it shipped: found on a phone, on the value the reader
+   had just filled in, after four reviewers reasoned about the cascade and concluded there was
+   no combination where both appear. The waiting outline is re-applied below, by a selector
+   that knows about the state. */
+textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;outline:0;border-radius:2px;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
 /* Waiting. An OUTLINE rather than a border, and this is load-bearing rather than a taste:
    `fit` in fields.ts sizes a short blank to the pixel width of its own text, and
    `box-sizing:border-box` would then take any horizontal border or padding out of the
@@ -94,17 +103,12 @@ textarea.fill.fill-said,textarea.fill-sm.fill-said{background:var(--answer)}
 textarea.fill-sm.fill-said:not(.fill-grown){box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
 /* Long answers are dictated paragraphs: full width, wrapping, growing downward. */
 textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
-/* A paragraph gets the rail as well, because a full-width box tinted end to end colours
-   mostly empty space — the field is sized for the answer the reader MIGHT dictate, not the
-   one they have. The rail marks the block at whatever height it happens to be.
-   The geometry is on the empty state too, in transparent, so the first word said into a
-   field changes its colour and never its width. Nothing shifts under a reader mid-sentence
-   (0001). Safe against `fit` because it sets no explicit WIDTH on these — only on a short
-   blank that has not grown, which is the one shape this rule skips. It does set a height on
-   every control, but from `scrollHeight`, which is read after this indent has already
-   narrowed the content box. */
-textarea.fill,textarea.fill-sm.fill-grown{border-left:3px solid transparent;padding-left:.7em}
-textarea.fill.fill-said,textarea.fill-sm.fill-grown.fill-said{border-left-color:var(--accent)}
+/* A paragraph took a left rail as well for a while, on the reasoning that a full-width box
+   tinted end to end colours mostly empty space. Removed once the waiting state became a box
+   rather than a line: against a dashed box, the tint alone already says answered, and the
+   rail was a third cue for a distinction that only needs two. It also indented every answer
+   away from the prose it belongs to, and it was the sole reason a heading blank needed a rule
+   cancelling a border it should never have had. Fewer rules, no indent, nothing to cancel. */
 /* Short answers sit inside a sentence — "The world has enough ___" — so they stay in the
    line and grow along it as they fill (fields.ts sets the width where the browser will
    not). A fixed-width input was tried here and scrolled the answer out of sight while the
@@ -119,14 +123,10 @@ textarea.fill-sm.fill-grown{display:block;width:100%;max-width:34rem;margin:.15e
    names five themes the same way and both rigorous variants repeat the pair, so it is twenty
    fields rather than the five the count above suggests. Every one is a `fill`; nothing puts a
    `fill-sm` in a heading today, which is why this selector does not mention one.
-   A rail down the side of a heading reads as a pull-quote, so a heading blank takes what the
-   short ones take. The `fill-said` rule below has to say `border-left-color` OUT LOUD: without
-   it `textarea.fill.fill-said` wins on class count (0,2,1 against this rule's 0,1,2) and
-   re-colours a border this rule zeroed. Harmless only while the width stays 0 — narrow that
-   `border-left:0` to `border-left-width:0` some day and an accent rail appears down five
-   headings, which is the exact look these two lines exist to prevent. */
-h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0;border-left:0;padding-left:0}
-h3 textarea.fill.fill-said{border-left-color:transparent;box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
+   A name in a heading is a short answer wearing a big font, so it gets the tint and the same
+   breathing room either side that a blank in a sentence gets. */
+h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0}
+h3 textarea.fill.fill-said{box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
 textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* Printing a bound page. The height fields.ts pins is for the screen's column width, and
    a print column is narrower, so the answer rewraps longer than the box and overflow:hidden

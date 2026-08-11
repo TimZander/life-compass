@@ -879,13 +879,11 @@ describe("the stylesheet and the page agreeing", () => {
    * substance is CSS.
    */
   const FIELD_REQUIRED: readonly (readonly [selector: string, declaration: string, because: string])[] = [
+    ["textarea.fill,textarea.fill-sm", "outline:0", "`.fill` is a class selector and matches the control too, so the span's dashed box rides through onto an ANSWERED field and it wears the box and the tint at once — the one thing this feature forbids, and what actually shipped until a phone showed it"],
     [".fill,.fill-sm", "outline:1px dashed var(--accent)", "a blank is invisible before the script upgrades it, and on any page where the script never runs"],
     ["textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "outline:1px dashed var(--accent)", "nothing shows where an unanswered field is, at the 3:1 contrast WCAG 1.4.11 asks of it"],
     ["textarea.fill.fill-said,textarea.fill-sm.fill-said", "background:var(--answer)", "the reader's own words become indistinguishable from the worksheet's prose, which is the whole of #97"],
     ["textarea.fill-sm.fill-said:not(.fill-grown)", "box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)", "an answer inside a sentence has its tint stop hard against the neighbouring word"],
-    ["textarea.fill,textarea.fill-sm.fill-grown", "border-left:3px solid transparent", "the rail's geometry lands only once a field is answered, so the first word said into it shifts the box under a reader mid-sentence (0001)"],
-    ["textarea.fill.fill-said,textarea.fill-sm.fill-grown.fill-said", "border-left-color:var(--accent)", "a dictated paragraph loses the rail and is marked only by a tint across a box sized for an answer nobody has given yet"],
-    ["h3 textarea.fill.fill-said", "border-left-color:transparent", "`textarea.fill.fill-said` wins on class count and paints an accent rail down five day-2 headings — the pull-quote look the heading rule exists to prevent"],
     [".fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "border-bottom:1px solid var(--print-rule)", "a printed worksheet has no line to write on, and 0010 makes printing a supported output"],
     ["textarea.fill.fill-said,textarea.fill-sm.fill-said", "print-color-adjust:exact", "browsers strip backgrounds when printing, and for a blank in a sentence the tint is the only thing marking the answer as the reader's"],
   ];
