@@ -19,6 +19,7 @@ import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion, loadSchema } from "./questions.ts";
 import { icons } from "./icons.ts";
 import { renderManifest } from "./manifest.ts";
+import { layout } from "./layout.ts";
 import { render } from "./markdown.ts";
 import { checkSpecifiers } from "./client.ts";
 
@@ -714,6 +715,11 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     [".agent-preview:focus-visible", "outline:2px solid var(--accent-dark)", "the scrollable region gives no focus indication"],
     [".agent-note", "color:var(--ink)", "0007 · 3's one required sentence returns to 2.49:1 contrast"],
     [".agent-scroll", "color:var(--ink)", "the note saying the payload scrolls is the same 2.49:1 grey"],
+    // The one element on the paste surface that WARNS. Styled like `.paste-after` it read as
+    // another quotation of proposed text, which is the opposite of its job: it is the notice
+    // saying an answer never arrived, sitting above a tally of the ones that did.
+    [".paste-skipped", "border:2px dashed var(--accent-dark)", "the warning is indistinguishable from the quoted replacement text below it"],
+    [".paste-skipped", "font-weight:600", "the one line that is a caution reads at the same weight as the tally"],
   ];
 
   /**
@@ -750,6 +756,82 @@ describe("the stylesheet and the assistant controls agreeing", () => {
         `${selector} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
       );
     }
+  });
+
+  /**
+   * Every selector the stylesheet actually styles, comments stripped and `@media` unwrapped.
+   *
+   * Comments are stripped because a scan that reads them reports `.backup` as styled — this
+   * file's own comment says every `.backup` rule is dead, which is the exact class the drift
+   * check exists for. A rule inside `@media` needs no unwrapping: `[^{}]*` cannot cross a
+   * brace, so the inner rule is the only thing that matches and it matches on its own.
+   */
+  function selectorsIn(css: string): readonly string[] {
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    return [...bare.matchAll(/([^{}]+)\{[^{}]*\}/g)].flatMap((rule) =>
+      (rule[1] ?? "").split(",").map((one) => one.trim()),
+    );
+  }
+
+  it("styleSheet_EveryClassThePasteSurfaceSets_HasARuleToStyleIt", async () => {
+    // Arrange — the dead-`.backup`-rule failure from the other end. That rule was keyed on a
+    // class the markup never carried; this is the same drift with the halves swapped, and it is
+    // reachable by a typo in either file. `paste.ts` builds its whole surface in script, so
+    // nothing in the emitted HTML would ever show the mismatch — the notice simply ships
+    // unstyled, which for the one element on that surface that WARNS means it stops looking
+    // like a warning while every test stays green.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const source = await readFile(path.join(ROOT, "src/client/paste.ts"), "utf8");
+
+    // Act — every class this surface carries, from BOTH halves: the ones the script assigns and
+    // the ones the layout emits. `.paste-skipped` moved from one to the other when the notice
+    // became a static live region, and a check that read only the script reported it as gone
+    // rather than as moved.
+    const markup = layout("<p>body</p>", "Assistant", "agent");
+    const assigned = [
+      ...[...source.matchAll(/(?:className\s*=\s*|classList\.add\()"([^"]+)"/g)].flatMap(
+        (match) => (match[1] ?? "").split(/\s+/),
+      ),
+      ...[...markup.matchAll(/class="([^"]*\bpaste-[^"]*)"/g)].flatMap((match) =>
+        (match[1] ?? "").split(/\s+/),
+      ),
+    ].filter((name) => name.startsWith("paste-"));
+
+    // Assert — styled ANYWHERE, not necessarily by a rule of its own: `.paste-before` shares
+    // one with `.paste-after`, and a check that missed that would push the stylesheet around
+    // to suit the test.
+    // The classes this surface is known to set, exactly. A floor (`length > 0`) is what the
+    // workbook sweep's own comment condemns: move a name into a template literal or a const and
+    // the scrape shrinks silently, leaving the check green over a surface it no longer reads.
+    assert.deepEqual(
+      [...new Set(assigned)].sort(),
+      ["paste-after", "paste-before", "paste-change", "paste-change-title", "paste-label", "paste-skipped", "paste-tally"],
+      "the classes paste.ts sets have changed, or the scrape stopped seeing some of them",
+    );
+    const selectors = selectorsIn(css);
+    for (const name of new Set(assigned)) {
+      assert.ok(
+        selectors.some((one) => new RegExp(`\\.${name}(?![\\w-])`).test(one)),
+        `.${name} is set by paste.ts and nothing in the stylesheet matches it`,
+      );
+    }
+  });
+
+  it("styleSheet_AClassNamedOnlyInAComment_DoesNotCountAsStyled", () => {
+    // Arrange — negative case for the scan above, and not a hypothetical one: `.backup` appears
+    // in this stylesheet only inside a comment SAYING every `.backup` rule is dead, so a scan
+    // that read comments would report the one class the whole check was written about as
+    // styled. The nested-rule case is the other half — a class styled only inside `@media`
+    // must count, or the check fails a rule that is really there.
+    const CSS = "/* .ghost is gone */\n.real{color:red}\n@media print{.only-print{display:none}}";
+
+    // Act
+    const found = selectorsIn(CSS);
+
+    // Assert
+    assert.ok(!found.some((one) => one.includes(".ghost")), "a class named in a comment counted as styled");
+    assert.ok(found.includes(".real"), "an ordinary rule was missed");
+    assert.ok(found.includes(".only-print"), "a rule inside @media was missed");
   });
 
   it("styleSheet_ADeclarationWithTheRightPropertyButAWrongValue_IsNotAccepted", () => {

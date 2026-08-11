@@ -132,29 +132,109 @@ describe("finding blocks in a reply", () => {
     assert.equal(answerOf(blocks[0]), ANSWER);
   });
 
-  it("readBlocks_TheWorkedExampleRepeatedBesideARealAnswer_IsIgnored", () => {
+  it("readBlocks_TheWorkedExampleRepeatedBesideARealAnswer_IsIgnoredAndNotCountedAgainst", () => {
     // Arrange — an assistant restating the shape it was given. 0015 · C8a puts a group the
     // schema does not contain into the example precisely so it can never be imported; refusing
     // the whole paste because the assistant was thorough would make a verbose reply unusable.
+    //
+    // And not reported as a lost answer either, which is the harder half. #82 makes every
+    // example in a prompt name this group, so being ignored stopped meaning "the assistant was
+    // chatty" and started ALSO meaning "one of your four questions did not come back". What
+    // separates them is the words: an echo carries the prompt's own placeholders and nothing
+    // else. Counting this one would put a warning about missing answers over a complete
+    // import, in exactly the case this ignoring exists to serve — and a warning that fires on
+    // the ordinary reply is one nobody reads on the day it is true.
     const ANSWER = "the real one";
     const ONE = 1;
+    const NONE = 0;
     const text = pasteOf(
       { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", answer: "what I said" },
       block(SINGLE, { answer: ANSWER }),
     );
 
     // Act
-    const blocks = blocksIn(text);
+    const read = readBlocks(text);
 
     // Assert
-    assert.equal(blocks.length, ONE, "the worked example was imported");
-    assert.equal(answerOf(blocks[0]), ANSWER);
+    assert.ok(read.ok, "the paste was refused");
+    assert.equal(read.blocks.length, ONE, "the worked example was imported");
+    assert.equal(answerOf(read.blocks[0]), ANSWER);
+    assert.equal(read.stranded, NONE, "a restated example was reported as a lost answer");
+  });
+
+  it("readBlocks_AnExampleRestatedWithARealIdEchoed_IsStillReadAsTheExample", () => {
+    // Arrange — the other half of the placeholder test, and the one a careless version gets
+    // wrong: a repeat's example carries `"id": "the id from above"` as well as its answers, so
+    // an echo of THAT has two distinct placeholder strings in it. Testing only the answer would
+    // report the id as a lost answer every time an assistant restated a repeat's shape.
+    const NONE = 0;
+    const ONE = 1;
+    const text = pasteOf(
+      {
+        format: "life-compass/agent-answers",
+        version: 1,
+        group: "example.not_a_real_group",
+        instances: [{ id: "the id from above", fields: { title: "what I said", learned: "what I said" } }],
+      },
+      block(SINGLE, { answer: "the real one" }),
+    );
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok);
+    assert.equal(read.blocks.length, ONE);
+    assert.equal(read.stranded, NONE, "a restated repeat example was reported as a lost answer");
+  });
+
+  it("readBlocks_ARealAnswerForEveryQuestion_ReportsNothingLeftOut", () => {
+    // Arrange — the negative case for that count, and the ordinary one: a reply to a numbered
+    // item that substituted every group. A count that was always non-zero would put a warning
+    // about missing answers on every successful import, which is the surest way to teach a
+    // reader to ignore it.
+    const NONE = 0;
+    const text = pasteOf(block(SINGLE, { answer: "one" }), block(SENTENCE, { fields: { excess: "two" } }));
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok);
+    assert.equal(read.stranded, NONE, "a reply that left nothing out says it did");
+  });
+
+  it("readBlocks_SomeGroupsStillNamedTheExample_ImportsTheRestAndSaysOneWasLeftOut", () => {
+    // Arrange — the failure #82's prompt makes ordinary, and the reason the count exists at
+    // all. Every example in a several-question prompt names the placeholder group, so an
+    // assistant that substitutes two of three leaves one block that cannot be attributed. It
+    // used to be dropped in silence: the reader saw two questions in the tally, approved, and
+    // found the third still blank later. 0008 calls that the worst failure available here.
+    const IMPORTED = 2;
+    const LEFT_OUT = 1;
+    const text = pasteOf(
+      block(SINGLE, { answer: "one" }),
+      { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", fields: { excess: "two" } },
+      block(SENTENCE, { fields: { excess: "three" } }),
+    );
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok, "the answers that did come back were refused with the one that did not");
+    assert.equal(read.blocks.length, IMPORTED);
+    assert.equal(read.stranded, LEFT_OUT, "the question that did not come back is not reported");
   });
 
   it("readBlocks_TheWorkedExampleOnItsOwn_IsStillRefusedLoudly", () => {
     // Arrange — negative case, and the mis-paste 0015 · C8a actually describes: the reader taps
     // copy, then pastes the PROMPT back into the box seconds later. Ignoring it here would
     // leave them staring at a box that appeared to do nothing.
+    //
+    // The refusal names what is actually in the paste. It used to fall through to
+    // "there is nothing from an assistant in that", which is half true of a document that
+    // plainly is from one and only says so because the ignoring left nothing behind.
     const text = reply({
       format: "life-compass/agent-answers",
       version: 1,
@@ -166,7 +246,127 @@ describe("finding blocks in a reply", () => {
     const refusal = refusalFor(text);
 
     // Assert
-    assert.equal(refusal.kind, "unknown-group");
+    assert.equal(refusal.kind, "example-only");
+    assert.match(explain(refusal), /example question/i);
+  });
+
+  it("readBlocks_AnEmptyBlockNamingTheExample_IsNotReportedAsAnAnswerThatWasLost", () => {
+    // Arrange — the boundary of the placeholder test. A block naming the example group and
+    // carrying no answers at all held nothing, so nothing was stranded in it; counting it told
+    // the reader an answer went missing when the block never had one. The other side of the
+    // boundary — a block carrying even one word of the reader's — is the case the count exists
+    // for, and is asserted beside it so neither can drift into the other.
+    const NONE = 0;
+    const ONE = 1;
+    const empty = { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group" };
+    const carrying = { ...empty, fields: { excess: "noise and hurry" } };
+
+    // Act
+    const withEmpty = readBlocks(pasteOf(block(SINGLE, { answer: "real" }), empty));
+    const withAnswer = readBlocks(pasteOf(block(SINGLE, { answer: "real" }), carrying));
+
+    // Assert
+    assert.ok(withEmpty.ok && withAnswer.ok);
+    assert.equal(withEmpty.stranded, NONE, "a block that held nothing was called a lost answer");
+    assert.equal(withAnswer.stranded, ONE, "a block holding the reader's words was not counted");
+  });
+
+  it("readBlocks_AnswersWearingTheExampleGroupInAShapeTheReaderCannotWalk_AreStillReported", () => {
+    // Arrange — the hole the empty-block exemption opened. "Carried nothing" and "carried
+    // something I could not read" are different answers, and the emptiness test collapsed them:
+    // a block whose words sat in a container `isWorkedExample` does not walk yielded no values,
+    // read as empty, and was passed over in silence — over the reader's own words, which is the
+    // loss the count exists to report. Every one of these under a REAL group is refused loudly
+    // by `readBlock`; wearing the example group must not turn a refusal into nothing at all.
+    const LEFT_OUT = 1;
+    const shapes: readonly (readonly [name: string, block: Record<string, unknown>])[] = [
+      ["fields as an array", { fields: ["my words", "more of my words"] }],
+      ["instances as an object", { instances: { fields: { title: "my words" } } }],
+      ["an instance's fields as a string", { instances: [{ fields: "my words" }] }],
+      ["an instance that is not an object", { instances: [null] }],
+      // The one shape the container guards decide by themselves: `Object.values` happens to
+      // read an array or a string, so most malformations are caught by their contents. An
+      // EMPTY one has no contents to catch it, and a container the contract does not permit is
+      // something this cannot read rather than something that held nothing.
+      ["an empty fields array", { fields: [] }],
+    ];
+
+    // Act & Assert
+    for (const [name, rest] of shapes) {
+      const read = readBlocks(
+        pasteOf(block(SINGLE, { answer: "the one that landed" }), {
+          format: "life-compass/agent-answers",
+          version: 1,
+          group: "example.not_a_real_group",
+          ...rest,
+        }),
+      );
+      assert.ok(read.ok, `${name} refused the whole paste`);
+      assert.equal(read.stranded, LEFT_OUT, `${name} was passed over in silence`);
+    }
+  });
+
+  it("readBlocks_ARepeatsAnswersWearingTheExampleGroup_AreReportedLikeAnyOther", () => {
+    // Arrange — the count was only ever tested against `answer` and `fields`. A repeat carries
+    // its words two levels down, so a mistake in walking `instances` would lose the shape that
+    // holds the MOST of them — day 1's chapters are five entries of three fields each — and
+    // every test would still pass.
+    const LEFT_OUT = 1;
+    const text = pasteOf(block(SINGLE, { answer: "the one that landed" }), {
+      format: "life-compass/agent-answers",
+      version: 1,
+      group: "example.not_a_real_group",
+      instances: [{ id: "5f1c8e2a-0000-4000-8000-000000000001", fields: { title: "The garage-band years" } }],
+    });
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok);
+    assert.equal(read.stranded, LEFT_OUT, "a repeat's answers were passed over in silence");
+  });
+
+  it("readBlocks_AnEchoCarryingARealIdButNoRealAnswers_IsStillReported", () => {
+    // Arrange — the id is part of what the block carried, so it is part of what decides. The
+    // prompt tells an assistant to copy the id of the entry it is answering, so a half-done
+    // reply — real id, answers left as the placeholder — is the shape that instruction
+    // produces when it is followed for the id and forgotten for the group. Nothing asserted
+    // that a REAL id counts: dropping the id from the values compared left the suite green,
+    // and this block would then read as an echo and be passed over.
+    const LEFT_OUT = 1;
+    const text = pasteOf(block(SINGLE, { answer: "the one that landed" }), {
+      format: "life-compass/agent-answers",
+      version: 1,
+      group: "example.not_a_real_group",
+      instances: [{ id: "5f1c8e2a-0000-4000-8000-000000000001", fields: { title: "what I said" } }],
+    });
+
+    // Act
+    const read = readBlocks(text);
+
+    // Assert
+    assert.ok(read.ok);
+    assert.equal(read.stranded, LEFT_OUT, "a block carrying a real id was read as the example");
+  });
+
+  it("readBlocks_EveryBlockStillNamingTheExample_SaysThatRatherThanNothingWasFound", () => {
+    // Arrange — what a numbered item's prompt looks like pasted back: several example blocks
+    // and no real one. Every one is skipped, so nothing is left — and "there is nothing from an
+    // assistant in that" is only half true, because there plainly is, it just names the
+    // placeholder throughout. One sentence has to serve this and a reply that substituted no
+    // groups at all, since the text cannot tell them apart.
+    const text = pasteOf(
+      { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", answer: "what I said" },
+      { format: "life-compass/agent-answers", version: 1, group: "example.not_a_real_group", fields: { excess: "…" } },
+    );
+
+    // Act
+    const refusal = refusalFor(text);
+
+    // Assert
+    assert.equal(refusal.kind, "example-only");
+    assert.match(explain(refusal), /example question/i, "the refusal does not say what is wrong with it");
   });
 
   it("readBlocks_AWholeDayInOnePaste_ReadsEveryBlockInOrder", () => {
@@ -979,6 +1179,7 @@ describe("what the reader is told", () => {
     // reply about words they dictated.
     const EVERY: readonly (readonly [Refusal, RegExp])[] = [
       [{ kind: "no-blocks" }, /code block/],
+      [{ kind: "example-only" }, /example question/],
       [{ kind: "cut-off" }, /cut off/],
       [{ kind: "repeated-group", group: REPEAT }, /twice/],
       [{ kind: "repeated-instance", group: REPEAT }, /same entry/],

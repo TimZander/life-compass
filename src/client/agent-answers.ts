@@ -52,7 +52,9 @@
 import type { RepeatQuestion } from "../questions/types.ts";
 import { answerKey, fieldKey, newInstanceId, orderKey, readOrder, writeOrder } from "./keys.ts";
 import {
+  EXAMPLE_ANSWER,
   EXAMPLE_GROUP,
+  EXAMPLE_ID,
   FORMAT,
   VERSION,
   findQuestion,
@@ -73,6 +75,8 @@ import {
  */
 export type Refusal =
   | { readonly kind: "no-blocks" }
+  /** Every block in the paste still named the example group, so none of them could be read. */
+  | { readonly kind: "example-only" }
   | { readonly kind: "cut-off" }
   | { readonly kind: "repeated-group"; readonly group: string }
   | { readonly kind: "repeated-instance"; readonly group: string }
@@ -131,7 +135,22 @@ export type Block =
     };
 
 export type Reading =
-  | { readonly ok: true; readonly blocks: readonly Block[] }
+  | {
+      readonly ok: true;
+      readonly blocks: readonly Block[];
+      /**
+       * How many answers were left out for still naming the example group.
+       *
+       * Not a refusal and not a detail: it is the difference between "your reply landed" and
+       * "three of your four questions landed". The confirmation surface says so, because a
+       * missing group is otherwise visible only to a reader who counts the tally.
+       *
+       * Counts blocks carrying the READER's words, never the prompt's own example restated —
+       * see `isWorkedExample`. An assistant explaining itself is ordinary, and a warning that
+       * fires on ordinary is a warning that gets ignored on the day it matters.
+       */
+      readonly stranded: number;
+    }
   | { readonly ok: false; readonly refusal: Refusal };
 
 /** One field an import would write, with what is there now. */
@@ -295,10 +314,16 @@ function fieldsFrom(
  * explain, and a fence that will not parse is ordinary noise. A paste yielding NO matching
  * block is refused rather than reported as success, which is the silence 0015 forbids.
  *
- * A block that matches the format and is then malformed refuses the whole paste rather than
+ * A block that matches the format and is then MALFORMED refuses the whole paste rather than
  * being skipped. Partial acceptance would mean telling the reader some of their reply landed
  * and leaving them to work out which, and `import.ts` already establishes all-or-nothing as
  * the property this application keeps.
+ *
+ * The one block that is neither read nor refused is 0015 · C8a's worked example, which names a
+ * group the schema does not hold and is ignored so that a verbose reply stays usable. That is
+ * not a hole in the paragraph above — nothing about it can be imported — but it does mean this
+ * function can return successfully having set an answer aside, so it says how many it set aside
+ * that were carrying the reader's words rather than the example's. See `stranded`.
  */
 export function readBlocks(text: string): Reading {
   const scan = scanObjects(text);
@@ -322,13 +347,32 @@ export function readBlocks(text: string): Reading {
   }
   const blocks: Block[] = [];
   const seen = new Set<string>();
+  let stranded = 0;
   for (const parsed of candidates) {
     // The worked example from the prompt, repeated back. 0015 · C8a put a group the schema
     // does not contain into the example precisely so it can never be imported, and refusing
     // the whole paste because an assistant helpfully restated the shape would make a verbose
-    // reply unusable. Ignored when there is something real beside it; still refused loudly
-    // when it is all there is, which is the mis-paste C8a actually describes.
-    if (own(parsed, "group") === EXAMPLE_GROUP && candidates.length > 1) {
+    // reply unusable.
+    //
+    // Ignored whether or not something real sits beside it. It used to be ignored ONLY then,
+    // which gave a mis-tapped prompt two different answers depending on how many questions it
+    // covered: one example block reached `readBlock` and refused as `unknown-group`, naming the
+    // placeholder and offering "the identifier may have been altered" — advice about a fault
+    // that is not the reader's; several were all skipped and left nothing, which refused as
+    // "there is nothing from an assistant in that", half true of a document that plainly is
+    // from one. One reading now, and the emptiness reports itself in a sentence that fits both
+    // a mis-tapped prompt and a reply that substituted no groups at all.
+    if (own(parsed, "group") === EXAMPLE_GROUP) {
+      // …but an ignored block is not always an example. #82 asks for one block per question of
+      // a numbered item and shows one example each, all naming this group, so an assistant that
+      // substitutes three of four leaves a real answer wearing the placeholder — imported as
+      // nothing, and once reported as nothing too (0015 · C8b). What tells the two apart is the
+      // words: an echo carries the prompt's own placeholders and a stranded answer carries the
+      // reader's. Counting only the second is what keeps the warning worth reading, because a
+      // notice that fires on every thorough reply is a notice nobody reads by the third one.
+      if (!isWorkedExample(parsed)) {
+        stranded += 1;
+      }
       continue;
     }
     const read = readBlock(parsed);
@@ -345,9 +389,73 @@ export function readBlocks(text: string): Reading {
     blocks.push(read.block);
   }
   if (blocks.length === 0) {
-    return { ok: false, refusal: { kind: "no-blocks" } };
+    // Two pastes arrive here and they are indistinguishable from the text alone: the prompt
+    // itself, mis-tapped back into the box seconds after copying (0015 · C8a), and a reply
+    // that substituted none of the example groups. One sentence has to serve both, so it
+    // names what is actually in the paste rather than guessing which happened.
+    // Every candidate that was not an example either pushed a block or returned a refusal, so
+    // reaching here with none means every one of them was an example.
+    return {
+      ok: false,
+      refusal: candidates.length > 0 ? { kind: "example-only" } : { kind: "no-blocks" },
+    };
   }
-  return { ok: true, blocks };
+  return { ok: true, blocks, stranded };
+}
+
+/**
+ * Whether an ignored block is the prompt's own example rather than an answer that lost its group.
+ *
+ * Every value equal to the placeholder the prompt printed, and no value that is not. An
+ * assistant restating the shape copies those words exactly; one that answered and forgot to
+ * change the group carries the reader's. The literals come from `prompt.ts` rather than being
+ * spelled again here — the generator and the reader disagreeing about what a placeholder looks
+ * like is the two-copies-of-one-fact mistake, and it would show up as a warning about lost
+ * answers over a reply that lost none.
+ */
+function isWorkedExample(parsed: Record<string, unknown>): boolean {
+  const answer = own(parsed, "answer");
+  const fields = own(parsed, "fields");
+  const instances = own(parsed, "instances");
+
+  // "Carried nothing" and "carried something I could not read" are different answers, and
+  // collapsing them is how this went wrong once already: the test was `values.length > 0`, so a
+  // block whose words sat in a shape this function does not walk — `fields` as an array,
+  // `instances` as an object — yielded no values, was read as empty, and was passed over in
+  // silence over the reader's own words. So an unreadable container returns false below rather
+  // than contributing nothing: the same shape under a REAL group is refused loudly by
+  // `readBlock`, and wearing the example group must not turn a refusal into nothing at all.
+  //
+  // A block carrying none of the three keys needs no branch of its own — nothing is collected
+  // and `every` over nothing is already true, which is the right answer: nothing was in it, so
+  // nothing was stranded in it.
+  const values: unknown[] = [];
+  if (answer !== undefined) {
+    values.push(answer);
+  }
+  if (fields !== undefined) {
+    if (!isObject(fields)) {
+      return false;
+    }
+    values.push(...Object.values(fields));
+  }
+  if (instances !== undefined) {
+    if (!Array.isArray(instances)) {
+      return false;
+    }
+    for (const one of instances) {
+      if (!isObject(one)) {
+        return false;
+      }
+      const inner = own(one, "fields");
+      if (inner !== undefined && !isObject(inner)) {
+        return false;
+      }
+      values.push(own(one, "id"), ...(isObject(inner) ? Object.values(inner) : []));
+    }
+  }
+  const said = values.filter((one) => one !== undefined);
+  return said.every((one) => one === EXAMPLE_ANSWER || one === EXAMPLE_ID);
 }
 
 /** One parsed object known to carry the right `format`. */
@@ -653,6 +761,8 @@ export function explain(refusal: Refusal): string {
   switch (refusal.kind) {
     case "no-blocks":
       return `There is nothing from an assistant in that. Copy the whole reply, including the part in a code block, and paste it again.${UNTOUCHED}`;
+    case "example-only":
+      return `Every block in that names the example question rather than a real one. If you pasted the message you copied, paste your assistant's reply instead.${UNTOUCHED}`;
     case "cut-off":
       return `That reply looks cut off — an answer starts and never finishes, so the rest of it cannot be read. Copy the whole reply and paste it again.${UNTOUCHED}`;
     case "repeated-group":

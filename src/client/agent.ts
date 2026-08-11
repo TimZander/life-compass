@@ -252,8 +252,22 @@ function panelFor(
       return;
     }
     try {
-      const made = promptFor(group, priorFrom(question, entries, wanted));
+      // One question per control still, so one part per prompt — #82's third slice is what
+      // groups these by the numbered item they sit in. A prompt covering a single question
+      // reads exactly as it did before items existed.
+      //
+      // The item name is empty rather than `name`, deliberately. `name` is this button's
+      // accessible label: a clipped first line of an ask, sometimes carrying a "(2)"
+      // disambiguator — not what the worksheet calls the numbered item. It happens to be
+      // discarded on the one-question path, so passing it would be inert today and wrong the
+      // day that changes, and nothing in the types could tell the two strings apart.
+      const made = promptFor("", [{ group, prior: priorFrom(question, entries, wanted) }]);
       if (!made.ok) {
+        // Logged as well as shown. Every refusal reachable here is a fault rather than an
+        // ordinary outcome — a group the schema does not hold means the markup and this build
+        // disagree, which happens across a service worker activation — and the reader's copy
+        // of the message says nothing a developer could act on.
+        console.error("life-compass: this question cannot be asked about", made.refusal);
         preview.textContent = explain(made.refusal);
         return;
       }

@@ -82,9 +82,9 @@ as cut off rather than partly accepted.
 One consequence follows, and is the reason this is an amendment rather than a footnote: an
 object carrying the format is now found wherever it sits, including inside an assistant's
 prose explaining the shape. C8a's example group is what makes that safe — it names a group the
-schema does not contain, so a restated example cannot import. It is **ignored** when a real
-block sits beside it and still **refused** when it is the only thing in the paste, which is the
-mis-paste C8a describes. An assistant that illustrates with a REAL group instead would be
+schema does not contain, so a restated example cannot import. It is **ignored** — always, since
+C8b — and a paste holding nothing else then refuses for the reason that is actually true of it:
+every block in it named the example. An assistant that illustrates with a REAL group instead would be
 importable, and the confirmation surface is what stands between that and the reader's answers.
 
 **Anything that is not a matching block is ignored, and a paste with no matching block at all
@@ -118,7 +118,8 @@ and for the reason its comment gives: sampling one value proves nothing about th
 A block carrying more than one of `answer`, `fields` and `instances`, or none, is refused.
 Keys this list does not name are ignored, which is what makes a later version cheap to add.
 
-An example, complete:
+An example, complete — and deliberately more than one block, because that is the ordinary
+shape rather than the advanced one:
 
 ```life-compass
 {
@@ -131,6 +132,39 @@ An example, complete:
   ]
 }
 ```
+
+```life-compass
+{
+  "format": "life-compass/agent-answers",
+  "version": 1,
+  "group": "day1.patterns",
+  "answer": "The work that lands is the work with a person on the other end of it."
+}
+```
+
+*Amended 2026-08-10, with [#82](https://github.com/TimZander/life-compass/issues/82).* The
+example shows two blocks because a reply routinely is two. A reader works through a worksheet
+in numbered items, not in questions — day 4 asks five things and renders fourteen answer
+controls — so a prompt covers one numbered item and asks for one block per question in it.
+Nothing in the format moves: this is the several-block paste C1 already describes, arriving one
+numbered item at a time rather than a whole day at once. What had to move is the outbound half,
+which asked for exactly one block and showed exactly one example. The two halves of this record
+are only ever safe when they are written from one reading of it, and the ceiling above is what
+happens when they are not.
+
+What the format leaving unchanged does not cover is the **blast radius**, and this record
+should not pretend otherwise. A block that is MALFORMED refuses the whole paste — `readBlocks`
+returns on the first bad block, and C5 warns that all-or-nothing is not free on this side — so
+one bad block now costs a numbered item's whole interview rather than one question's. That is
+the price of collecting more per exchange, and it rises again the day a whole day is collected
+at once. It is accepted rather than solved: partial acceptance of a malformed block would mean
+telling a reader some of their reply landed and leaving them to work out which, which is the
+trade `import.ts` already settled the other way.
+
+The one block that is set aside rather than read or refused is C8a's worked example, and that
+is not an exception to the paragraph above: nothing about it can be imported, so nothing about
+it can partly land. What C8b adds is that being set aside is now *reported* when the block was
+carrying the reader's words rather than the example's.
 
 **The block does not restate the question's kind.** `questions.json` already says it, and two
 copies of one fact can disagree — the mistake 0009 · C6 records, and the one 0013 records in
@@ -197,11 +231,8 @@ reader's decision and answering it for them was the workaround, not the design.
 
 What has NOT changed is that excess is refused rather than truncated. Past `max` there is
 still nothing to display, and truncating silently is still the loss this bound exists to
-prevent. A worksheet asking for "5–8
-chapters" means the reader decides. Excess instances are refused rather than truncated —
-truncating is the silent loss this rule exists to prevent.
-The prompt generator asks for the worksheet's range, so the refusal is a backstop rather than
-an ordinary outcome.
+prevent. The prompt generator asks for the worksheet's range, so the refusal is a backstop
+rather than an ordinary outcome.
 
 Fewer instances than the page renders is allowed and already has a defined behaviour: 0013 · Q2
 adopts a short order for the slots it covers, and the slots past its end refuse writes and say
@@ -289,7 +320,8 @@ destructive `replaceAll` reserved to restore, so "never partially imports" is no
 the way 0009 · C4 made it free for the envelope. #68 has to establish it rather than inherit
 it, and this record does not pretend otherwise.
 
-**C6.** The refusals this needs, as a list to build against: no matching block found; a shape
+**C6.** The refusals this needs, as a list to build against: no matching block found; every
+block naming the example group, so that none of them could be read (*added 2026-08-10, C8b*); a shape
 that does not match its group's kind, or more than one shape present; a group not in the
 schema; a checklist group; a version that is absent, not a number, not an integer, below 1, or
 newer than this build; a value that is not a string; an empty value; a field identifier the
@@ -306,6 +338,13 @@ groups; and it must not embed an example block in this format, because a reader 
 prompt back — a plausible mis-tap moments after copying it — would otherwise be handing the
 importer a correctly-named block that is not a reply.
 
+*None of the three still reads as written.* The first was reversed by the ceiling amendment
+above when #74 landed — the prompt asks for the worksheet's range. The second is narrowed by
+C8c, which keeps it for a checklist standing alone and lifts it for an item containing one. The
+third is relaxed by C8a. Left in place because the consequences that amend them argue against
+what it says, and a list edited to agree with them would hide that anything was ever decided
+differently.
+
 **C8a.** *Added 2026-08-08.* C8's third constraint — no example block in the contract format
 — is relaxed to say *how* rather than forbid. Assistants follow an example far more reliably
 than a description of JSON in prose, and a prompt that produces malformed replies fails the
@@ -314,6 +353,65 @@ is a name the schema does not contain. It teaches the shape, and a reader who pa
 prompt back gets a loud refusal — a group not in the schema is already a refusal kind (C6) —
 rather than an example silently imported as their answers. The safeguard C8 asked for is kept;
 the cost to output quality is not.
+
+**C8b.** *Added 2026-08-10.* A prompt covering a numbered item carries one worked example per
+question in it, and every one of them names C8a's example group. The real identifier is stated
+in the prose above each example, which keeps C8's safeguard: nothing in the prompt's own
+structure is a block naming a question the schema holds.
+
+Two consequences follow, and the second is why this is a consequence rather than a footnote.
+
+*Which refusal a mis-tap gets.* `readBlocks` ignores an example-group block, so a prompt pasted
+back is nothing but example blocks and nothing survives the ignoring. That used to
+report "there is nothing from an assistant in that", which is half true — there plainly is,
+it just names the placeholder throughout. There is now a refusal for it that says so, and it
+has to serve two pastes the text cannot tell apart: the prompt itself, and a reply that
+substituted no groups at all — and it is now the answer for both, however many questions the
+prompt covered. Ignoring the example only when something real sat beside it split that in two:
+a single-question prompt pasted back reached the block reader and refused as `unknown-group`,
+naming the placeholder and suggesting "the identifier may have been altered" — advice about a
+fault that is not the reader's — while a several-question one was skipped down to nothing and
+refused as "there is nothing from an assistant in that", which is half true of a document that
+plainly is from one.
+
+*A reply that substitutes SOME of them.* This is the one that had to be designed rather than
+noted. An assistant that replaces three groups of four leaves an answer wearing the
+placeholder, and ignoring it silently imported three questions and dropped one while telling
+the reader their reply had landed — the loss 0008 calls the worst available to this application,
+arriving through the machinery that exists to make a verbose reply usable. Refusing the paste
+instead would take the three good answers away with it. So the ignoring is **counted** — but only where the
+block carried the reader's words. An echo of the example carries the example's own placeholder
+text and nothing else, which is what tells the two apart; counting those as well would put a
+warning about lost answers over every thorough reply, and a warning that fires on the ordinary
+case is one nobody reads on the day it is true. The count then follows the reading to each surface that can
+be the last thing the reader is told — the confirmation, a refused plan, the nothing-to-change
+notice, and the line that confirms the save. The paths it does not reach are the ones where the
+reply is still in the box and nothing was written: a store that would not open, a save that
+failed, and a paste refused before any of it was read. C1's "a whole day in one paste" carries
+this cost at every scale, and it is paid where the reader can see it.
+
+*None of this is what makes the mis-tap safe.* That is worth stating plainly because this
+record implied otherwise. The importer finds blocks by balanced braces, not by fences (the
+2026-08-09 amendment above), and `prompt.ts` was still neutralising a reader's stored answers
+for backticks alone — so an answer carrying a one-line contract object needed no fence to
+become a real candidate, and a prompt built from it imported into whatever group that object
+named. Fixed with this slice: braces in a reader's own words are rounded to parentheses on the
+way into a prompt, the same trade the backtick rule already made. The lesson is the one the
+amendment itself records — when the scanner changed, everything that had been written to defeat
+the old scanner needed re-reading, and only one half of it was.
+
+**C8c.** *Added 2026-08-10.* Checklists are dropped from a numbered item's prompt rather than
+refusing it. C8's second constraint — no copy control on a checklist group — still holds for a
+checklist on its own; what it did not anticipate is a control covering an ITEM that contains
+one, where refusing would cost the reader every question beside it.
+
+No numbered item in the workbook currently holds a checklist beside an answerable question:
+the two that hold one hold nothing else. So this rule is written for a page that does not exist
+yet, which 0009 · C6 warns against — and it is admitted here rather than dressed as a live
+constraint. What justifies it anyway is that the alternative is not "no rule" but "refuse", and
+the day a `##` heading gains a question beside its readiness ticks, refusing would silently
+cost the reader that question. An item holding **nothing but** a checklist is still refused by
+name, which is what tells the control not to exist there at all.
 
 **C9.** A group with no answers stored still has a usable prompt: no identifiers travel, and
 every instance comes back new. The first exchange with an assistant is the common case, not
