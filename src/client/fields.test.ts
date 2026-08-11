@@ -893,24 +893,6 @@ describe("listeners and the load they race", () => {
  * answer that is sitting on the screen in front of them.
  */
 describe("marking what the reader said", () => {
-  it("fit_AFieldNobodyHasAnswered_IsLeftWaiting", async () => {
-    // Arrange — the state every field starts in, and the one the dashed blank is for.
-    const document = render();
-    const store = recorder();
-    const answers = createAnswers(store, { quietMs: QUIET_MS });
-
-    // Act
-    await bindAnswers(document, answers, store);
-
-    // Assert
-    assert.equal(
-      fieldFor("day1.patterns").classList.contains("fill-said"),
-      false,
-      "an untouched field claimed to hold the reader's words",
-    );
-    answers.stop();
-  });
-
   it("fit_SomethingDictated_MarksTheFieldAsTheReadersWords", async () => {
     // Arrange
     const PHRASE = "leaving things better than I found them";

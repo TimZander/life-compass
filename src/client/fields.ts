@@ -140,11 +140,8 @@ function toStore(control: HTMLTextAreaElement): string {
 /**
  * Size a control to what is in it, and say whether it holds anything.
  *
- * Two jobs rather than one, and they are together because they answer to the same question —
- * what is in this control right now — and because every caller needs both. The four call
- * sites (the `input` listener, the restore loop, `reveal`, and `refit`) are exactly the
- * moments a value can have changed, so splitting them would mean four pairs of calls and a
- * standing chance of adding a fifth caller that only remembers one.
+ * Two jobs, together because every caller needs both and the four call sites are exactly the
+ * moments a value can have changed.
  *
  * Both directions. A short blank was given a fixed 6rem, which any real answer overruns —
  * the text then scrolls out of sight while the reader is still talking, which is the
