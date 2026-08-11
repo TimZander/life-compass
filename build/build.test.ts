@@ -732,15 +732,76 @@ describe("the stylesheet and the page agreeing", () => {
    * commit above it claims to have fixed. `"white-space:pre-wrap"` also matched the invalid
    * `pre-wrap-x`, which browsers discard. Five of nine rows could not fail.
    */
-  function declarationsFor(css: string, selector: string): readonly string[] {
+  /**
+   * Every rule in the stylesheet, with the at-rule it sits inside.
+   *
+   * Hand-walked rather than matched with one regex, and that is the whole point. The regex
+   * this replaced used `([^}]+)\{([^}]*)\}` — a body group that CAN cross an opening brace —
+   * so the first rule inside every `@media` block was swallowed into a match whose selector
+   * was the `@media` prelude. Two guards were built on it and both let through exactly the
+   * failure they were written to stop: a `vertical-align:baseline` planted as the FIRST rule
+   * of a media block was invisible while the same line as the second rule was caught, and
+   * `background:var(--answer)` could be moved out of the screen rule into `@media print` —
+   * killing the answered tint on every screen — with every build test green.
+   *
+   * Context matters as much as the selector. `textarea.fill.fill-said,textarea.fill-sm.fill-said`
+   * exists three times over: on screen, in forced colours, and in print. A check that unions
+   * them cannot tell which one holds the declaration a reader depends on.
+   */
+  type Rule = { readonly context: string; readonly selector: string; readonly declarations: readonly string[] };
+
+  function rulesIn(css: string): readonly Rule[] {
     // Comments stripped first: this stylesheet carries a long one above most rules, and a
     // naive scan folds it into the selector it precedes.
     const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
-    return [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
-      .filter((rule) => (rule[1] ?? "").trim() === selector)
-      .flatMap((rule) => (rule[2] ?? "").split(";"))
-      .map((declaration) => declaration.replace(/\s+/g, " ").trim())
-      .filter((declaration) => declaration !== "");
+    const rules: Rule[] = [];
+    let context = "";
+    let index = 0;
+    let start = 0;
+    while (index < bare.length) {
+      const character = bare[index];
+      if (character === "{") {
+        const prelude = bare.slice(start, index).trim();
+        if (prelude.startsWith("@")) {
+          context = prelude;
+          index += 1;
+          start = index;
+          continue;
+        }
+        const close = bare.indexOf("}", index);
+        if (close === -1) {
+          break;
+        }
+        rules.push({
+          context,
+          selector: prelude,
+          declarations: bare
+            .slice(index + 1, close)
+            .split(";")
+            .map((declaration) => declaration.replace(/\s+/g, " ").trim())
+            .filter((declaration) => declaration !== ""),
+        });
+        index = close + 1;
+        start = index;
+        continue;
+      }
+      if (character === "}") {
+        // The close of an at-rule block; a plain rule's own close was consumed above.
+        context = "";
+        index += 1;
+        start = index;
+        continue;
+      }
+      index += 1;
+    }
+    return rules;
+  }
+
+  /** The declarations of one rule, identified by BOTH the at-rule it is in and its selector. */
+  function declarationsFor(css: string, selector: string, context = ""): readonly string[] {
+    return rulesIn(css)
+      .filter((rule) => rule.selector === selector && rule.context === context)
+      .flatMap((rule) => rule.declarations);
   }
 
   it("styleSheet_TheAssistantControls_KeepTheDeclarationsAReaderDependsOn", async () => {
@@ -874,18 +935,44 @@ describe("the stylesheet and the page agreeing", () => {
    *
    * `fields.ts` publishes `fill-said` and the stylesheet is what gives it meaning — so every
    * rule below was independently deletable with the suite green, and deleting all of them
-   * left a page where a reader's own answers look exactly like the app's prose while 683
+   * left a page where a reader's own answers look exactly like the app's prose while 690
    * tests still passed. Same argument as the `.agent-*` table above, on a feature whose whole
    * substance is CSS.
+   *
+   * Rows carry the at-rule they live in, because three of these selectors exist in more than
+   * one. A version of this table that matched on selector text alone let `background:var(--answer)`
+   * be moved from the screen rule into `@media print` — every answer on every screen losing
+   * its tint — with all 291 build tests green.
    */
-  const FIELD_REQUIRED: readonly (readonly [selector: string, declaration: string, because: string])[] = [
-    ["textarea.fill,textarea.fill-sm", "outline:0", "`.fill` is a class selector and matches the control too, so the span's dashed box rides through onto an ANSWERED field and it wears the box and the tint at once — the one thing this feature forbids, and what actually shipped until a phone showed it"],
-    [".fill,.fill-sm", "outline:1px dashed var(--accent)", "a blank is invisible before the script upgrades it, and on any page where the script never runs"],
-    ["textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "outline:1px dashed var(--accent)", "nothing shows where an unanswered field is, at the 3:1 contrast WCAG 1.4.11 asks of it"],
-    ["textarea.fill.fill-said,textarea.fill-sm.fill-said", "background:var(--answer)", "the reader's own words become indistinguishable from the worksheet's prose, which is the whole of #97"],
-    ["textarea.fill-sm.fill-said:not(.fill-grown)", "box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)", "an answer inside a sentence has its tint stop hard against the neighbouring word"],
-    [".fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "border-bottom:1px solid var(--print-rule)", "a printed worksheet has no line to write on, and 0010 makes printing a supported output"],
-    ["textarea.fill.fill-said,textarea.fill-sm.fill-said", "print-color-adjust:exact", "browsers strip backgrounds when printing, and for a blank in a sentence the tint is the only thing marking the answer as the reader's"],
+  const SCREEN = "";
+  const PRINT = "@media print";
+  const FORCED = "@media (forced-colors: active)";
+
+  const FIELD_REQUIRED: readonly (readonly [
+    context: string,
+    selector: string,
+    declaration: string,
+    because: string,
+  ])[] = [
+    [SCREEN, ".fill,.fill-sm", "outline:1px dashed var(--accent)", "a blank is invisible before the script upgrades it, and on any page where the script never runs"],
+    [SCREEN, "textarea.fill,textarea.fill-sm", "text-indent:0", "every dictated answer renders 9999px off-screen — the defect fields.ts records as having shipped once past a green suite"],
+    [SCREEN, "textarea.fill,textarea.fill-sm", "background:transparent", "a control paints the browser's default field colour over the worksheet paper"],
+    [SCREEN, "textarea.fill,textarea.fill-sm", "outline:0", "`.fill` is a class selector and matches the control too, so the span's dashed box rides through onto an ANSWERED field and it wears the box and the tint at once — the one thing this feature forbids, and what actually shipped until a phone showed it"],
+    [SCREEN, "textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "outline:1px dashed var(--accent)", "nothing shows where an unanswered field is, at the 3:1 contrast WCAG 1.4.11 asks of it"],
+    [SCREEN, "textarea.fill.fill-said,textarea.fill-sm.fill-said", "background:var(--answer)", "the reader's own words become indistinguishable from the worksheet's prose, which is the whole of #97"],
+    [SCREEN, "textarea.fill-sm.fill-said:not(.fill-grown)", "box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)", "an answer inside a sentence has its tint stop hard against the neighbouring word"],
+    [SCREEN, "textarea.fill-sm.fill-grown", "display:block", "a short answer that outran its line keeps wrapping inside the sentence, starting each later line at its own left edge with the rest of the sentence stranded"],
+    [SCREEN, "h3 textarea.fill", "display:inline-block", "the twenty `Value N —` and `Theme N —` heading blanks become full-width blocks and break each heading in half"],
+    [SCREEN, "h3 textarea.fill.fill-said", "box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)", "a name answered in a heading loses the breathing room every other inline answer gets"],
+    [SCREEN, "textarea.fill:focus,textarea.fill-sm:focus", "outline:2px solid var(--accent-dark)", "a keyboard reader cannot see which blank they are in"],
+    [SCREEN, ".paste-before", "background:var(--answer)", "the reader's existing answer stops being marked as theirs on the one screen whose entire question is which words are theirs and which the assistant proposed"],
+    [SCREEN, ".paste-before,.paste-after", "background:var(--quote-bg)", "the assistant's unaccepted proposal is painted with the colour reserved for the reader's own words — the inversion this branch was written to fix"],
+    [FORCED, "textarea.fill.fill-said,textarea.fill-sm.fill-said", "outline:2px solid", "in forced colours the tint is discarded and an answered field becomes indistinguishable from a waiting one, for the readers most likely to depend on the difference"],
+    [PRINT, "textarea.fill,textarea.fill-sm", "vertical-align:baseline", "print restores the natural baseline by making these `overflow:visible`, so the screen correction would push every blank a further half-line down the page"],
+    [PRINT, ".fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "border-bottom:1px solid var(--print-rule)", "a printed worksheet has no line to write on, and 0010 makes printing a supported output"],
+    [PRINT, ".fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "outline:0", "a printed blank carries the dashed tap-target box on top of the line meant to be written on"],
+    [PRINT, "textarea.fill.fill-said,textarea.fill-sm.fill-said", "print-color-adjust:exact", "browsers strip backgrounds when printing, and the tint is now the only thing marking an answer on paper for every shape"],
+    [PRINT, "textarea.fill.fill-said,textarea.fill-sm.fill-said", "-webkit-print-color-adjust:exact", "the same, on the engines that only understand the prefixed property"],
   ];
 
   it("styleSheet_TheAnswerTreatments_KeepTheDeclarationsAReaderDependsOn", async () => {
@@ -893,61 +980,109 @@ describe("the stylesheet and the page agreeing", () => {
     const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
 
     // Act & Assert
-    for (const [selector, declaration, because] of FIELD_REQUIRED) {
-      const body = declarationsFor(css, selector);
-      assert.ok(body.length > 0, `${selector} has no rule at all: ${because}`);
+    for (const [context, selector, declaration, because] of FIELD_REQUIRED) {
+      const where = context === "" ? "" : ` inside ${context}`;
+      const body = declarationsFor(css, selector, context);
+      assert.ok(body.length > 0, `${selector}${where} has no rule at all: ${because}`);
       assert.ok(
         body.includes(declaration),
-        `${selector} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
+        `${selector}${where} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
       );
     }
   });
 
-  it("styleSheet_ABlanksAlignment_IsDeclaredInExactlyOnePlace", async () => {
-    // Arrange — a blank sits on the line it belongs to only because one rule lowers it, and
-    // the first attempt at that rule was beaten four rules later by a `vertical-align:baseline`
-    // at identical specificity. It failed silently, and it failed precisely in the heading,
-    // which was the one place the misalignment had been reported from a device. The value
-    // itself is a visual approximation and expected to be tuned; what must not come back is a
-    // second declaration competing for the property.
+  it("styleSheet_ABlanksAlignment_IsSetOnceAndCoversEveryBlank", async () => {
+    // Arrange — a blank sits on the line it belongs to only because one rule lowers it, and the
+    // first attempt was beaten four rules later by a `vertical-align:baseline` at identical
+    // specificity. It failed silently and it failed precisely in the heading, which is where the
+    // misalignment had been reported from a device. Three things have to hold and none of them
+    // is the tuned number, which is a visual approximation and expected to move: the rule must
+    // be alone on screen, it must reach every shape, and the value that WINS must be the
+    // self-adjusting one rather than the fallback sitting behind it.
     const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
-    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
 
-    // Act — every rule that both names a blank and says anything about vertical-align.
-    const declaring = [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
-      .filter((rule) => /\.fill\b|\.fill-sm\b/.test(rule[1] ?? ""))
-      .filter((rule) => /vertical-align\s*:/.test(rule[2] ?? ""))
-      .map((rule) => ({ selector: (rule[1] ?? "").trim(), body: (rule[2] ?? "").trim() }));
+    // Act
+    const onScreen = rulesIn(css).filter(
+      (rule) =>
+        rule.context === "" &&
+        /\.fill\b|\.fill-sm\b/.test(rule.selector) &&
+        rule.declarations.some((declaration) => declaration.startsWith("vertical-align:")),
+    );
 
     // Assert
     assert.equal(
-      declaring.length,
+      onScreen.length,
       1,
-      `vertical-align is declared for a blank in ${declaring.length} rules, and the last one silently wins:\n  ${declaring
-        .map((one) => one.selector)
+      `vertical-align is declared for a blank in ${onScreen.length} screen rules, and the last one silently wins:\n  ${onScreen
+        .map((rule) => rule.selector)
         .join("\n  ")}`,
     );
-    assert.ok(
-      !/vertical-align\s*:\s*baseline/.test(declaring[0]?.body ?? ""),
-      "the alignment correction has been reverted to `baseline`, which puts the box back above the line it belongs to",
+    const rule = onScreen[0];
+    assert.ok(rule !== undefined);
+    for (const shape of [".fill", ".fill-sm"]) {
+      assert.ok(
+        rule.selector.split(",").some((one) => one.trim() === shape),
+        `the alignment rule does not reach ${shape}: "${rule.selector}" — the shapes it misses go back to riding half a line high`,
+      );
+    }
+    const winning = rule.declarations.filter((one) => one.startsWith("vertical-align:")).at(-1);
+    assert.match(
+      winning ?? "",
+      /^vertical-align:calc\(/,
+      "the alignment that wins is a fixed keyword, not the line-height-aware calc — one nudge cannot serve both prose at 1.85 and headings at 1.2",
+    );
+
+    // And nowhere else may speak. Print legitimately resets it, because `overflow:visible`
+    // there restores the natural baseline; any OTHER at-rule declaring it would win for the
+    // readers inside that mode only, which is the hardest kind of misalignment to be told about.
+    const elsewhere = rulesIn(css).filter(
+      (one) =>
+        one.context !== "" &&
+        one.context !== PRINT &&
+        /\.fill\b|\.fill-sm\b/.test(one.selector) &&
+        one.declarations.some((declaration) => declaration.startsWith("vertical-align:")),
+    );
+    assert.deepEqual(
+      elsewhere.map((one) => `${one.context} ${one.selector}`),
+      [],
+      "a media block other than print sets vertical-align on a blank, and it silently wins inside that mode",
     );
   });
 
   it("styleSheet_TheReadersOwnWords_HaveAColourNothingElseUses", async () => {
     // Arrange — the token exists to separate "you said this" from "we are showing you this",
-    // and the comment above it says so. Two custom properties that drifted back to the same
-    // value would leave that claim asserted in a comment and false on screen — and the paste
-    // screen puts them side by side, which is the one place the difference has to carry.
+    // and the comment above it says so. A second declaration, or another token drifting onto
+    // the same value, would leave that claim asserted in a comment and false on screen. The
+    // paste screen puts the two side by side, which is where the difference has to carry.
     const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const root = declarationsFor(css, ":root");
 
-    // Act
-    const answer = /--answer:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
-    const quote = /--quote-bg:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
+    // Act — every custom property the palette declares, and the reader's colour among them.
+    const tokens = root
+      .filter((declaration) => declaration.startsWith("--"))
+      .map((declaration) => {
+        const [name = "", value = ""] = declaration.split(":");
+        return { name: name.trim(), value: value.trim().toLowerCase() };
+      });
+    const mine = tokens.filter((token) => token.name === "--answer");
 
     // Assert
-    assert.ok(answer !== undefined, "--answer is gone; every fill-said rule now resolves to nothing");
-    assert.ok(quote !== undefined, "--quote-bg is gone");
-    assert.notEqual(answer, quote, "the reader's words and quoted material are painted the same colour");
+    assert.equal(
+      mine.length,
+      1,
+      `--answer is declared ${mine.length} times; the browser applies the last one and every fill-said rule follows it`,
+    );
+    assert.ok(
+      tokens.some((token) => token.name === "--print-rule"),
+      "--print-rule is gone, so the printed blank's border resolves to nothing and paper has no line to write on",
+    );
+    for (const other of tokens.filter((token) => token.name !== "--answer")) {
+      assert.notEqual(
+        other.value,
+        mine[0]?.value,
+        `${other.name} now paints the same colour as --answer, so something that is not the reader's words looks like it is`,
+      );
+    }
   });
 
   it("styleSheet_EveryClassTheFieldsSet_HasARuleToStyleIt", async () => {
@@ -955,21 +1090,34 @@ describe("the stylesheet and the page agreeing", () => {
     // costs most. `fields.ts` names these classes in constants and NEITHER ever appears in
     // built HTML, so no emitted page could show the mismatch: rename one half and every answer
     // on the site silently looks unanswered while the suite stays green.
+    const EXPECTED_CLASSES = 2;
     const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
     const source = await readFile(path.join(ROOT, "src/client/fields.ts"), "utf8");
 
     // Act — read the class names out of the constants rather than listing them here, so this
     // cannot agree with a stale copy of what fields.ts is believed to set.
-    const assigned = [...source.matchAll(/^const [A-Z]+ = "(fill-[a-z-]+)";$/gm)].map(
+    const assigned = [...source.matchAll(/^const [A-Z_]+ = "(fill-[a-z-]+)";$/gm)].map(
       (match) => match[1] ?? "",
     );
+    const rules = rulesIn(css);
 
-    // Assert
-    assert.ok(assigned.length >= 2, `expected the field classes as consts, found ${assigned.length}`);
+    // Assert — an exact count, not a floor. A third class added later would otherwise ship
+    // unstyled with this green, which is the drift the test exists to catch.
+    assert.equal(
+      assigned.length,
+      EXPECTED_CLASSES,
+      `expected ${EXPECTED_CLASSES} field classes declared as consts, found ${assigned.length}: ${assigned.join(", ")}`,
+    );
     for (const name of assigned) {
+      // Styled by a rule that SELECTS it, not merely mentioned. `.fill-grown` was kept alive
+      // by the `:not(.fill-grown)` in a different selector while its own rule was deleted, so
+      // a bare substring search reported a class as styled when nothing styled it.
+      const styled = rules.some((rule) =>
+        rule.selector.replace(/:not\([^)]*\)/g, "").includes(`.${name}`),
+      );
       assert.ok(
-        css.includes(`.${name}`),
-        `fields.ts sets "${name}" and no rule styles it: every field wearing it renders as if it were in the other state`,
+        styled,
+        `fields.ts sets "${name}" and no rule selects it: every field wearing it renders as if it were in the other state`,
       );
     }
   });

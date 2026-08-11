@@ -123,6 +123,21 @@ const GROWN = "fill-grown";
 const SAID = "fill-said";
 
 /**
+ * What storage should hold for a control — nothing at all when nothing was said.
+ *
+ * `store.ts` treats "" as absent and DELETES on it, so this is the one expression that
+ * decides whether a blank exists in the store. It has to agree with `SAID` above, and for a
+ * while it did not: the class was trimmed and the write was not, so a field showing the
+ * dashed waiting box had whitespace sitting in storage — and everything downstream reads
+ * storage, not the screen. `prompt.ts` told the assistant "I have answered this one already"
+ * about a blank the reader could see was empty, and a reply to it was counted as REPLACING
+ * the reader's words and quoted whitespace back at them as their own. One rule, one place.
+ */
+function toStore(control: HTMLTextAreaElement): string {
+  return control.value.trim() === "" ? "" : control.value;
+}
+
+/**
  * Size a control to what is in it, and say whether it holds anything.
  *
  * Two jobs rather than one, and they are together because they answer to the same question —
@@ -443,7 +458,7 @@ export async function bindAnswers(
     }
     const entries = new Map([
       [orderKey(group), writeOrder(minted)],
-      [answerKey(group, instance, field.field), field.element.value],
+      [answerKey(group, instance, field.field), toStore(field.element)],
     ]);
     if (await store.claim(orderKey(group), entries)) {
       instances.set(group, minted);
@@ -463,14 +478,14 @@ export async function bindAnswers(
   function record(field: Field): void {
     const repeat = field.repeat;
     if (repeat === undefined) {
-      answers.set(field.field, field.element.value);
+      answers.set(field.field, toStore(field.element));
       return;
     }
     const key = keyFor(field);
     if (key !== undefined) {
       // A key exists, so this slot saves — even in a group refused as `short`, where the
       // slots the stored order does cover are as writable as they ever were.
-      answers.set(key, field.element.value);
+      answers.set(key, toStore(field.element));
       return;
     }
     if (unwritable.has(repeat.group)) {
@@ -490,7 +505,7 @@ export async function bindAnswers(
         const settled = keyFor(field);
         if (settled !== undefined) {
           failing.delete(group);
-          answers.set(settled, field.element.value);
+          answers.set(settled, toStore(field.element));
           return;
         }
         // Materialising resolved and the field still has no key. `adopt` has already told
@@ -583,9 +598,13 @@ export async function bindAnswers(
     // see their stored answer, and their first phrase would save over it — the answer
     // lost silently rather than merely appearing at a surprising moment. An empty field
     // holds nothing of theirs to protect.
-    if (value !== undefined && field.element.value === "") {
+    // Trimmed, for the same reason `toStore` is: whitespace is not something of the reader's to
+    // protect. Untrimmed, a field holding a stray newline both blocked its own answer from
+    // being restored AND fell to the branch below, which wrote that whitespace over it.
+    const held = field.element.value.trim();
+    if (value !== undefined && held === "") {
       field.element.value = value;
-    } else if (field.element.value !== "") {
+    } else if (held !== "") {
       // Dictated while `load` was in flight. The `input` event for it has already fired
       // and been recorded, but a group that materialised in between would have keyed it
       // under nothing — recording again now that the order is known costs one redundant

@@ -9,10 +9,11 @@
      the worksheet quotes things AT the reader constantly, and a colour that means both
      "we said this" and "you said this" means neither. */
   --answer:#eae2ce;
-  /* A blank waiting to be written on, on paper. Darker than anything on screen because a
-     printed hairline loses to the paper it is printed on, and named here rather than left as
-     a hex inside the print block — this change exists partly because a hard-coded #b9b1a0
-     went unexamined for a year. 3.46:1 against the screen paper, 3.81:1 against white. */
+  /* A blank waiting to be written on, on paper. Darker than anything on screen, because a
+     hairline that reads on a backlit display disappears into physical paper. 3.81:1 against
+     white, which clears the 3:1 this file holds every field boundary to. Named rather than
+     left as a hex inside the print block: an unexamined hard-coded #b9b1a0 is what this
+     change set out to fix. */
   --print-rule:#8a8272;
 }
 *{box-sizing:border-box}
@@ -72,10 +73,9 @@ hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
    so it matches the control as surely as it matched the span it replaced — and while the base
    rule resets `border`, an outline left standing rides straight through onto an ANSWERED
    field, which then wears the dashed box AND the tint at once. That is the one thing the rule
-   at the top of this file forbids, and it shipped: found on a phone, on the value the reader
-   had just filled in, after four reviewers reasoned about the cascade and concluded there was
-   no combination where both appear. The waiting outline is re-applied below, by a selector
-   that knows about the state. */
+   at the top of this file forbids. Reasoning about the cascade will not find it: the question
+   is never which rule WINS the outline, it is that nothing revoked one. The waiting outline is
+   re-applied below, by a selector that knows about the state. */
 textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;outline:0;border-radius:2px;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
 /* Waiting. An OUTLINE rather than a border, and this is load-bearing rather than a taste:
    `fit` in fields.ts sizes a short blank to the pixel width of its own text, and
@@ -87,14 +87,13 @@ textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;backgrou
 textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:1px dashed var(--accent);outline-offset:1px}
 /* Yours. */
 textarea.fill.fill-said,textarea.fill-sm.fill-said{background:var(--answer)}
-/* An inline blank carries the tint alone — a rail cannot follow a gap that sits mid-sentence,
-   and 31 of the 74 short blanks do. The tint is pushed a little past the glyphs with a
-   shadow rather than padding, for the border-box reason above: a shadow paints outside the
-   box without being part of it.
+/* 31 of the 74 short blanks sit inside a sentence, where a tint that stops hard against the
+   neighbouring word reads as a highlighter slip rather than as an answer. So it is pushed a
+   little past the glyphs — with a shadow rather than padding, for the border-box reason
+   above: a shadow paints outside the box without being part of it.
 
-   Not once it has grown, though: a short answer that outran its line becomes a full-width
-   block and takes the rail with the paragraphs, and a shadow spread around a block that
-   wide paints a halo over the rail beside it.
+   Not once it has grown, though: a grown short answer is a full-width block, and a spread on
+   a box that wide pushes the tint past the column edge.
 
    Sideways only. A spread on all four sides reaches into the line above and below — these sit
    in prose set at line-height 1.85, and the vertical half of the halo lands on other people's
@@ -103,12 +102,6 @@ textarea.fill.fill-said,textarea.fill-sm.fill-said{background:var(--answer)}
 textarea.fill-sm.fill-said:not(.fill-grown){box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
 /* Long answers are dictated paragraphs: full width, wrapping, growing downward. */
 textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
-/* A paragraph took a left rail as well for a while, on the reasoning that a full-width box
-   tinted end to end colours mostly empty space. Removed once the waiting state became a box
-   rather than a line: against a dashed box, the tint alone already says answered, and the
-   rail was a third cue for a distinction that only needs two. It also indented every answer
-   away from the prose it belongs to, and it was the sole reason a heading blank needed a rule
-   cancelling a border it should never have had. Fewer rules, no indent, nothing to cancel. */
 /* Short answers sit inside a sentence — "The world has enough ___" — so they stay in the
    line and grow along it as they fill (fields.ts sets the width where the browser will
    not). A fixed-width input was tried here and scrolled the answer out of sight while the
@@ -131,53 +124,65 @@ h3 textarea.fill.fill-said{box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--a
    An inline-block whose `overflow` is anything but `visible` takes its baseline from its
    BOTTOM MARGIN EDGE instead of from the text inside it (CSS 2.1 §10.8.1). These have
    `overflow:hidden` and must keep it — it is what stops a dictated answer scrolling out of
-   sight, which this module calls its primary failure — so the whole box has always ridden
-   about half a line high. Nothing showed it while the only mark was a bottom border, because
-   that border landed exactly on the outer baseline and looked correct. Outline the real box
-   and the truth appears: found on a phone, in a heading, where "Value 1 —" and the name
-   beside it plainly did not share a line.
-   So the box is lowered by the distance from its own bottom edge up to the text baseline
-   inside it: half the leading, plus the descender. `lh` makes that self-adjusting, which
-   matters because these sit in prose at line-height 1.85 and in headings at 1.2, and one
-   fixed nudge cannot serve both. The .29em stands in for the descender of whichever serif the
-   device actually resolved, so it is an approximation — if this over- or under-shoots on a
-   real screen, that number is the one to turn. Where `lh` is unsupported the declaration is
-   dropped whole and the old alignment returns, which is no worse than before.
-
-   LAST, and that placement is the fix's own bug report. This first shipped four rules
-   earlier, where `h3 textarea.fill` set `vertical-align:baseline` after it at identical
-   specificity and silently won — so the heading, the one place the misalignment had actually
-   been reported, was the one place the correction never reached. Rather than out-specify it,
-   the three `vertical-align:baseline` declarations that were competing are gone: baseline is
-   the initial value for an inline-block, so they said nothing and only shadowed this. There
-   is now exactly one vertical-align declaration for a blank in the whole stylesheet. */
-.fill,.fill-sm,textarea.fill-sm:not(.fill-grown),h3 textarea.fill{vertical-align:calc(.29em - .5lh)}
+   sight, which fields.ts calls its primary failure — so the whole box rides about half a line
+   high. Nothing showed it while the only mark was a bottom border, because that border landed
+   exactly on the outer baseline and looked correct; outlining the real box revealed it.
+   The box is lowered by the distance from its own bottom edge up to the text baseline inside
+   it, which is half the leading plus the descender. `lh` makes that self-adjusting: these sit
+   in prose at line-height 1.85 and in headings at 1.2, and one fixed nudge cannot serve both.
+   The .29em is NOT the descender on its own — it is half an em MINUS the descender, the two
+   terms bundled. Turning it up moves the box down. It is an approximation of whichever serif
+   the device resolved, so it is the number to adjust if a real screen shows this over- or
+   under-shooting.
+   `baseline` first as a fallback, and it is not decoration: `lh` is Chromium 133, Firefox 120,
+   Safari 16.4, so an older Android WebView drops the calc entirely. Gecko's UA sheet sets
+   `textarea{vertical-align:text-bottom}`, so without this line those engines would land on
+   text-bottom rather than on the alignment this file used to declare explicitly — worse than
+   before the change rather than merely unimproved.
+   `.fill,.fill-sm` alone: a class selector matches the control as well as the span, and every
+   grown or heading blank with it. Naming the shapes separately only implied a state-awareness
+   this rule does not have. It must also stay the ONLY vertical-align on a blank outside
+   `@media`, which is guarded — an earlier version of this fix was silently beaten by a
+   `vertical-align:baseline` four rules later at equal specificity, and failed precisely in the
+   heading it was written for. */
+.fill,.fill-sm{vertical-align:baseline;vertical-align:calc(.29em - .5lh)}
+/* Forced colours — Windows High Contrast and friends. The system discards backgrounds and
+   box-shadows outright and repaints borders and outlines in the user's own palette. Every
+   mark on an ANSWERED field here is a background or a shadow, so without this the two states
+   collapse into one for the readers most likely to depend on the difference. Nothing survives
+   on its own: the rail that once carried a paragraph was removed, so an answered paragraph is
+   as background-only as an inline blank.
+   An OUTLINE, not a border. `box-sizing:border-box` is in force and `fit` pins the height from
+   `scrollHeight`, which excludes borders — so a bottom border eats two pixels out of the
+   content box and `overflow:hidden` clips the last line's descenders. That is the same trap
+   this file documents on the horizontal axis, and it would land only on forced-colors users,
+   where nothing in the suite can see it.
+   The waiting state needs nothing here: forced colours already repaint the dashed outline
+   above. Saying it again cost the FOCUS RING — the restated rule sat after the focus rule at
+   equal specificity and beat it, so a focused empty field looked exactly like an unfocused
+   one. Solid against dashed is a difference in SHAPE, which is what survives a palette being
+   taken away. */
+@media (forced-colors: active){
+  textarea.fill.fill-said,textarea.fill-sm.fill-said{outline:2px solid}
+}
+/* AFTER every state rule above, so the reader's own position always wins the outline. */
 textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* Printing a bound page. The height fields.ts pins is for the screen's column width, and
    a print column is narrower, so the answer rewraps longer than the box and overflow:hidden
    would cut it off on paper. Print lets the box grow instead — 0010 makes printing a
    supported output, and an answer that prints truncated is worse than an ugly one. */
-/* Forced colours — Windows High Contrast and friends. The system replaces the palette
-   outright: backgrounds and box-shadows are discarded, borders and outlines are repainted in
-   the user's own colours. Everything marking an ANSWERED field here is a background or a
-   shadow, so without this block the two states collapse into one and the whole distinction
-   disappears — for the readers most likely to be relying on it. A paragraph would survive on
-   its rail alone, since a border is a border; an inline blank would not.
-   So the answered state grows a solid underline, and the waiting state keeps its dashed one.
-   Solid against dashed is a difference in SHAPE, which is the only kind that survives a
-   palette being taken away. */
-@media (forced-colors: active){
-  textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:1px dashed;outline-offset:1px}
-  textarea.fill.fill-said,textarea.fill-sm.fill-said{border-bottom:2px solid}
-}
 @media print{
   textarea.fill,textarea.fill-sm{height:auto!important;overflow:visible;white-space:pre-wrap}
+  /* And that `overflow:visible` undoes the reason the boxes are lowered at all: with it, a
+     control takes its baseline from its own text again, so the correction above would push it
+     a further half-line down the page. Only the controls — the spans keep `overflow:hidden`
+     and still need lowering. */
+  textarea.fill,textarea.fill-sm{vertical-align:baseline}
   /* On paper a blank is a line to write on rather than a box to tap. */
   .fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:0;border-bottom:1px solid var(--print-rule)}
-  /* Browsers strip backgrounds from printed pages unless asked not to, and for an inline
-     blank the tint is the ONLY thing separating the reader's words from the sentence
-     around them. 0010 makes printing a supported output, so this asks. The rail is a
-     border and prints either way, which is why a paragraph is safe without this. */
+  /* Browsers strip backgrounds from printed pages unless asked not to, and the tint is now the
+     ONLY thing marking an answer on paper for every shape — the rail that used to carry a
+     paragraph is gone. 0010 makes printing a supported output, so this asks. */
   textarea.fill.fill-said,textarea.fill-sm.fill-said{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 code{font-family:var(--mono);font-size:.84em;background:#ece6d8;padding:.12em .38em;border-radius:4px}

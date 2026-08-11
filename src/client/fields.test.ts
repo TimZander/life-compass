@@ -593,7 +593,7 @@ describe("a short blank whose answer outgrows its line", () => {
     // Arrange — reported from a device, and the screenshot is the argument: an inline-block
     // that wraps starts its later lines at the blank's own left edge, mid-paragraph, and
     // leaves the rest of the sentence stranded up on the first line.
-    const LONG = "test hw to make this long, and longer still";
+    const LONG = "a phrase long enough to outrun the gap it started in";
     const document = render();
     const store = recorder();
     const answers = createAnswers(store, { quietMs: QUIET_MS });
@@ -978,9 +978,9 @@ describe("marking what the reader said", () => {
   });
 
   it("fit_AnInlineBlank_IsMarkedLikeAnyOtherField", async () => {
-    // Arrange — the shape whose treatment differs most, and the one the first four tests all
-    // missed: a blank inside a sentence takes the tint alone, where a paragraph also takes a
-    // rail. The stylesheet branches on the difference; nothing pinned it.
+    // Arrange — the shape the first four tests all missed. A blank inside a sentence is sized
+    // and marked differently from a paragraph, and the stylesheet branches on the difference
+    // in three places; nothing pinned it.
     const WORD = "noise";
     const document = render();
     const store = recorder();
@@ -1001,8 +1001,8 @@ describe("marking what the reader said", () => {
   });
 
   it("fit_AShortAnswerThatOutgrewItsLine_IsBothGrownAndSaid", async () => {
-    // Arrange — the combination the stylesheet branches on twice: a grown short answer takes
-    // the rail like a paragraph AND must not take the halo a blank in a sentence gets. Losing
+    // Arrange — the combination the stylesheet branches on: a grown short answer is a
+    // full-width block and must NOT take the sideways tint a blank in a sentence gets. Losing
     // either class silently selects the other shape's treatment.
     const LONG = "test hw to make this long, and longer still";
     const document = render();
@@ -1111,6 +1111,73 @@ describe("marking what the reader said", () => {
       false,
       "a slot nobody has answered was marked as the reader's words",
     );
+    answers.stop();
+  });
+
+  it("fit_AOneCharacterAnswer_IsStillTheReadersWords", async () => {
+    // Arrange — every other fixture here is a phrase, so a condition that required more than
+    // one character would pass all of them. An initial, a single digit and a one-word answer
+    // are all real answers to real questions on these worksheets.
+    const INITIAL = "5";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    const field = fieldFor("day4.enough.excess");
+    dictate(field, INITIAL);
+
+    // Assert
+    assert.equal(
+      field.classList.contains("fill-said"),
+      true,
+      "a one-character answer was shown as though nothing had been said",
+    );
+    answers.stop();
+  });
+
+  it("bindAnswers_WhitespaceAlone_IsNotWrittenToStorage", async () => {
+    // Arrange — the screen and the store have to agree about what counts as an answer. While
+    // only the class was trimmed, a field showing the waiting box had whitespace sitting in
+    // storage, and everything downstream reads storage rather than the screen: the assistant
+    // was told "I have answered this one already" about a blank, and a reply to it was counted
+    // as REPLACING the reader's words, quoting whitespace back at them as their own.
+    const NOTHING_REALLY = "  \n ";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    dictate(fieldFor("day1.patterns"), NOTHING_REALLY);
+    await settle();
+
+    // Assert
+    assert.equal(
+      store.kept.has("day1.patterns"),
+      false,
+      `whitespace was persisted as an answer: ${JSON.stringify(store.kept.get("day1.patterns"))}`,
+    );
+    answers.stop();
+  });
+
+  it("bindAnswers_ARealAnswerWithSurroundingSpace_IsKeptExactlyAsSaid", async () => {
+    // Arrange — the other side of that boundary, and the one that matters more. Trimming
+    // decides only whether a value is stored AT ALL; it must never edit the reader's words,
+    // and dictation routinely arrives with a trailing space mid-phrase (0004).
+    const SPOKEN = " leaving things better than I found them ";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    dictate(fieldFor("day1.patterns"), SPOKEN);
+    await settle();
+
+    // Assert
+    assert.equal(store.kept.get("day1.patterns"), SPOKEN, "the reader's spacing was edited on its way to storage");
     answers.stop();
   });
 });
