@@ -19,6 +19,7 @@ import { WORKSHEETS } from "../src/questions/index.ts";
 import { renderQuestion, loadSchema } from "./questions.ts";
 import { icons } from "./icons.ts";
 import { renderManifest } from "./manifest.ts";
+import { layout } from "./layout.ts";
 import { render } from "./markdown.ts";
 import { checkSpecifiers } from "./client.ts";
 
@@ -782,10 +783,19 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
     const source = await readFile(path.join(ROOT, "src/client/paste.ts"), "utf8");
 
-    // Act — every class name this module assigns, however it assigns it.
+    // Act — every class this surface carries, from BOTH halves: the ones the script assigns and
+    // the ones the layout emits. `.paste-skipped` moved from one to the other when the notice
+    // became a static live region, and a check that read only the script reported it as gone
+    // rather than as moved.
+    const markup = layout("<p>body</p>", "Assistant", "agent");
     const assigned = [
-      ...source.matchAll(/(?:className\s*=\s*|classList\.add\()"([^"]+)"/g),
-    ].flatMap((match) => (match[1] ?? "").split(/\s+/));
+      ...[...source.matchAll(/(?:className\s*=\s*|classList\.add\()"([^"]+)"/g)].flatMap(
+        (match) => (match[1] ?? "").split(/\s+/),
+      ),
+      ...[...markup.matchAll(/class="([^"]*\bpaste-[^"]*)"/g)].flatMap((match) =>
+        (match[1] ?? "").split(/\s+/),
+      ),
+    ].filter((name) => name.startsWith("paste-"));
 
     // Assert — styled ANYWHERE, not necessarily by a rule of its own: `.paste-before` shares
     // one with `.paste-after`, and a check that missed that would push the stylesheet around

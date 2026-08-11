@@ -762,7 +762,7 @@ export function explain(refusal: Refusal): string {
     case "no-blocks":
       return `There is nothing from an assistant in that. Copy the whole reply, including the part in a code block, and paste it again.${UNTOUCHED}`;
     case "example-only":
-      return `Every block in that still names the example question, which is the placeholder the message you copied asks to be replaced. If that was the message itself, paste your assistant's reply instead; if it was the reply, ask for each question's own name in its block.${UNTOUCHED}`;
+      return `Every block in that names the example question rather than a real one. If you pasted the message you copied, paste your assistant's reply instead.${UNTOUCHED}`;
     case "cut-off":
       return `That reply looks cut off — an answer starts and never finishes, so the rest of it cannot be read. Copy the whole reply and paste it again.${UNTOUCHED}`;
     case "repeated-group":

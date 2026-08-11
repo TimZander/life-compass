@@ -198,6 +198,13 @@ function agentTools(): string {
   <div id="paste-confirm" hidden>
     <h3>What this would change</h3>
     <p id="paste-summary"></p>
+    <!-- What could not be matched, when anything could not be. Static markup with a status
+         role, for the reason the banner region is static: a screen reader only announces
+         changes to a region that existed beforehand, so one created and filled in the same
+         task is routinely missed (0001). This is the one thing on this surface that has to be
+         read before an irreversible write, and saying it in the banner as well put the same
+         forty words on screen twice. -->
+    <p id="paste-skipped" class="paste-skipped" role="status" hidden></p>
     <div id="paste-detail"></div>
     <p>
       <button type="button" id="paste-go">Save these answers</button>

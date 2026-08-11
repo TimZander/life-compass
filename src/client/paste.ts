@@ -145,6 +145,7 @@ export function wirePaste(
   const confirm = document.getElementById("paste-confirm");
   const summary = document.getElementById("paste-summary");
   const detail = document.getElementById("paste-detail");
+  const skipped = document.getElementById("paste-skipped");
   const go = document.getElementById("paste-go");
   const cancel = document.getElementById("paste-cancel");
   if (
@@ -155,6 +156,7 @@ export function wirePaste(
     confirm === null ||
     summary === null ||
     detail === null ||
+    skipped === null ||
     go === null ||
     cancel === null
   ) {
@@ -199,6 +201,8 @@ export function wirePaste(
   const standDown = (): void => {
     pending = null;
     pendingStranded = 0;
+    skipped.textContent = "";
+    skipped.hidden = true;
     confirm.hidden = true;
     detail.replaceChildren();
     summary.textContent = "";
@@ -294,33 +298,20 @@ export function wirePaste(
       line.textContent = tallyFor(planned.plan, group);
       tally.append(line);
     }
-    // Above the tally, because it is about what is MISSING from it. A prompt covering a
-    // numbered item shows one example per question and every example names the same
-    // placeholder group, so an assistant that substitutes three of four leaves a block that
-    // `readBlocks` cannot attribute and does not import. Said before the reader approves:
-    // the tally lists what landed, and nothing about a list of three says a fourth was
-    // expected. `textContent`, like everything else on this surface.
-    const left: HTMLElement[] = [];
-    if (reading.stranded > 0) {
-      const note = document.createElement("p");
-      note.className = "paste-skipped";
-      note.textContent = strandedNote(reading.stranded);
-      left.push(note);
-      // And SAID, through the banner. This element carries no `role` of its own because one
-      // would not work: `banner.ts` records the rule — "a screen reader only announces changes
-      // to a live region that existed before the change — creating the region and filling it
-      // in the same task is routinely missed entirely" — and this note is created, filled and
-      // inserted into a container that is still hidden, which is that mistake three times over.
-      // The banner is the region the layout renders statically for exactly this, and 0001 makes
-      // the one warning owed before an irreversible write the last one that may go unheard.
-      say(strandedNote(reading.stranded));
-    }
     detail.replaceChildren(
-      ...left,
       tally,
       ...planned.plan.changes.map((change) => rowFor(document, change)),
     );
     confirm.hidden = false;
+    // Filled AFTER the panel is showing, into the region the layout renders empty at load.
+    // Both halves are the announcement: a live region has to exist before the change to it,
+    // and the change has to happen somewhere visible. Said here and nowhere else — it was
+    // also going through the banner, which put the same forty words on screen twice and took
+    // over half a phone with them.
+    if (reading.stranded > 0) {
+      skipped.textContent = strandedNote(reading.stranded);
+      skipped.hidden = false;
+    }
     go.removeAttribute("aria-disabled");
   };
 

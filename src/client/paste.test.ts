@@ -95,6 +95,7 @@ function page(fake: ReturnType<typeof recorder>, setting = "on") {
   return {
     document,
     section: document.getElementById("paste") as HTMLElement,
+    skipped: document.getElementById("paste-skipped") as HTMLElement,
     text: document.getElementById("paste-text") as HTMLTextAreaElement,
     read: document.getElementById("paste-read") as HTMLElement,
     confirm: document.getElementById("paste-confirm") as HTMLElement,
@@ -209,9 +210,12 @@ describe("reading a reply", () => {
 
     // Assert
     assert.equal(view.confirm.hidden, false, "the reader was shown nothing");
-    const shown = view.detail.textContent ?? "";
-    assert.match(shown, /still named the example question/i, "the answer left out is not mentioned");
-    assert.match(shown, /1 new answer/, "what did come back is no longer shown");
+    assert.match(view.skipped.textContent ?? "", /still named the example question/i, "the answer left out is not mentioned");
+    assert.equal(view.skipped.hidden, false, "the notice is there but hidden");
+    assert.match(view.detail.textContent ?? "", /1 new answer/, "what did come back is no longer shown");
+    // And ONCE. It went through the banner as well, which put the same forty words on screen
+    // twice and took over half a phone with them.
+    assert.ok(!/example question/i.test(view.banner()), "the same notice was said twice");
     assert.equal(fake.merged.length, 0, "answers were written before the reader agreed");
   });
 
@@ -261,10 +265,9 @@ describe("reading a reply", () => {
     await settle();
 
     // Assert
-    const shown = view.detail.textContent ?? "";
+    const shown = view.skipped.textContent ?? "";
     assert.ok(shown.includes(`${LEFT_OUT} blocks of that reply`), `it did not say ${LEFT_OUT}: ${shown}`);
     assert.ok(!shown.includes("One block of that reply"), "two left out were reported as one");
-    assert.ok(view.banner().includes(`${LEFT_OUT} blocks of that reply`), "the plural was not announced");
   });
 
   it("wirePaste_AnAnswerLeftOut_SaysSoAboveTheListItIsMissingFrom", async () => {
@@ -283,25 +286,17 @@ describe("reading a reply", () => {
     await settle();
 
     // Assert
-    const ONCE = 1;
-    const notices = view.detail.querySelectorAll(".paste-skipped");
-    assert.equal(notices.length, ONCE, "the notice is missing, or shown more than once");
+    // The region is STATIC — it is in the layout at load, empty and hidden — which is what
+    // makes filling it an announcement rather than a change nothing was listening for.
+    // `banner.ts` records that rule; an element created and filled in one task is routinely
+    // missed however it is labelled.
+    assert.equal(view.skipped.getAttribute("role"), "status", "the notice is not a live region");
     // The singular, and the half that tells the reader what to do about it. Only the phrase
     // both branches share was pinned, so one left out could be reported as "1 blocks", and the
     // whole second sentence could be deleted, with the suite green.
-    const shownNote = notices[0]?.textContent ?? "";
+    const shownNote = view.skipped.textContent ?? "";
     assert.ok(shownNote.startsWith("One block of that reply"), `the singular was not used: ${shownNote}`);
     assert.match(shownNote, /ask your assistant to send it again with the question's own name/);
-    // Announced through the banner, which the layout renders statically. An element created
-    // and filled in one task is not announced however it is labelled — `banner.ts` records
-    // that rule — so a `role` on this note would certify an attribute rather than a reader
-    // hearing anything.
-    assert.match(view.banner(), /still named the example question/i, "the notice is not announced");
-    const shown = view.detail.textContent ?? "";
-    assert.ok(
-      shown.indexOf("still named the example question") < shown.indexOf("new answer"),
-      "the notice sits below the list it is about",
-    );
   });
 
   it("wirePaste_NothingToChangeAndNothingLeftOut_SaysOnlyThat", async () => {
@@ -375,6 +370,22 @@ describe("reading a reply", () => {
     // to 1, because each test happened to strand exactly one block.
     assert.ok(view.banner().includes("2 blocks of that reply"), `the count is wrong: ${view.banner()}`);
     assert.equal(fake.merged.length, NOTHING_SAVED);
+  });
+
+  it("wirePaste_BeforeAnythingIsRead_TheNoticeRegionIsAlreadyThereAndEmpty", async () => {
+    // Arrange — the property the announcement rests on, and the one only the LAYOUT can give:
+    // a live region has to exist before the change to it. Built on demand it announces nothing,
+    // however it is labelled, which is how the first version of this shipped a `role="status"`
+    // that certified an attribute and told a reader working by ear nothing at all.
+    const fake = recorder();
+
+    // Act
+    const view = page(fake);
+
+    // Assert
+    assert.equal(view.skipped.getAttribute("role"), "status", "the region is not live");
+    assert.equal(view.skipped.hidden, true, "an empty notice is showing");
+    assert.equal(view.skipped.textContent, "", "the region is not empty at load");
   });
 
   it("wirePaste_AReplyWithNothingLeftOut_SaysNothingAboutBlocksLeftOut", async () => {
