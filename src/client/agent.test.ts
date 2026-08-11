@@ -188,10 +188,11 @@ describe("the controls against what the build actually renders", () => {
     // sits — one control indented inside bullet one while speaking for bullets one to three,
     // which is the reading #82 exists to fix arriving by another road.
     //
-    // "Its own level" means: the same parent as the numbered heading it is named after. That
-    // is what makes a control belong to the item rather than to whatever contains its first
-    // question. `happy-dom` has no layout (0014 · C3), so this proves the DOM relationship and
-    // says nothing about how it looks.
+    // Directly under the numbered heading it is named after — every one, on every page. That is
+    // what makes a control belong to the item rather than to whichever of its questions happens
+    // to come first, and it is the one placement no worksheet's prose, labels, quotes or
+    // sub-headings can push it out of. `happy-dom` has no layout (0014 · C3), so this proves
+    // the DOM relationship and says nothing about how it looks.
     const { pages } = await site();
     let checked = 0;
 
@@ -211,20 +212,30 @@ describe("the controls against what the build actually renders", () => {
         );
         const covered = panel?.nextElementSibling ?? null;
         assert.ok(covered !== null, `${page.source}: a control sits above nothing`);
-        // The heading this item is named after, found the way the client finds it.
-        const named = (control.getAttribute("aria-label") ?? "").replace("Ask an assistant about ", "");
-        const heading = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].find(
-          (one) => (one.textContent ?? "").trim() === named,
-        );
-        if (heading === undefined) {
-          // The orphan, which has no heading and keeps its control beside its question.
+        // Which item this control is for, taken from the panel it opens rather than guessed from
+        // its name — the orphan's name happens to be its page's own `<h1>`, so matching on text
+        // called it an item and asserted the wrong thing about it.
+        const id = (control.getAttribute("aria-controls") ?? "").replace("agent-panel-", "");
+        if (document.querySelector(`[data-section="${id}"]`) === null) {
+          // No question carries this id as a section, so it is the orphan: no numbered heading
+          // to sit under, and its control stays immediately above the question itself.
+          assert.equal(
+            control.nextElementSibling?.nextElementSibling?.getAttribute("data-question"),
+            id,
+            `${page.source}: the orphan's control is not above its own question`,
+          );
           continue;
         }
+        const heading = document.getElementById(id);
+        assert.ok(heading !== null, `${page.source}: no heading for the item ${id}`);
+        const named = (control.getAttribute("aria-label") ?? "").replace("Ask an assistant about ", "");
         checked += 1;
-        assert.equal(
-          control.parentElement,
-          heading.parentElement,
-          `${page.source}: "${named}" has its control nested below the level of its heading`,
+        // `assert.ok` on the identity, never `assert.equal` on the nodes: a failing `equal`
+        // serialises both DOM elements into its diff, and a happy-dom element carries its whole
+        // subtree — the process is killed building the message rather than reporting it.
+        assert.ok(
+          control.previousElementSibling === heading,
+          `${page.source}: "${named}" sits under <${control.previousElementSibling?.tagName ?? "nothing"}>, not under its heading`,
         );
       }
     }
@@ -1018,11 +1029,12 @@ describe("the copy control on a question", () => {
 
   it("wireQuestionControls_AnItemWithSubHeadings_PutsItsControlAboveThemAll", async () => {
     // Arrange — day 5 asks one question under each of five `###` dimensions (Career, Money,
-    // Place, People, Time) inside ONE numbered item. Placing the control before the first
-    // question puts it under "Career", so the other four dimensions read as having no control
-    // at all — the reader sees the offer once, attached to the wrong quarter of the task.
-    // #93 established that those sub-headings do not split the item; this is the same fact
-    // from the reader's side.
+    // Place, People, Time) inside ONE numbered item. Anything that places the control against
+    // the item's content puts it under "Career", so the other four read as having no control at
+    // all — the reader sees the offer once, attached to a quarter of the task. #93 established
+    // that those sub-headings do not split the item; this is the same fact from the reader's
+    // side, and it is why the control sits under the numbered heading rather than anywhere
+    // among the item's own prose, labels and sub-headings.
     window.document.body.innerHTML = `${REGION}
 <h2 id="2-test">2. Test against the five dimensions (40 min)</h2>
 <p>For each dimension, ask where the gap is.</p>
@@ -1035,12 +1047,17 @@ describe("the copy control on a question", () => {
     // Act
     wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
 
-    // Assert — after the item's own prose, above the first sub-heading.
+    // Assert — directly under the numbered heading, with everything the item holds below it.
     const control = document.querySelector("button.agent-open");
-    assert.equal(control?.previousElementSibling?.tagName, "P", "the control is not after the item's prose");
+    assert.equal(control?.previousElementSibling?.tagName, "H2", "the control is not under the numbered heading");
     const panel = control?.nextElementSibling;
-    assert.equal(panel?.nextElementSibling?.tagName, "H3", "the control sits below a sub-heading of its own item");
-    assert.equal((panel?.nextElementSibling?.textContent ?? "").trim(), "Career");
+    assert.equal(panel?.nextElementSibling?.tagName, "P", "the item's own prose no longer follows the control");
+    assert.ok(
+      [...document.querySelectorAll("h3")].every(
+        (one) => (one.compareDocumentPosition(control as Node) & DOCUMENT_POSITION_FOLLOWING) === 0,
+      ),
+      "a sub-heading of this item comes before its control",
+    );
   });
 
   it("wireQuestionControls_AQuestionInNoNumberedItem_KeepsItsOwnControl", async () => {

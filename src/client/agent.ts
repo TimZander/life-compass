@@ -335,42 +335,33 @@ type NumberedItem = {
 };
 
 /**
- * The element the control is inserted before: the top of the item's own content.
+ * Where an item's control goes: directly under the numbered heading it is named after.
  *
- * Not simply the first question, which is where one control per question could sit because it
- * spoke only for what was beside it. An item-wide control has to sit at the item's own level or
- * it claims to belong to whatever it is nested in — and on the built site the first question of
- * eight numbered items is inside a bullet, and of three more inside a blockquote. One control
- * indented inside bullet one, speaking for bullets one to three, is the reading #82 set out to
- * fix arriving by a different road.
+ * Found on a device, three times over. Placing it against the item's FIRST question — which is
+ * what one control per question did, correctly, because it spoke only for what was beside it —
+ * makes an item-wide control look like that question's. Day 1's energy audit asks three things
+ * under three bold labels and the control sat under the first of them, with nothing beside the
+ * other two; day 3's hypothetical asks two and the control sat on the first blank; day 4's
+ * unfair advantages asks four. Every rule that tried to be cleverer about it — climb out of the
+ * list, stop above a sub-heading, stop above a bold label — fixed the case in front of it and
+ * left the next one, because what a worksheet puts between a heading and its first blank is
+ * prose, or a label, or a quote, or nothing, and no ordering of those is the general answer.
  *
- * So: climb out to the block that sits at the heading's own level, then stop short of any
- * sub-heading between the two. Day 5 asks one question under each of five `###` dimensions
- * inside a single numbered item; placing the control under "Career" would leave Money, Place,
- * People and Time looking as though they had none. What this deliberately does NOT do is hoist
- * the control to just under the numbered heading: the item's own prose is the instruction for
- * the task, and a control above it offers help with something the reader has not yet read.
+ * Under the heading is. It is where the reader's eye already is when they decide whether to
+ * ask, it is the same place on every page, and it is what #82 · AC1 asks for in the words
+ * "each above its section". The cost is that the control precedes the item's own instruction —
+ * an offer of help before the task is stated — which is a fair trade for a control that is
+ * never mistaken for belonging to one question of several.
+ *
+ * A question outside every numbered item has no heading to sit under, so its control stays
+ * where it always was: immediately above the question itself.
  */
-function placeBefore(first: Element, heading: Element | null): Element {
-  const level = heading?.parentElement;
-  if (heading === undefined || heading === null || level === undefined || level === null) {
-    return first;
+function place(item: NumberedItem, open: Element, panel: Element): void {
+  if (item.heading === null) {
+    item.first.before(open, panel);
+    return;
   }
-  let block: Element = first;
-  while (block.parentElement !== null && block.parentElement !== level) {
-    block = block.parentElement;
-  }
-  if (block.parentElement !== level) {
-    // The question is not under the heading's level at all, which no page the build emits
-    // produces. Falling back to the question itself keeps a control rather than none.
-    return first;
-  }
-  for (let at = heading.nextElementSibling; at !== null && at !== block; at = at.nextElementSibling) {
-    if (/^H[1-6]$/.test(at.tagName)) {
-      return at;
-    }
-  }
-  return block;
+  item.heading.after(open, panel);
 }
 
 /**
@@ -465,8 +456,11 @@ export function wireQuestionControls(
     // Idempotent. Nothing calls this twice today, but it is exported, the tests call it
     // directly, and #68's paste path will want to re-run it — and a second pass would give
     // every item two controls whose panels share one id.
-    const at = placeBefore(item.first, item.heading);
-    if (at.previousElementSibling?.classList.contains("agent-panel") === true) {
+    // Idempotent, keyed on the panel this item would build rather than on what sits beside it.
+    // Nothing calls this twice today, but it is exported, the tests call it directly, and #68's
+    // paste path will want to re-run it — and a second pass would give every item two controls
+    // whose panels share one id.
+    if (document.getElementById(`agent-panel-${item.id}`) !== null) {
       continue;
     }
 
@@ -499,11 +493,9 @@ export function wireQuestionControls(
       }
     });
 
-    // ABOVE the item's questions, never after them. Appending put the control after every field
+    // Under the heading, never after the questions. Appending put the control after every field
     // — on Day 1's chapters that is below all five, so a reader met it having already written
-    // by hand the thing it offered to help with. `placeBefore` is what turns "above the first
-    // question" into "above the item", which is not the same element wherever that question is
-    // nested inside a list or a quote.
-    at.before(open, panel.element);
+    // by hand the thing it offered to help with.
+    place(item, open, panel.element);
   }
 }
