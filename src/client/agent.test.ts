@@ -11,6 +11,7 @@ import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
 import { wireAgentPage, wireQuestionControls } from "./agent.ts";
 import { renderQuestion } from "../../build/questions.ts";
+import { buildPages } from "../../build/build.ts";
 import { WORKSHEETS } from "../questions/index.ts";
 import { bridgeIsOn } from "./bridge.ts";
 import { ASKS } from "./schema.ts";
@@ -82,9 +83,42 @@ function agentPage(): Document {
   return window.document as unknown as Document;
 }
 
+/** The built site, once. Reading the real pages is what a hand-written fixture cannot do. */
+let built: ReturnType<typeof buildPages> | undefined;
+function site(): ReturnType<typeof buildPages> {
+  built ??= buildPages({});
+  return built;
+}
+
+/** The accessible names on a page, with the fixed prefix stripped. */
+function namesOn(document: Document): string[] {
+  return [...document.querySelectorAll("button.agent-open")].map((one) =>
+    (one.getAttribute("aria-label") ?? "").replace("Ask an assistant about ", ""),
+  );
+}
+
 function worksheet(...groups: string[]): Document {
   window.document.body.innerHTML =
     REGION + groups.map((id) => `<p class="q-single" data-question="${id}">x</p>`).join("\n");
+  return window.document as unknown as Document;
+}
+
+/**
+ * A page of numbered items, the way the build stamps one.
+ *
+ * `[slug, heading, ...groups]` per item: the heading carries the slug as its `id`, and every
+ * question of the item carries the slug as `data-section` — which is exactly what
+ * build/questions.ts emits (#93) and the only thing the client can group on. A fixture without
+ * it cannot tell one control per item from one per question, which is the whole of #82.
+ */
+function numbered(...items: readonly (readonly [slug: string, heading: string, ...groups: string[]])[]): Document {
+  const markup = items.map(([slug, heading, ...groups]) => {
+    const questions = groups
+      .map((id) => `<p class="q-single" data-question="${id}" data-section="${slug}">x</p>`)
+      .join("\n");
+    return `<h2 id="${slug}">${heading}</h2>\n${questions}`;
+  });
+  window.document.body.innerHTML = REGION + markup.join("\n");
   return window.document as unknown as Document;
 }
 
@@ -107,6 +141,38 @@ describe("the controls against what the build actually renders", () => {
     window.document.body.innerHTML = REGION + markup.join("\n");
     return window.document as unknown as Document;
   }
+
+  it("wireQuestionControls_DayFourAsTheBuildRendersIt_HasFiveControlsNotFourteen", async () => {
+    // Arrange — #82's first acceptance criterion, against the page the build actually emits
+    // rather than a fixture. Day 4 was found on a device rendering FOURTEEN controls for five
+    // numbered items: four separate buttons under "3. The contribution question (15 min)"
+    // inviting four separate conversations about what the page presents as one exercise.
+    const { pages } = await site();
+    const day4 = pages.find((page) => page.source === "days/day-4-purpose.md");
+    assert.ok(day4 !== undefined, "day 4 is no longer built");
+    const QUESTIONS = 14;
+    const ITEMS = 5;
+    window.document.body.innerHTML = REGION + day4.html;
+    const document = window.document as unknown as Document;
+    assert.equal(
+      document.querySelectorAll("[data-question]").length,
+      QUESTIONS,
+      "day 4 no longer renders the fourteen questions this grouping exists to gather",
+    );
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert — five, and named for the five tasks the page prints.
+    assert.deepEqual(namesOn(document), [
+      "1. Unfair advantages (15 min)",
+      "2. Who and what (20 min)",
+      "3. The contribution question (15 min)",
+      "4. Draft three purpose statements (20 min)",
+      "5. The eulogy test (10 min)",
+    ]);
+    assert.equal([...document.querySelectorAll("button.agent-open")].length, ITEMS);
+  });
 
   it("wireQuestionControls_EveryQuestionKind_GetsAControlAgainstRealMarkup", () => {
     // Arrange — one of each answerable kind, rendered by the build rather than by hand.
@@ -657,13 +723,6 @@ describe("the copy control on a question", () => {
     assert.equal(open.getAttribute("aria-expanded"), "false");
   });
 
-  /** The accessible names on a page, with the fixed prefix stripped. */
-  function namesOn(document: Document): string[] {
-    return [...document.querySelectorAll("button.agent-open")].map((one) =>
-      (one.getAttribute("aria-label") ?? "").replace("Ask an assistant about ", ""),
-    );
-  }
-
   it("wireQuestionControls_AQuestionWithoutItsOwnLabel_IsNamedByTheHeadingAboveIt", async () => {
     // Arrange — the ask's FIRST line, which is the heading printed directly above the control.
     // This took the LAST line, the one nearest the anchor, which on day 5 is the tail of a
@@ -713,21 +772,158 @@ describe("the copy control on a question", () => {
     assert.equal(new Set(named).size, GROUPS.length, `not distinct: ${named.join(" | ")}`);
   });
 
-  it("wireQuestionControls_TheSameSentenceAskedTwice_SaysWhichOfThemItIs", async () => {
-    // Arrange — day 4 asks one sentence twice on purpose, so the rule above ties honestly and
-    // the tie still has to be broken. A `sentence` is named by its own text, with the `{gap}`
-    // spelled out: dropping the braces alone inverts it — "the world has enough excess".
-    const SENTENCE = "The world has enough blank. It needs more blank.";
-    const SECOND = 2;
-    const document = worksheet("day4.enough_and_more_1", "day4.enough_and_more_2");
+  it("wireQuestionControls_ANumberedItemOfSeveralQuestions_GetsOneControlAboveItsFirst", async () => {
+    // Arrange — the whole of #82, found on a device: day 4 rendered fourteen controls for five
+    // numbered items, so the bridge offered fourteen conversations about five tasks. Placement
+    // matters as much as the count — a control below the questions it covers is one a reader
+    // meets having already written by hand the thing it offered to help with.
+    const ONE = 1;
+    const document = numbered([
+      "1-unfair-advantages-15-min",
+      "1. Unfair advantages (15 min)",
+      "day4.skills",
+      "day4.experiences",
+      "day4.networks",
+    ]);
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    const controls = [...document.querySelectorAll("button.agent-open")];
+    assert.equal(controls.length, ONE, `three questions of one item got ${controls.length} controls`);
+    const first = document.querySelector('[data-question="day4.skills"]');
+    assert.equal(
+      first?.previousElementSibling?.previousElementSibling,
+      controls[0],
+      "the control does not sit above the item's first question",
+    );
+  });
+
+  it("wireQuestionControls_TwoNumberedItems_GetOneControlEach", async () => {
+    // Arrange — negative case for the grouping. Bucketing everything into one control would
+    // pass a count-of-one assertion on a single item, and would offer one conversation for a
+    // whole page.
+    const TWO = 2;
+    const document = numbered(
+      ["1-unfair-advantages-15-min", "1. Unfair advantages (15 min)", "day4.skills", "day4.experiences"],
+      ["2-who-and-what-20-min", "2. Who and what (20 min)", "day4.who", "day4.problem"],
+    );
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    assert.deepEqual(namesOn(document), ["1. Unfair advantages (15 min)", "2. Who and what (20 min)"]);
+    const panels = [...document.querySelectorAll(".agent-panel")].map((one) => one.id);
+    assert.equal(new Set(panels).size, TWO, `two items share a panel id: ${panels.join(", ")}`);
+  });
+
+  it("wireQuestionControls_AQuestionInNoNumberedItem_KeepsItsOwnControl", async () => {
+    // Arrange — one question in the workbook sits outside every numbered heading:
+    // `values.additions`, on a reference page with no headings at all. build.test.ts pins it by
+    // name as the single exception, and it has to keep the control it has today rather than
+    // being swept in with whatever happens to precede it.
+    const ONE = 1;
+    const document = worksheet("values.additions");
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    const named = namesOn(document);
+    assert.equal(named.length, ONE);
+    assert.ok((named[0] ?? "") !== "", "the orphan control has no name");
+  });
+
+  it("wireQuestionControls_AnItemHoldingAChecklist_CoversTheOtherQuestionsAndSkipsIt", async () => {
+    // Arrange — 0015 keeps checklists out of the contract, and dropping the whole CONTAINER is
+    // what this slice changes: over an item, that would have cost the reader every question
+    // beside the readiness ticks. No numbered item in the workbook mixes the two today, so
+    // only a fixture can reach it — which is why it is a fixture rather than a sweep.
+    const ONE = 1;
+    const document = numbered([
+      "1-assemble-your-compass-20-min",
+      "1. Assemble your compass (20 min)",
+      "day5.ready",
+      "day5.career",
+    ]);
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
+    await settle();
+
+    // Assert
+    assert.equal([...document.querySelectorAll("button.agent-open")].length, ONE);
+    const preview = document.querySelector(".agent-preview")?.textContent ?? "";
+    assert.ok(preview.includes("day5.career"), "the answerable question was dropped with the checklist");
+    assert.ok(!preview.includes("day5.ready"), "the checklist was offered to an assistant");
+  });
+
+  it("wireQuestionControls_AnItemOfNothingButAChecklist_GetsNoControl", async () => {
+    // Arrange — two real items hold nothing else (day 5's "Assemble your compass", rigorous
+    // day 0's "Pull objective data"). A control there could only ever produce a refusal.
+    const NONE = 0;
+    const document = numbered([
+      "1-assemble-your-compass-20-min",
+      "1. Assemble your compass (20 min)",
+      "day5.ready",
+    ]);
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    assert.equal([...document.querySelectorAll("button.agent-open")].length, NONE);
+  });
+
+  it("wireQuestionControls_AnItemOfSeveralQuestions_AsksAboutEveryOneOfThem", async () => {
+    // Arrange — the control covering an item is only worth anything if the PROMPT does too.
+    // Counting buttons proves a button exists, not that it carries the questions under it.
+    const document = numbered([
+      "2-who-and-what-20-min",
+      "2. Who and what (20 min)",
+      "day4.who",
+      "day4.problem",
+      "day4.changes",
+    ]);
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
+    await settle();
+    const preview = document.querySelector(".agent-preview")?.textContent ?? "";
+
+    // Assert
+    for (const group of ["day4.who", "day4.problem", "day4.changes"]) {
+      assert.ok(preview.includes(`"group": "${group}"`), `${group} is not asked for`);
+    }
+    assert.ok(preview.includes("2. Who and what (20 min)"), "the prompt does not name the item");
+  });
+
+  it("wireQuestionControls_TheSameSentenceAskedTwice_IsOneControlNamedForTheItem", async () => {
+    // Arrange — day 4 asks one sentence twice on purpose, which is what #78's "… (2)" suffix
+    // existed to disambiguate. They are one numbered item, so they are now one control and the
+    // tie is gone rather than broken: the name is what the worksheet calls the task, and every
+    // one of the 63 items has a heading distinct within its page.
+    const HEADING = "3. The contribution question (15 min)";
+    const ONE = 1;
+    const document = numbered([
+      "3-the-contribution-question-15-min",
+      HEADING,
+      "day4.enough_and_more_1",
+      "day4.enough_and_more_2",
+    ]);
 
     // Act
     wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
     const named = namesOn(document);
 
     // Assert
-    assert.equal(named[0], SENTENCE);
-    assert.equal(named[1], `${SENTENCE} (${SECOND})`);
+    assert.equal(named.length, ONE, `two sentences of one item got ${named.length} controls`);
+    assert.equal(named[0], HEADING);
+    assert.ok(!(named[0] ?? "").includes("(2)"), "the tie-breaker outlived the tie");
   });
 
   it("wireQuestionControls_AMarkdownOrOverlongHeading_IsStillReadableAloud", async () => {

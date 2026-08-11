@@ -138,24 +138,28 @@ type Panel = {
   readonly refresh: () => Promise<void>;
 };
 
-/** Build the panel a question's button opens: the payload, in full, and what to do with it. */
+/**
+ * One question of a numbered item, resolved against the schema.
+ *
+ * The question is carried rather than looked up again: `itemsOn` has already proved every group
+ * resolves before it builds an item out of them, so a second lookup could only ever succeed —
+ * and the `unknown-group` arm one guarded was unreachable code carrying a message no reader
+ * could ever be shown. A mutation sweep found it by deleting the arm with the suite green.
+ */
+type Asked = { readonly group: string; readonly question: NonNullable<ReturnType<typeof findQuestion>> };
+
+/** Build the panel an item's button opens: the payload, in full, and what to do with it. */
 function panelFor(
   document: Document,
-  group: string,
-  name: string,
-  // Passed in rather than looked up again. `wireQuestionControls` has already proved this
-  // group resolves before it builds a panel for it, so the second lookup could only ever
-  // succeed — and the `unknown-group` arm it guarded was unreachable code carrying a message
-  // no reader could ever be shown. A mutation sweep found it by deleting the arm with the
-  // suite green.
-  question: NonNullable<ReturnType<typeof findQuestion>>,
+  item: Item,
   readEntries: () => Promise<ReadonlyMap<string, string>>,
 ): Panel {
+  const { name } = item;
   const element = document.createElement("div");
   element.className = "agent-panel";
   // Dots are legal in an id and this is only ever used by `aria-controls`, never as a
   // selector — `#agent-panel-day1.chapters` would parse as an id plus a class.
-  element.id = `agent-panel-${group}`;
+  element.id = `agent-panel-${item.id}`;
   element.hidden = true;
 
   const include = document.createElement("input");
@@ -252,16 +256,17 @@ function panelFor(
       return;
     }
     try {
-      // One question per control still, so one part per prompt — #82's third slice is what
-      // groups these by the numbered item they sit in. A prompt covering a single question
-      // reads exactly as it did before items existed.
-      //
-      // The item name is empty rather than `name`, deliberately. `name` is this button's
-      // accessible label: a clipped first line of an ask, sometimes carrying a "(2)"
-      // disambiguator — not what the worksheet calls the numbered item. It happens to be
-      // discarded on the one-question path, so passing it would be inert today and wrong the
-      // day that changes, and nothing in the types could tell the two strings apart.
-      const made = promptFor("", [{ group, prior: priorFrom(question, entries, wanted) }]);
+      // Every question of the item, in the order the page asks them, each with its own stored
+      // answers. `item.name` is what the worksheet calls the item — the heading's own text —
+      // which is what `promptFor` needs to say that several questions are one exercise. It is
+      // ignored where an item holds a single question, so those prompts are unchanged.
+      const made = promptFor(
+        name,
+        item.parts.map(({ group, question }) => ({
+          group,
+          prior: priorFrom(question, entries, wanted),
+        })),
+      );
       if (!made.ok) {
         // Logged as well as shown. Every refusal reachable here is a fault rather than an
         // ordinary outcome — a group the schema does not hold means the markup and this build
@@ -318,14 +323,80 @@ function panelFor(
   return { element, refresh };
 }
 
+/** One numbered item's worth of control: what it covers, what to call it, where it goes. */
+type Item = {
+  /** What the worksheet calls it — the heading's own text, or the question's for an orphan. */
+  readonly name: string;
+  /** Unique within the page, for the panel's id. The heading's slug, or the group. */
+  readonly id: string;
+  /** The container the control is placed before: the FIRST question of the item. */
+  readonly first: Element;
+  readonly parts: Asked[];
+};
+
 /**
- * Give every question on this page a copy button, when the bridge is on.
+ * Every numbered item on this page, in the order the reader meets them.
+ *
+ * `data-section` is the slug of the enclosing numbered heading (#93), and it is the only thing
+ * in the markup that says where one task ends and the next begins. Bucketing on it is the whole
+ * of #82: a reader works through a worksheet in numbered items, not in questions, so day 4's
+ * fourteen controls were fourteen invitations to fourteen conversations about five tasks.
+ *
+ * A question outside every numbered heading is an item of its own. There is exactly one —
+ * `values.additions`, on a reference page with no headings at all — and build.test.ts pins it
+ * by name as the single exception rather than leaving it as a silent zero.
+ *
+ * Checklists are dropped per QUESTION rather than per container, which is the difference this
+ * slice makes: 0015 keeps them out of the contract, so an item holding one alongside real
+ * questions must offer the rest. An item holding nothing else gets no control at all, which is
+ * what `promptFor` refusing a checklist-only list says from the other end.
+ */
+function itemsOn(document: Document): readonly Item[] {
+  const found = new Map<string, Item>();
+  for (const container of document.querySelectorAll("[data-question]")) {
+    const group = container.getAttribute("data-question");
+    if (group === null) {
+      continue;
+    }
+    // A group this build does not know is skipped for the same reason a checklist is: the
+    // prompt could only refuse it. Reachable across a service worker activation, where a page
+    // can outlive the schema it was rendered against — and dropping the question rather than
+    // the item is what stops one stale identifier costing a reader every question beside it.
+    const question = findQuestion(group);
+    if (question === undefined || question.kind === "checklist") {
+      continue;
+    }
+    const section = container.getAttribute("data-section") ?? "";
+    const id = section === "" ? group : section;
+    const already = found.get(id);
+    if (already !== undefined) {
+      already.parts.push({ group, question });
+      continue;
+    }
+    // The heading whose `id` is the slug is the same element the build slugged, so its text is
+    // what the page calls this item — "3. The contribution question (15 min)". `promptFor` uses
+    // it to say four questions are one exercise; it ignores the name where an item holds a
+    // single question, which is every orphan and 39 of the 63 items.
+    const heading = section === "" ? null : document.getElementById(section);
+    const name = heading?.textContent?.trim();
+    found.set(id, {
+      id,
+      name: name === undefined || name === "" ? nameFor(question, group) : name,
+      first: container,
+      parts: [{ group, question }],
+    });
+  }
+  return [...found.values()];
+}
+
+/**
+ * Give every numbered item on this page a copy button, when the bridge is on.
  *
  * Built here rather than emitted by the build, so a reader who never opts in carries no extra
- * markup at all. Derived from `[data-question]`, which the build already puts on every
- * rendered group — so the buttons cannot drift from the questions that exist. The selector is
- * deliberately element-agnostic: a `single` is a `<p>`, a `group` and a `checklist` are
- * `<ul>`, a `repeat` is a `<div>` or an `<ol>`, and matching on any one of those would leave
+ * markup at all. Derived from `[data-question]` and `[data-section]`, which the build already
+ * puts on every rendered group — so the buttons cannot drift from the questions that exist. The
+ * selector is deliberately element-agnostic: a `single` is a `<p>`, a `group` and a `checklist`
+ * are `<ul>`, a `repeat` is a `<div>` or an `<ol>`, and matching on any one of those would leave
  * most of the workbook with no control.
  */
 export function wireQuestionControls(
@@ -337,23 +408,11 @@ export function wireQuestionControls(
     return;
   }
 
-  const names = new Map<string, number>();
-  for (const container of document.querySelectorAll("[data-question]")) {
-    const group = container.getAttribute("data-question");
-    if (group === null) {
-      continue;
-    }
-    // 0015 keeps checklists out of the contract, so a control there could only produce a
-    // refusal. A group this build does not know is the same — reachable across a service
-    // worker activation, where a page can outlive the schema it was rendered against.
-    const question = findQuestion(group);
-    if (question === undefined || question.kind === "checklist") {
-      continue;
-    }
+  for (const item of itemsOn(document)) {
     // Idempotent. Nothing calls this twice today, but it is exported, the tests call it
     // directly, and #68's paste path will want to re-run it — and a second pass would give
-    // every question two controls whose panels share one id.
-    if (container.previousElementSibling?.classList.contains("agent-panel") === true) {
+    // every item two controls whose panels share one id.
+    if (item.first.previousElementSibling?.classList.contains("agent-panel") === true) {
       continue;
     }
 
@@ -361,20 +420,17 @@ export function wireQuestionControls(
     open.type = "button";
     open.className = "agent-open";
     open.textContent = "Ask an assistant";
-    // Named for its own question. A screen reader listing this page's buttons would otherwise
-    // find five identical "Ask an assistant" with nothing saying which is which (0001) — see
-    // `nameFor` for where the name comes from and why the obvious sources are wrong.
+    // Named for the item it covers. A screen reader listing this page's buttons would otherwise
+    // find five identical "Ask an assistant" with nothing saying which is which (0001).
     //
-    // Then disambiguated within the page, because a good rule still leaves one honest tie:
-    // day 4 asks the same sentence twice on purpose. Two buttons reading identically is the
-    // same "which of these is which" by a different road, so the second one says which it is.
-    const base = nameFor(question, group);
-    const nth = (names.get(base) ?? 0) + 1;
-    names.set(base, nth);
-    const name = nth === 1 ? base : `${base} (${nth})`;
-    open.setAttribute("aria-label", `Ask an assistant about ${name}`);
+    // No tie-breaking suffix any more. #78 added "… (2)" because day 4 asks the same sentence
+    // twice and two buttons read identically; those two questions are now one control, and
+    // every one of the 63 numbered items has a heading distinct within its page — so the
+    // suffix has nothing left to disambiguate. `nameFor` still earns its keep for the one
+    // orphan and for the names paste.ts shows per group.
+    open.setAttribute("aria-label", `Ask an assistant about ${item.name}`);
 
-    const panel = panelFor(document, group, name, question, readEntries);
+    const panel = panelFor(document, item, readEntries);
     open.setAttribute("aria-controls", panel.element.id);
     open.setAttribute("aria-expanded", "false");
 
@@ -383,17 +439,17 @@ export function wireQuestionControls(
       panel.element.hidden = !opening;
       open.setAttribute("aria-expanded", opening ? "true" : "false");
       if (opening) {
-        // Built on open rather than on load: 113 payloads for a page nobody has asked
+        // Built on open rather than on load: 62 payloads for a page nobody has asked
         // anything of is work with no reader waiting for it.
         void panel.refresh();
       }
     });
 
-    // BEFORE the question, not inside it. Appending put the control after every field — on
-    // Day 1's chapters that is below all five, so a reader met it having already written by
-    // hand the thing it offered to help with. It is also the only valid place for it:
-    // `q-group`, `q-checklist` and one shape of `q-repeat` are `<ul>`/`<ol>`, whose only
+    // BEFORE the item's first question, not inside it. Appending put the control after every
+    // field — on Day 1's chapters that is below all five, so a reader met it having already
+    // written by hand the thing it offered to help with. It is also the only valid place for
+    // it: `q-group`, `q-checklist` and one shape of `q-repeat` are `<ul>`/`<ol>`, whose only
     // permitted children are list items.
-    container.before(open, panel.element);
+    item.first.before(open, panel.element);
   }
 }
