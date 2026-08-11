@@ -903,6 +903,36 @@ describe("the stylesheet and the page agreeing", () => {
     }
   });
 
+  it("styleSheet_ABlanksAlignment_IsDeclaredInExactlyOnePlace", async () => {
+    // Arrange — a blank sits on the line it belongs to only because one rule lowers it, and
+    // the first attempt at that rule was beaten four rules later by a `vertical-align:baseline`
+    // at identical specificity. It failed silently, and it failed precisely in the heading,
+    // which was the one place the misalignment had been reported from a device. The value
+    // itself is a visual approximation and expected to be tuned; what must not come back is a
+    // second declaration competing for the property.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    // Act — every rule that both names a blank and says anything about vertical-align.
+    const declaring = [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((rule) => /\.fill\b|\.fill-sm\b/.test(rule[1] ?? ""))
+      .filter((rule) => /vertical-align\s*:/.test(rule[2] ?? ""))
+      .map((rule) => ({ selector: (rule[1] ?? "").trim(), body: (rule[2] ?? "").trim() }));
+
+    // Assert
+    assert.equal(
+      declaring.length,
+      1,
+      `vertical-align is declared for a blank in ${declaring.length} rules, and the last one silently wins:\n  ${declaring
+        .map((one) => one.selector)
+        .join("\n  ")}`,
+    );
+    assert.ok(
+      !/vertical-align\s*:\s*baseline/.test(declaring[0]?.body ?? ""),
+      "the alignment correction has been reverted to `baseline`, which puts the box back above the line it belongs to",
+    );
+  });
+
   it("styleSheet_TheReadersOwnWords_HaveAColourNothingElseUses", async () => {
     // Arrange — the token exists to separate "you said this" from "we are showing you this",
     // and the comment above it says so. Two custom properties that drifted back to the same

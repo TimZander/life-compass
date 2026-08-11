@@ -58,7 +58,7 @@ hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
    identified by the words in it, which is why the trade is acceptable here, but it is a trade
    and not a second win. The forced-colors block below is what keeps the answered state
    legible where a background cannot be relied on at all. */
-.fill,.fill-sm{display:inline-block;max-width:100%;outline:1px dashed var(--accent);outline-offset:1px;overflow:hidden;white-space:nowrap;vertical-align:baseline;text-indent:-9999px}
+.fill,.fill-sm{display:inline-block;max-width:100%;outline:1px dashed var(--accent);outline-offset:1px;overflow:hidden;white-space:nowrap;text-indent:-9999px}
 .fill{width:15rem}
 .fill-sm{width:6rem}
 /* Once the page loads, every blank above is replaced by a real control carrying the
@@ -113,7 +113,20 @@ textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
    line and grow along it as they fill (fields.ts sets the width where the browser will
    not). A fixed-width input was tried here and scrolled the answer out of sight while the
    reader was still speaking; the cap is the line, and past that it wraps rather than hides. */
-textarea.fill-sm{display:inline-block;width:6rem;min-width:6rem;max-width:100%;vertical-align:baseline;margin:0}
+textarea.fill-sm{display:inline-block;width:6rem;min-width:6rem;max-width:100%;margin:0}
+/* Past one line it stops sitting in the sentence and takes its own, because an
+   inline-block that wraps leaves its later lines starting mid-paragraph and the rest of
+   the sentence stranded on the first line. fields.ts adds the class. */
+textarea.fill-sm.fill-grown{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
+/* Except in a heading — Day 2 puts five of them in an h3 ("Value 1 — ____"), where a
+   full-width block box breaks the heading in half. These hold a name, not a paragraph. Day 3
+   names five themes the same way and both rigorous variants repeat the pair, so it is twenty
+   fields rather than the five the count above suggests. Every one is a `fill`; nothing puts a
+   `fill-sm` in a heading today, which is why this selector does not mention one.
+   A name in a heading is a short answer wearing a big font, so it gets the tint and the same
+   breathing room either side that a blank in a sentence gets. */
+h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;margin:0}
+h3 textarea.fill.fill-said{box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
 /* Sitting the box ON the line it belongs to, rather than above it.
    An inline-block whose `overflow` is anything but `visible` takes its baseline from its
    BOTTOM MARGIN EDGE instead of from the text inside it (CSS 2.1 §10.8.1). These have
@@ -129,21 +142,16 @@ textarea.fill-sm{display:inline-block;width:6rem;min-width:6rem;max-width:100%;v
    fixed nudge cannot serve both. The .29em stands in for the descender of whichever serif the
    device actually resolved, so it is an approximation — if this over- or under-shoots on a
    real screen, that number is the one to turn. Where `lh` is unsupported the declaration is
-   dropped whole and the old alignment returns, which is no worse than before. */
-textarea.fill-sm:not(.fill-grown),h3 textarea.fill{vertical-align:calc(.29em - .5lh)}
-/* Past one line it stops sitting in the sentence and takes its own, because an
-   inline-block that wraps leaves its later lines starting mid-paragraph and the rest of
-   the sentence stranded on the first line. fields.ts adds the class. */
-textarea.fill-sm.fill-grown{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
-/* Except in a heading — Day 2 puts five of them in an h3 ("Value 1 — ____"), where a
-   full-width block box breaks the heading in half. These hold a name, not a paragraph. Day 3
-   names five themes the same way and both rigorous variants repeat the pair, so it is twenty
-   fields rather than the five the count above suggests. Every one is a `fill`; nothing puts a
-   `fill-sm` in a heading today, which is why this selector does not mention one.
-   A name in a heading is a short answer wearing a big font, so it gets the tint and the same
-   breathing room either side that a blank in a sentence gets. */
-h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0}
-h3 textarea.fill.fill-said{box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
+   dropped whole and the old alignment returns, which is no worse than before.
+
+   LAST, and that placement is the fix's own bug report. This first shipped four rules
+   earlier, where `h3 textarea.fill` set `vertical-align:baseline` after it at identical
+   specificity and silently won — so the heading, the one place the misalignment had actually
+   been reported, was the one place the correction never reached. Rather than out-specify it,
+   the three `vertical-align:baseline` declarations that were competing are gone: baseline is
+   the initial value for an inline-block, so they said nothing and only shadowed this. There
+   is now exactly one vertical-align declaration for a blank in the whole stylesheet. */
+.fill,.fill-sm,textarea.fill-sm:not(.fill-grown),h3 textarea.fill{vertical-align:calc(.29em - .5lh)}
 textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* Printing a bound page. The height fields.ts pins is for the screen's column width, and
    a print column is narrower, so the answer rewraps longer than the box and overflow:hidden
