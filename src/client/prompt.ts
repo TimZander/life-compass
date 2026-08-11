@@ -19,7 +19,7 @@
 
 import type { Question, RepeatQuestion } from "../questions/types.ts";
 import { answerKey, fieldKey, orderKey, readOrder } from "./keys.ts";
-import { ASKS, WORKSHEETS } from "./schema.ts";
+import { ASKS, MATERIAL, WORKSHEETS } from "./schema.ts";
 
 /**
  * The contract an assistant is asked to answer in — docs/decisions/0015.
@@ -317,6 +317,29 @@ function ask(question: Answerable): string {
 }
 
 /**
+ * The material an ask sends the reader to, carried so the assistant can use it.
+ *
+ * Day 2 asks the reader to open the values starter list and pick the words that feel like them.
+ * The list is a page of its own, and a prompt that only names it hands an assistant a relative
+ * link it cannot follow — offline by design (0006) — while telling it to work from something it
+ * cannot see. Carrying the words is what makes that one exercise possible at all (#96).
+ *
+ * `level` for the same reason `priorSection` takes one: this sits under the question it belongs
+ * to, and at `####` when that question is one of several under a `###` of its own.
+ */
+function material(question: Answerable, level: "###" | "####"): string {
+  const list = MATERIAL[question.id];
+  if (list === undefined || list === "") {
+    return "";
+  }
+  return (
+    `\n${level} The list this refers to\n\n${list}\n\n` +
+    `It is here in full, so there is nothing to open. Offer these to me a few at a time and\n` +
+    `let me say which land — do not read the whole list out, and do not limit me to it.\n`
+  );
+}
+
+/**
  * Whether a question's prose is the one before it, and so can be pointed at rather than repeated.
  *
  * Exported for its own test rather than left inline, because the interesting half cannot be
@@ -501,6 +524,7 @@ function questions(item: string, parts: readonly Asked[]): string {
   if (only !== undefined) {
     return (
       `## What to ask about\n\n${ask(only.question)}${shape(only.question)}\n` +
+      `${material(only.question, "###")}` +
       `${only.prior === undefined ? "" : priorSection(only.question, only.prior, "##")}`
     );
   }
@@ -550,6 +574,7 @@ function questions(item: string, parts: readonly Asked[]): string {
       `### Question ${index + 1} of ${parts.length} — \`${part.question.id}\`\n\n` +
         `${repeated ? `The same instruction as question ${saidAt} above.` : prose}` +
         `${shape(part.question)}\n` +
+        `${material(part.question, "####")}` +
         `${part.prior === undefined ? "" : priorSection(part.question, part.prior, "####")}`,
     );
     if (!repeated) {
