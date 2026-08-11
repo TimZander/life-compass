@@ -141,10 +141,12 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 /* 0007 · 1 wants the literal payload shown. On a phone that means it has to scroll rather
    than run off the side of the page, and wrap rather than force the article to. */
 /* 0007 · 1 makes this the consent mechanism, so how much of it a reader can see is not a
-   styling question. Every generated payload is 40-63 lines; at the previous 22em and .8rem
-   roughly a quarter was visible, inside a box whose own boundary was 1.10:1 against the page —
-   so the reader could neither read the rest nor tell there was a rest. Taller, larger, and
-   bounded by something visible. */
+   styling question. At the previous 22em and .8rem roughly a quarter of a payload was visible,
+   inside a box whose own boundary was 1.10:1 against the page — so the reader could neither
+   read the rest nor tell there was a rest. Taller, larger, and bounded by something visible.
+   Payloads were 40-63 lines when that was written; since #82 made a control cover a whole
+   numbered item they run 40-166, so 70vh is a smaller fraction of the whole than it was and
+   how it reads on a phone is a device question this file cannot answer. */
 .agent-preview{max-height:70vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92rem;line-height:1.55;padding:.8em .9em;margin:0 0 .5em;background:var(--bg);border:1px solid var(--accent);border-radius:4px}
 /* Said plainly rather than left to an overlay scrollbar that appears only while scrolling. */
 .agent-scroll{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:0 0 .7em}

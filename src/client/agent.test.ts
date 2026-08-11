@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
-import { wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { nameFor, wireAgentPage, wireQuestionControls } from "./agent.ts";
 import { renderQuestion } from "../../build/questions.ts";
 import { buildPages } from "../../build/build.ts";
 import { WORKSHEETS } from "../questions/index.ts";
@@ -88,6 +88,13 @@ let built: ReturnType<typeof buildPages> | undefined;
 function site(): ReturnType<typeof buildPages> {
   built ??= buildPages({});
   return built;
+}
+
+/** What `nameFor` calls a question — what an item with no usable heading falls back to. */
+function nameForFirstQuestion(group: string): string {
+  const question = WORKSHEETS.flatMap((one) => one.questions).find((one) => one.id === group);
+  assert.ok(question !== undefined, `${group} is not in the schema`);
+  return nameFor(question, group);
 }
 
 /** The accessible names on a page, with the fixed prefix stripped. */
@@ -174,6 +181,56 @@ describe("the controls against what the build actually renders", () => {
     assert.equal([...document.querySelectorAll("button.agent-open")].length, ITEMS);
   });
 
+  it("wireQuestionControls_EveryNumberedItemOnEveryPage_PutsItsControlAtTheItemsOwnLevel", async () => {
+    // Arrange — the assertion the fixtures cannot make, and the one that caught a real defect.
+    // `numbered()` emits flat `<p>` siblings; the workbook does not. Eleven controls landed
+    // INSIDE a `<li>` or a `<blockquote>`, because that is where the item's first question
+    // sits — one control indented inside bullet one while speaking for bullets one to three,
+    // which is the reading #82 exists to fix arriving by another road.
+    //
+    // "Its own level" means: the same parent as the numbered heading it is named after. That
+    // is what makes a control belong to the item rather than to whatever contains its first
+    // question. `happy-dom` has no layout (0014 · C3), so this proves the DOM relationship and
+    // says nothing about how it looks.
+    const { pages } = await site();
+    let checked = 0;
+
+    // Act & Assert
+    for (const page of pages) {
+      if (page.source.startsWith("docs/")) {
+        continue;
+      }
+      window.document.body.innerHTML = REGION + page.html;
+      const document = window.document as unknown as Document;
+      wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+      for (const control of document.querySelectorAll("button.agent-open")) {
+        const panel = control.nextElementSibling;
+        assert.ok(
+          panel?.classList.contains("agent-panel"),
+          `${page.source}: a control is not followed by its panel`,
+        );
+        const covered = panel?.nextElementSibling ?? null;
+        assert.ok(covered !== null, `${page.source}: a control sits above nothing`);
+        // The heading this item is named after, found the way the client finds it.
+        const named = (control.getAttribute("aria-label") ?? "").replace("Ask an assistant about ", "");
+        const heading = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].find(
+          (one) => (one.textContent ?? "").trim() === named,
+        );
+        if (heading === undefined) {
+          // The orphan, which has no heading and keeps its control beside its question.
+          continue;
+        }
+        checked += 1;
+        assert.equal(
+          control.parentElement,
+          heading.parentElement,
+          `${page.source}: "${named}" has its control nested below the level of its heading`,
+        );
+      }
+    }
+    assert.ok(checked > 50, `only ${checked} controls were checked against a heading`);
+  });
+
   it("wireQuestionControls_EveryQuestionKind_GetsAControlAgainstRealMarkup", () => {
     // Arrange — one of each answerable kind, rendered by the build rather than by hand.
     const OF_EACH = ["day4.eulogy", "day1.chapters", "day5.career", "day4.enough_and_more_1"];
@@ -246,9 +303,9 @@ describe("the controls against what the build actually renders", () => {
       2,
       "one control asked for more than one block back",
     );
-    // And the item name is not this control's label. `nameFor` produces a screen-reader name —
-    // clipped, sometimes suffixed "(2)" — which is not what the worksheet calls a numbered
-    // item, so passing it here would print a button label as the page's own words.
+    // And a single question is not framed as an item. This fixture carries no `data-section`,
+    // so it is the orphan path, where the name comes from `nameFor` — a clipped first line of
+    // one question's ask, which is not what a worksheet calls a numbered item.
     assert.ok(
       !preview.includes("one numbered item of the worksheet"),
       "a single question was framed as a numbered item",
@@ -817,6 +874,173 @@ describe("the copy control on a question", () => {
     assert.deepEqual(namesOn(document), ["1. Unfair advantages (15 min)", "2. Who and what (20 min)"]);
     const panels = [...document.querySelectorAll(".agent-panel")].map((one) => one.id);
     assert.equal(new Set(panels).size, TWO, `two items share a panel id: ${panels.join(", ")}`);
+  });
+
+  it("wireQuestionControls_AnItemOfSeveralQuestions_AsksAboutThemInPageOrder", async () => {
+    // Arrange — `promptFor` numbers the questions "Question N of M" by their position in the
+    // list it is given, and tells the assistant to work through them in that order because the
+    // worksheet's order is how the exercise builds. Nothing in the signature enforces it, so
+    // the client is the only thing that can get it right — and reversing the list here left
+    // every assertion green, because membership was all that was checked.
+    const IN_ORDER = ["day4.who", "day4.problem", "day4.changes"];
+    const document = numbered(["2-who-and-what-20-min", "2. Who and what (20 min)", ...IN_ORDER]);
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
+    await settle();
+    const preview = document.querySelector(".agent-preview")?.textContent ?? "";
+
+    // Assert
+    assert.deepEqual(
+      [...preview.matchAll(/^### Question \d+ of \d+ — `([^`]+)`$/gm)].map((one) => one[1]),
+      IN_ORDER,
+      "the questions reached the prompt out of page order",
+    );
+  });
+
+  it("wireQuestionControls_AnItemOfSeveralQuestions_CarriesEachQuestionsOwnAnswers", async () => {
+    // Arrange — one prior per question, matched to its own question. Reading them all from the
+    // item's FIRST question survived the suite, because every prior test until now used a
+    // one-question page where every reading is the same reading. On a real item that puts one
+    // question's stored answers — and, for a repeat, its instance identifiers — under another
+    // question's heading, which 0015 · C3 is written to prevent.
+    const MINE = "What I wrote for the first one.";
+    const OTHER = "And something else entirely for the second.";
+    const document = numbered([
+      "2-who-and-what-20-min",
+      "2. Who and what (20 min)",
+      "day4.who",
+      "day4.problem",
+    ]);
+    const stored = new Map([["day4.who", MINE], ["day4.problem", OTHER]]);
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(stored));
+
+    // Act — with the answers opted in.
+    (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
+    await settle();
+    const include = document.querySelector(".agent-panel input") as HTMLInputElement;
+    include.checked = true;
+    include.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+    await settle();
+    const preview = document.querySelector(".agent-preview")?.textContent ?? "";
+
+    // Assert — each under its own question, not both under the first.
+    const [, first = "", second = ""] = preview.split(/^### Question \d+ of \d+ — `[^`]+`$/gm);
+    assert.ok(first.includes(MINE), "the first question lost its own answer");
+    assert.ok(second.includes(OTHER), "the second question did not get its own answer");
+    assert.ok(!second.includes(MINE), "one question's answer was carried under another's heading");
+  });
+
+  it("wireQuestionControls_AnItemAlreadyWired_DoesNotStopTheOnesAfterIt", async () => {
+    // Arrange — partial idempotency, which the run-twice test cannot see because it uses a page
+    // of one item where skipping and stopping are the same thing. #68's paste path re-runs this
+    // over a page that may be part-wired; `return` instead of `continue` in the guard then
+    // leaves every item after the first one without a control.
+    const TWO = 2;
+    const document = numbered(
+      ["1-unfair-advantages-15-min", "1. Unfair advantages (15 min)", "day4.skills"],
+      ["2-who-and-what-20-min", "2. Who and what (20 min)", "day4.who"],
+    );
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    // Take the SECOND item's control away, as though it had never been wired.
+    const controls = [...document.querySelectorAll("button.agent-open")];
+    controls[1]?.nextElementSibling?.remove();
+    controls[1]?.remove();
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    assert.equal(
+      [...document.querySelectorAll("button.agent-open")].length,
+      TWO,
+      "the item after an already-wired one was skipped",
+    );
+    assert.deepEqual(namesOn(document), ["1. Unfair advantages (15 min)", "2. Who and what (20 min)"]);
+  });
+
+  it("wireQuestionControls_AControl_IsNamedAndWiredToThePanelForItsItem", async () => {
+    // Arrange — three things `namesOn` cannot see because it strips the prefix before asserting:
+    // that the label says what the button DOES, that the panel's id is derived from the item
+    // rather than merely unique, and that the preview region is named for the item too. All
+    // three survived a mutation while the names still read correctly.
+    const SLUG = "2-who-and-what-20-min";
+    const HEADING = "2. Who and what (20 min)";
+    const document = numbered([SLUG, HEADING, "day4.who", "day4.problem"]);
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    const control = document.querySelector("button.agent-open");
+    assert.equal(control?.getAttribute("aria-label"), `Ask an assistant about ${HEADING}`);
+    assert.equal(control?.getAttribute("aria-controls"), `agent-panel-${SLUG}`);
+    assert.equal(document.querySelector(".agent-panel")?.id, `agent-panel-${SLUG}`);
+    assert.equal(
+      document.querySelector(".agent-preview")?.getAttribute("aria-label"),
+      `The exact text that will be copied for ${HEADING}`,
+    );
+  });
+
+  it("wireQuestionControls_AHeadingCarryingMarkup_IsNamedByItsWordsAlone", async () => {
+    // Arrange — rigorous day 3 emphasises a word in its heading, so the element really is
+    // `<h2 id="…">4. The hypothetical — weighted <em>least</em> (15 min)</h2>`. Reading it as
+    // `innerHTML` survived the suite and would have a screen reader announce the tags.
+    const document = numbered([
+      "4--the-hypothetical--weighted-least-15-min",
+      "4. The hypothetical — weighted <em>least</em> (15 min)",
+      "rday3.hypothetical",
+      "rday3.reconciling",
+    ]);
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    assert.deepEqual(namesOn(document), ["4. The hypothetical — weighted least (15 min)"]);
+  });
+
+  it("wireQuestionControls_AnItemWhoseHeadingSaysNothing_FallsBackToTheQuestionsOwnName", async () => {
+    // Arrange — an empty heading is not a name. `name ?? nameFor(...)` survived, and an empty
+    // string is not `undefined`: the control would have been called "Ask an assistant about "
+    // and the prompt would have printed the item as `****`.
+    const document = numbered(["2-who-and-what-20-min", "   ", "day4.who", "day4.problem"]);
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert
+    const named = namesOn(document)[0] ?? "";
+    assert.notEqual(named, "", "the control was left with no name at all");
+    assert.equal(named, nameForFirstQuestion("day4.who"), "it did not fall back to the question's own name");
+  });
+
+  it("wireQuestionControls_AnItemWithSubHeadings_PutsItsControlAboveThemAll", async () => {
+    // Arrange — day 5 asks one question under each of five `###` dimensions (Career, Money,
+    // Place, People, Time) inside ONE numbered item. Placing the control before the first
+    // question puts it under "Career", so the other four dimensions read as having no control
+    // at all — the reader sees the offer once, attached to the wrong quarter of the task.
+    // #93 established that those sub-headings do not split the item; this is the same fact
+    // from the reader's side.
+    window.document.body.innerHTML = `${REGION}
+<h2 id="2-test">2. Test against the five dimensions (40 min)</h2>
+<p>For each dimension, ask where the gap is.</p>
+<h3>Career</h3>
+<p class="q-single" data-question="day5.career" data-section="2-test">x</p>
+<h3>Money</h3>
+<p class="q-single" data-question="day5.money" data-section="2-test">x</p>`;
+    const document = window.document as unknown as Document;
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Assert — after the item's own prose, above the first sub-heading.
+    const control = document.querySelector("button.agent-open");
+    assert.equal(control?.previousElementSibling?.tagName, "P", "the control is not after the item's prose");
+    const panel = control?.nextElementSibling;
+    assert.equal(panel?.nextElementSibling?.tagName, "H3", "the control sits below a sub-heading of its own item");
+    assert.equal((panel?.nextElementSibling?.textContent ?? "").trim(), "Career");
   });
 
   it("wireQuestionControls_AQuestionInNoNumberedItem_KeepsItsOwnControl", async () => {

@@ -10,7 +10,7 @@
  * than in prose about them:
  *
  *   1. the literal payload, previewed — not a description of it
- *   2. prior answers off by default, opted into per question
+ *   2. prior answers off by default, opted into per numbered item
  *   3. one plain sentence at the copy control
  *   4. said once, not a confirmation on every copy
  *
@@ -139,19 +139,17 @@ type Panel = {
 };
 
 /**
- * One question of a numbered item, resolved against the schema.
+ * `prompt.ts`'s `Part` with the question already looked up.
  *
- * The question is carried rather than looked up again: `itemsOn` has already proved every group
- * resolves before it builds an item out of them, so a second lookup could only ever succeed —
- * and the `unknown-group` arm one guarded was unreachable code carrying a message no reader
- * could ever be shown. A mutation sweep found it by deleting the arm with the suite green.
+ * Carried rather than resolved twice: `itemsOn` proves every group resolves before it builds an
+ * item out of them, so a second lookup could only ever succeed.
  */
-type Asked = { readonly group: string; readonly question: NonNullable<ReturnType<typeof findQuestion>> };
+type ResolvedPart = { readonly group: string; readonly question: NonNullable<ReturnType<typeof findQuestion>> };
 
 /** Build the panel an item's button opens: the payload, in full, and what to do with it. */
 function panelFor(
   document: Document,
-  item: Item,
+  item: NumberedItem,
   readEntries: () => Promise<ReadonlyMap<string, string>>,
 ): Panel {
   const { name } = item;
@@ -324,15 +322,56 @@ function panelFor(
 }
 
 /** One numbered item's worth of control: what it covers, what to call it, where it goes. */
-type Item = {
+type NumberedItem = {
   /** What the worksheet calls it — the heading's own text, or the question's for an orphan. */
   readonly name: string;
   /** Unique within the page, for the panel's id. The heading's slug, or the group. */
   readonly id: string;
-  /** The container the control is placed before: the FIRST question of the item. */
+  /** The item's first question. Where the control goes is derived from it — see `placeBefore`. */
   readonly first: Element;
-  readonly parts: Asked[];
+  /** The numbered heading this item is named after, when it has one. */
+  readonly heading: Element | null;
+  readonly parts: ResolvedPart[];
 };
+
+/**
+ * The element the control is inserted before: the top of the item's own content.
+ *
+ * Not simply the first question, which is where one control per question could sit because it
+ * spoke only for what was beside it. An item-wide control has to sit at the item's own level or
+ * it claims to belong to whatever it is nested in — and on the built site the first question of
+ * eight numbered items is inside a bullet, and of three more inside a blockquote. One control
+ * indented inside bullet one, speaking for bullets one to three, is the reading #82 set out to
+ * fix arriving by a different road.
+ *
+ * So: climb out to the block that sits at the heading's own level, then stop short of any
+ * sub-heading between the two. Day 5 asks one question under each of five `###` dimensions
+ * inside a single numbered item; placing the control under "Career" would leave Money, Place,
+ * People and Time looking as though they had none. What this deliberately does NOT do is hoist
+ * the control to just under the numbered heading: the item's own prose is the instruction for
+ * the task, and a control above it offers help with something the reader has not yet read.
+ */
+function placeBefore(first: Element, heading: Element | null): Element {
+  const level = heading?.parentElement;
+  if (heading === undefined || heading === null || level === undefined || level === null) {
+    return first;
+  }
+  let block: Element = first;
+  while (block.parentElement !== null && block.parentElement !== level) {
+    block = block.parentElement;
+  }
+  if (block.parentElement !== level) {
+    // The question is not under the heading's level at all, which no page the build emits
+    // produces. Falling back to the question itself keeps a control rather than none.
+    return first;
+  }
+  for (let at = heading.nextElementSibling; at !== null && at !== block; at = at.nextElementSibling) {
+    if (/^H[1-6]$/.test(at.tagName)) {
+      return at;
+    }
+  }
+  return block;
+}
 
 /**
  * Every numbered item on this page, in the order the reader meets them.
@@ -351,19 +390,25 @@ type Item = {
  * questions must offer the rest. An item holding nothing else gets no control at all, which is
  * what `promptFor` refusing a checklist-only list says from the other end.
  */
-function itemsOn(document: Document): readonly Item[] {
-  const found = new Map<string, Item>();
+function itemsOn(document: Document): readonly NumberedItem[] {
+  const found = new Map<string, NumberedItem>();
   for (const container of document.querySelectorAll("[data-question]")) {
-    const group = container.getAttribute("data-question");
-    if (group === null) {
-      continue;
-    }
+    // `?? ""` rather than a guard: the selector guarantees the attribute, so a null branch here
+    // is unreachable, and an empty group resolves to no question and is dropped a line below.
+    const group = container.getAttribute("data-question") ?? "";
     // A group this build does not know is skipped for the same reason a checklist is: the
     // prompt could only refuse it. Reachable across a service worker activation, where a page
     // can outlive the schema it was rendered against — and dropping the question rather than
     // the item is what stops one stale identifier costing a reader every question beside it.
     const question = findQuestion(group);
-    if (question === undefined || question.kind === "checklist") {
+    if (question === undefined) {
+      // Consequence changed with #82 and is worth the line: this used to remove a whole
+      // control, which is visible. Now it shrinks an item — the prompt says "It asks 3
+      // questions" over what the page shows as 4 — so the only way anyone learns is this.
+      console.error("life-compass: this build has no question called", group);
+      continue;
+    }
+    if (question.kind === "checklist") {
       continue;
     }
     const section = container.getAttribute("data-section") ?? "";
@@ -376,13 +421,20 @@ function itemsOn(document: Document): readonly Item[] {
     // The heading whose `id` is the slug is the same element the build slugged, so its text is
     // what the page calls this item — "3. The contribution question (15 min)". `promptFor` uses
     // it to say four questions are one exercise; it ignores the name where an item holds a
-    // single question, which is every orphan and 39 of the 63 items.
+    // single question, which is every orphan and 37 of the 63 items.
     const heading = section === "" ? null : document.getElementById(section);
+    if (section !== "" && heading === null) {
+      // Said out loud rather than absorbed. The slug in `data-section` is the heading's own id
+      // by construction, so a missing one means the markup and this build disagree — and the
+      // symptom is every control on the page quietly reverting to per-question naming.
+      console.error("life-compass: no heading for the numbered item", section);
+    }
     const name = heading?.textContent?.trim();
     found.set(id, {
       id,
       name: name === undefined || name === "" ? nameFor(question, group) : name,
       first: container,
+      heading,
       parts: [{ group, question }],
     });
   }
@@ -394,7 +446,8 @@ function itemsOn(document: Document): readonly Item[] {
  *
  * Built here rather than emitted by the build, so a reader who never opts in carries no extra
  * markup at all. Derived from `[data-question]` and `[data-section]`, which the build already
- * puts on every rendered group — so the buttons cannot drift from the questions that exist. The
+ * puts on every rendered question — so the buttons cannot drift from the questions that exist,
+ * and `data-section` is absent on exactly the one question that belongs to no numbered item. The
  * selector is deliberately element-agnostic: a `single` is a `<p>`, a `group` and a `checklist`
  * are `<ul>`, a `repeat` is a `<div>` or an `<ol>`, and matching on any one of those would leave
  * most of the workbook with no control.
@@ -412,7 +465,8 @@ export function wireQuestionControls(
     // Idempotent. Nothing calls this twice today, but it is exported, the tests call it
     // directly, and #68's paste path will want to re-run it — and a second pass would give
     // every item two controls whose panels share one id.
-    if (item.first.previousElementSibling?.classList.contains("agent-panel") === true) {
+    const at = placeBefore(item.first, item.heading);
+    if (at.previousElementSibling?.classList.contains("agent-panel") === true) {
       continue;
     }
 
@@ -439,17 +493,17 @@ export function wireQuestionControls(
       panel.element.hidden = !opening;
       open.setAttribute("aria-expanded", opening ? "true" : "false");
       if (opening) {
-        // Built on open rather than on load: 62 payloads for a page nobody has asked
+        // Built on open rather than on load: up to eight payloads for a page nobody has asked
         // anything of is work with no reader waiting for it.
         void panel.refresh();
       }
     });
 
-    // BEFORE the item's first question, not inside it. Appending put the control after every
-    // field — on Day 1's chapters that is below all five, so a reader met it having already
-    // written by hand the thing it offered to help with. It is also the only valid place for
-    // it: `q-group`, `q-checklist` and one shape of `q-repeat` are `<ul>`/`<ol>`, whose only
-    // permitted children are list items.
-    item.first.before(open, panel.element);
+    // ABOVE the item's questions, never after them. Appending put the control after every field
+    // — on Day 1's chapters that is below all five, so a reader met it having already written
+    // by hand the thing it offered to help with. `placeBefore` is what turns "above the first
+    // question" into "above the item", which is not the same element wherever that question is
+    // nested inside a list or a quote.
+    at.before(open, panel.element);
   }
 }
