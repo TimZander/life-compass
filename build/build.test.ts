@@ -694,7 +694,7 @@ describe("which page carries which controls", () => {
   });
 });
 
-describe("the stylesheet and the assistant controls agreeing", () => {
+describe("the stylesheet and the page agreeing", () => {
   /**
    * Every `.agent-*` rule was independently deletable with the suite green — including whole
    * rules — because nothing in the project asserts on this stylesheet except the one backup
@@ -866,6 +866,83 @@ describe("the stylesheet and the assistant controls agreeing", () => {
     // what the dead `.backup` rule did not.
     for (const selector of ["#backup", "#restore", "#agent", ".agent-open", ".agent-panel"]) {
       assert.ok(hidden.includes(selector), `${selector} is not hidden in print`);
+    }
+  });
+
+  /**
+   * The other half of #97, which lives entirely in this file.
+   *
+   * `fields.ts` publishes `fill-said` and the stylesheet is what gives it meaning — so every
+   * rule below was independently deletable with the suite green, and deleting all of them
+   * left a page where a reader's own answers look exactly like the app's prose while 683
+   * tests still passed. Same argument as the `.agent-*` table above, on a feature whose whole
+   * substance is CSS.
+   */
+  const FIELD_REQUIRED: readonly (readonly [selector: string, declaration: string, because: string])[] = [
+    [".fill,.fill-sm", "outline:1px dashed var(--accent)", "a blank is invisible before the script upgrades it, and on any page where the script never runs"],
+    ["textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "outline:1px dashed var(--accent)", "nothing shows where an unanswered field is, at the 3:1 contrast WCAG 1.4.11 asks of it"],
+    ["textarea.fill.fill-said,textarea.fill-sm.fill-said", "background:var(--answer)", "the reader's own words become indistinguishable from the worksheet's prose, which is the whole of #97"],
+    ["textarea.fill-sm.fill-said:not(.fill-grown)", "box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)", "an answer inside a sentence has its tint stop hard against the neighbouring word"],
+    ["textarea.fill,textarea.fill-sm.fill-grown", "border-left:3px solid transparent", "the rail's geometry lands only once a field is answered, so the first word said into it shifts the box under a reader mid-sentence (0001)"],
+    ["textarea.fill.fill-said,textarea.fill-sm.fill-grown.fill-said", "border-left-color:var(--accent)", "a dictated paragraph loses the rail and is marked only by a tint across a box sized for an answer nobody has given yet"],
+    ["h3 textarea.fill.fill-said", "border-left-color:transparent", "`textarea.fill.fill-said` wins on class count and paints an accent rail down five day-2 headings — the pull-quote look the heading rule exists to prevent"],
+    [".fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said)", "border-bottom:1px solid var(--print-rule)", "a printed worksheet has no line to write on, and 0010 makes printing a supported output"],
+    ["textarea.fill.fill-said,textarea.fill-sm.fill-said", "print-color-adjust:exact", "browsers strip backgrounds when printing, and for a blank in a sentence the tint is the only thing marking the answer as the reader's"],
+  ];
+
+  it("styleSheet_TheAnswerTreatments_KeepTheDeclarationsAReaderDependsOn", async () => {
+    // Arrange
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act & Assert
+    for (const [selector, declaration, because] of FIELD_REQUIRED) {
+      const body = declarationsFor(css, selector);
+      assert.ok(body.length > 0, `${selector} has no rule at all: ${because}`);
+      assert.ok(
+        body.includes(declaration),
+        `${selector} lost "${declaration}": ${because}\n  it now has: ${body.join("; ")}`,
+      );
+    }
+  });
+
+  it("styleSheet_TheReadersOwnWords_HaveAColourNothingElseUses", async () => {
+    // Arrange — the token exists to separate "you said this" from "we are showing you this",
+    // and the comment above it says so. Two custom properties that drifted back to the same
+    // value would leave that claim asserted in a comment and false on screen — and the paste
+    // screen puts them side by side, which is the one place the difference has to carry.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+
+    // Act
+    const answer = /--answer:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
+    const quote = /--quote-bg:\s*(#[0-9a-f]{6})/i.exec(css)?.[1];
+
+    // Assert
+    assert.ok(answer !== undefined, "--answer is gone; every fill-said rule now resolves to nothing");
+    assert.ok(quote !== undefined, "--quote-bg is gone");
+    assert.notEqual(answer, quote, "the reader's words and quoted material are painted the same colour");
+  });
+
+  it("styleSheet_EveryClassTheFieldsSet_HasARuleToStyleIt", async () => {
+    // Arrange — the dead-`.backup`-rule failure from the other end, for the surface where it
+    // costs most. `fields.ts` names these classes in constants and NEITHER ever appears in
+    // built HTML, so no emitted page could show the mismatch: rename one half and every answer
+    // on the site silently looks unanswered while the suite stays green.
+    const css = await readFile(path.join(ROOT, "assets/css/style.css"), "utf8");
+    const source = await readFile(path.join(ROOT, "src/client/fields.ts"), "utf8");
+
+    // Act — read the class names out of the constants rather than listing them here, so this
+    // cannot agree with a stale copy of what fields.ts is believed to set.
+    const assigned = [...source.matchAll(/^const [A-Z]+ = "(fill-[a-z-]+)";$/gm)].map(
+      (match) => match[1] ?? "",
+    );
+
+    // Assert
+    assert.ok(assigned.length >= 2, `expected the field classes as consts, found ${assigned.length}`);
+    for (const name of assigned) {
+      assert.ok(
+        css.includes(`.${name}`),
+        `fields.ts sets "${name}" and no rule styles it: every field wearing it renders as if it were in the other state`,
+      );
     }
   });
 });

@@ -113,11 +113,23 @@ const GROWN = "fill-grown";
  * nothing. An earlier sketch toggled it on `input` alone and left every restored answer
  * wearing the waiting treatment — the page telling a reader it wanted an answer that was
  * sitting on the screen in front of them.
+ *
+ * Trimmed, because whitespace is not an answer. A lone newline is easy to leave behind while
+ * correcting a dictated phrase, and it is worst exactly where it is least visible: it also
+ * satisfies the `includes("\n")` test below, so a 6rem gap in a sentence takes a full-width
+ * line of its own. That much is this function's long-standing behaviour and is left alone —
+ * what trimming stops is the empty block then being COLOURED as something the reader said.
  */
 const SAID = "fill-said";
 
 /**
- * Size a control to what is in it, so nothing said is hidden by its box.
+ * Size a control to what is in it, and say whether it holds anything.
+ *
+ * Two jobs rather than one, and they are together because they answer to the same question —
+ * what is in this control right now — and because every caller needs both. The four call
+ * sites (the `input` listener, the restore loop, `reveal`, and `refit`) are exactly the
+ * moments a value can have changed, so splitting them would mean four pairs of calls and a
+ * standing chance of adding a fifth caller that only remembers one.
  *
  * Both directions. A short blank was given a fixed 6rem, which any real answer overruns —
  * the text then scrolls out of sight while the reader is still talking, which is the
@@ -141,7 +153,7 @@ function fit(control: HTMLTextAreaElement): void {
   // the rest of `fit` is — which is to say the caller treats a failure here as survivable —
   // but a field left wearing the wrong state tells the reader something false about their
   // own work, so it should not be downstream of a `getComputedStyle` that might not answer.
-  control.classList.toggle(SAID, control.value !== "");
+  control.classList.toggle(SAID, control.value.trim() !== "");
   if (control.classList.contains("fill-sm")) {
     // The width the answer would need on a single line, measured independently of how the
     // control is laid out right now — so this cannot oscillate between the two states by
@@ -177,7 +189,7 @@ function fit(control: HTMLTextAreaElement): void {
  * grows, which is what the size difference should have meant all along. `fill-sm` and
  * `fill` now differ only in how style.css lays them out.
  *
- * The class comes across so the control keeps the ruled-line look, and style.css has a
+ * The class comes across so the control keeps the blank's own treatment, and style.css has a
  * matching `textarea.fill` rule that undoes the parts of `.fill` which exist only to hide
  * the printed underscores. Without that rule this line renders every answer 9999px
  * off-screen — it shipped that way once, past a green suite, because nothing here had been

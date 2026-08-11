@@ -302,7 +302,7 @@ function escape(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** A drawn blank. The underscores are hidden by the stylesheet and drawn as a rule. */
+/** A drawn blank. The underscores are hidden by the stylesheet, which draws the box instead. */
 /**
  * What each field is CALLED to a screen reader, which is not always what is printed.
  *

@@ -9,6 +9,11 @@
      the worksheet quotes things AT the reader constantly, and a colour that means both
      "we said this" and "you said this" means neither. */
   --answer:#eae2ce;
+  /* A blank waiting to be written on, on paper. Darker than anything on screen because a
+     printed hairline loses to the paper it is printed on, and named here rather than left as
+     a hex inside the print block — this change exists partly because a hard-coded #b9b1a0
+     went unexamined for a year. 3.46:1 against the screen paper, 3.81:1 against white. */
+  --print-rule:#8a8272;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:1.22rem;line-height:1.85;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -45,16 +50,23 @@ hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
    line is the only thing that does. No grey reaches it without reading as ink; the accent
    clears it at one pixel (4.20:1) and already means "the app wants something from you"
    everywhere else on the page. The dash carries the same distinction by SHAPE, which is
-   what survives being printed without colour. */
+   what survives being printed without colour.
+
+   That fix is for the WAITING state only, and the limit is worth stating plainly rather than
+   leaving to be discovered. An ANSWERED inline blank is marked by its tint, and --answer is
+   1.17:1 against the paper — lower than the hairline this replaced. A filled field is
+   identified by the words in it, which is why the trade is acceptable here, but it is a trade
+   and not a second win. The forced-colors block below is what keeps the answered state
+   legible where a background cannot be relied on at all. */
 .fill,.fill-sm{display:inline-block;max-width:100%;outline:1px dashed var(--accent);outline-offset:1px;overflow:hidden;white-space:nowrap;vertical-align:baseline;text-indent:-9999px}
 .fill{width:15rem}
 .fill-sm{width:6rem}
 /* Once the page loads, every blank above is replaced by a real control carrying the
    same class (src/client/fields.ts). Everything in the rule above that exists to hide
    the printed underscores would then hide what the READER typed — text-indent alone
-   pushes a dictated paragraph 9999px off-screen — so a control undoes all of it and
-   keeps only the ruled line. Without these rules the site looks correct and is
-   unusable, which is exactly what shipped before a device saw it. */
+   pushes a dictated paragraph 9999px off-screen — so a control undoes all of it and keeps
+   only the marking that says which state the blank is in. Without these rules the site looks
+   correct and is unusable, which is exactly what shipped before a device saw it. */
 textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;border-radius:2px;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
 /* Waiting. An OUTLINE rather than a border, and this is load-bearing rather than a taste:
    `fit` in fields.ts sizes a short blank to the pixel width of its own text, and
@@ -73,8 +85,13 @@ textarea.fill.fill-said,textarea.fill-sm.fill-said{background:var(--answer)}
 
    Not once it has grown, though: a short answer that outran its line becomes a full-width
    block and takes the rail with the paragraphs, and a shadow spread around a block that
-   wide paints a halo over the rail beside it. */
-textarea.fill-sm.fill-said:not(.fill-grown){box-shadow:0 0 0 .18em var(--answer)}
+   wide paints a halo over the rail beside it.
+
+   Sideways only. A spread on all four sides reaches into the line above and below — these sit
+   in prose set at line-height 1.85, and the vertical half of the halo lands on other people's
+   descenders. The sentence needs the breathing room at the two ends of the answer, which is
+   where the tint would otherwise stop hard against the neighbouring word. */
+textarea.fill-sm.fill-said:not(.fill-grown){box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
 /* Long answers are dictated paragraphs: full width, wrapping, growing downward. */
 textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
 /* A paragraph gets the rail as well, because a full-width box tinted end to end colours
@@ -82,7 +99,10 @@ textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
    one they have. The rail marks the block at whatever height it happens to be.
    The geometry is on the empty state too, in transparent, so the first word said into a
    field changes its colour and never its width. Nothing shifts under a reader mid-sentence
-   (0001). `fit` sizes only the short blanks, so the indent here costs nothing it measures. */
+   (0001). Safe against `fit` because it sets no explicit WIDTH on these — only on a short
+   blank that has not grown, which is the one shape this rule skips. It does set a height on
+   every control, but from `scrollHeight`, which is read after this indent has already
+   narrowed the content box. */
 textarea.fill,textarea.fill-sm.fill-grown{border-left:3px solid transparent;padding-left:.7em}
 textarea.fill.fill-said,textarea.fill-sm.fill-grown.fill-said{border-left-color:var(--accent)}
 /* Short answers sit inside a sentence — "The world has enough ___" — so they stay in the
@@ -95,23 +115,40 @@ textarea.fill-sm{display:inline-block;width:6rem;min-width:6rem;max-width:100%;v
    the sentence stranded on the first line. fields.ts adds the class. */
 textarea.fill-sm.fill-grown{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
 /* Except in a heading — Day 2 puts five of them in an h3 ("Value 1 — ____"), where a
-   full-width block box breaks the heading in half. These hold a name, not a paragraph. */
-h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0}
-/* A rail down the side of a heading reads as a pull-quote, and day 2 has five of these in a
-   row. A name in a heading is a short answer wearing a big font, so it gets what the short
-   ones get. */
-h3 textarea.fill{border-left:0;padding-left:0}
-h3 textarea.fill.fill-said{box-shadow:0 0 0 .18em var(--answer)}
+   full-width block box breaks the heading in half. These hold a name, not a paragraph. Day 3
+   names five themes the same way and both rigorous variants repeat the pair, so it is twenty
+   fields rather than the five the count above suggests. Every one is a `fill`; nothing puts a
+   `fill-sm` in a heading today, which is why this selector does not mention one.
+   A rail down the side of a heading reads as a pull-quote, so a heading blank takes what the
+   short ones take. The `fill-said` rule below has to say `border-left-color` OUT LOUD: without
+   it `textarea.fill.fill-said` wins on class count (0,2,1 against this rule's 0,1,2) and
+   re-colours a border this rule zeroed. Harmless only while the width stays 0 — narrow that
+   `border-left:0` to `border-left-width:0` some day and an accent rail appears down five
+   headings, which is the exact look these two lines exist to prevent. */
+h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0;border-left:0;padding-left:0}
+h3 textarea.fill.fill-said{border-left-color:transparent;box-shadow:.18em 0 0 var(--answer),-.18em 0 0 var(--answer)}
 textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* Printing a bound page. The height fields.ts pins is for the screen's column width, and
    a print column is narrower, so the answer rewraps longer than the box and overflow:hidden
    would cut it off on paper. Print lets the box grow instead — 0010 makes printing a
    supported output, and an answer that prints truncated is worse than an ugly one. */
+/* Forced colours — Windows High Contrast and friends. The system replaces the palette
+   outright: backgrounds and box-shadows are discarded, borders and outlines are repainted in
+   the user's own colours. Everything marking an ANSWERED field here is a background or a
+   shadow, so without this block the two states collapse into one and the whole distinction
+   disappears — for the readers most likely to be relying on it. A paragraph would survive on
+   its rail alone, since a border is a border; an inline blank would not.
+   So the answered state grows a solid underline, and the waiting state keeps its dashed one.
+   Solid against dashed is a difference in SHAPE, which is the only kind that survives a
+   palette being taken away. */
+@media (forced-colors: active){
+  textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:1px dashed;outline-offset:1px}
+  textarea.fill.fill-said,textarea.fill-sm.fill-said{border-bottom:2px solid}
+}
 @media print{
   textarea.fill,textarea.fill-sm{height:auto!important;overflow:visible;white-space:pre-wrap}
-  /* On paper a blank is a line to write on, not a box to tap — and an outline is the one
-     thing here a printer may decline to draw. A rule cannot be declined. */
-  .fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:0;border-bottom:1px solid #8a8272}
+  /* On paper a blank is a line to write on rather than a box to tap. */
+  .fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:0;border-bottom:1px solid var(--print-rule)}
   /* Browsers strip backgrounds from printed pages unless asked not to, and for an inline
      blank the tint is the ONLY thing separating the reader's words from the sentence
      around them. 0010 makes printing a supported output, so this asks. The rail is a
@@ -233,8 +270,15 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .paste-change{margin:0 0 1.2em}
 .paste-change-title{font-family:var(--sans);font-size:.88rem;font-weight:600;color:var(--ink);margin:0 0 .3em}
 .paste-label{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:.4em 0 .15em}
-/* Both of these are the reader's words — what they had, and what they are about to have —
-   so both take the colour that means exactly that, and the rail that goes with it (#97). */
-.paste-before,.paste-after{margin:0;padding:.5em .7em;border-radius:4px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--rule);background:var(--answer)}
+/* Only ONE of these is the reader's words. `.paste-before` is what they already had, so it
+   takes the colour that means exactly that. `.paste-after` is the assistant's proposal, which
+   they have not accepted yet — paste.ts says so in as many words ("one is the reader's own
+   words and the other came out of a paste"), and this is the one screen where telling those
+   two apart is the entire question. Painting both with the token defined above as "the
+   reader's own words, and nothing else" would invert the rule this file just established, on
+   the surface that needs it most. So the proposal keeps the quote tint: something being shown
+   to you, not something of yours (#97). */
+.paste-before,.paste-after{margin:0;padding:.5em .7em;border-radius:4px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--rule);background:var(--quote-bg)}
+.paste-before{background:var(--answer)}
 .paste-after{border-left-color:var(--accent)}
 @media print{.agent-open,.agent-panel,#agent,#paste{display:none}}

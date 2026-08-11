@@ -394,7 +394,7 @@ describe("turning a blank into a control", () => {
     answers.stop();
   });
 
-  it("upgrade_EveryControl_KeepsTheRuledLineClassAndIsNamedFromTheSchema", async () => {
+  it("upgrade_EveryControl_KeepsTheBlankClassAndIsNamedFromTheSchema", async () => {
     // Arrange — both halves shipped broken once. The class is what style.css hangs the
     // control rules off, and without it the field has no blank to sit on; the name is what
     // a screen reader announces, and deriving it from the surrounding prose produced the
@@ -407,6 +407,9 @@ describe("turning a blank into a control", () => {
     await bindAnswers(document, answers, store);
 
     // Assert
+    // Exact, not `contains`: `upgrade` must carry the blank's class across and invent nothing.
+    // That holds here only because this store is empty, so `fit` adds no `fill-said` — give
+    // this fixture a stored answer and these two lines fail for a reason that is not upgrade's.
     assert.equal(fieldFor("day1.patterns").className, "fill");
     assert.equal(fieldFor("day4.enough.excess").className, "fill-sm");
     assert.equal(fieldFor("day1.patterns").getAttribute("aria-label"), "Patterns");
@@ -890,7 +893,7 @@ describe("listeners and the load they race", () => {
  * answer that is sitting on the screen in front of them.
  */
 describe("marking what the reader said", () => {
-  it("bindAnswers_AFieldNobodyHasAnswered_IsLeftWaiting", async () => {
+  it("fit_AFieldNobodyHasAnswered_IsLeftWaiting", async () => {
     // Arrange — the state every field starts in, and the one the dashed blank is for.
     const document = render();
     const store = recorder();
@@ -908,7 +911,7 @@ describe("marking what the reader said", () => {
     answers.stop();
   });
 
-  it("bindAnswers_SomethingDictated_MarksTheFieldAsTheReadersWords", async () => {
+  it("fit_SomethingDictated_MarksTheFieldAsTheReadersWords", async () => {
     // Arrange
     const PHRASE = "leaving things better than I found them";
     const document = render();
@@ -928,7 +931,7 @@ describe("marking what the reader said", () => {
     answers.stop();
   });
 
-  it("bindAnswers_AnAnswerDeleted_ReturnsTheFieldToWaiting", async () => {
+  it("fit_AnAnswerDeleted_ReturnsTheFieldToWaiting", async () => {
     // Arrange — negative case, and the reason the class is computed from the value rather
     // than latched on the first `input`: a reader who clears an answer is back to owing one.
     const PHRASE = "something I changed my mind about";
@@ -951,7 +954,7 @@ describe("marking what the reader said", () => {
     answers.stop();
   });
 
-  it("bindAnswers_AnAnswerRestoredFromStorage_IsMarkedWithoutBeingTouched", async () => {
+  it("fit_AnAnswerRestoredFromStorage_IsMarkedWithoutBeingTouched", async () => {
     // Arrange — the regression worth pinning. Restoring assigns `value` directly, so no
     // `input` event ever fires for it; a class toggled from that event alone would leave
     // every answer from a previous visit wearing the waiting treatment.
@@ -965,11 +968,148 @@ describe("marking what the reader said", () => {
 
     // Assert
     const field = fieldFor("day1.patterns");
-    assert.equal(field.value, LAST_WEEK);
+    assert.equal(field.value, LAST_WEEK, "the stored answer was not restored at all");
     assert.equal(
       field.classList.contains("fill-said"),
       true,
       "an answer restored from a previous visit was shown as an empty blank",
+    );
+    answers.stop();
+  });
+
+  it("fit_AnInlineBlank_IsMarkedLikeAnyOtherField", async () => {
+    // Arrange — the shape whose treatment differs most, and the one the first four tests all
+    // missed: a blank inside a sentence takes the tint alone, where a paragraph also takes a
+    // rail. The stylesheet branches on the difference; nothing pinned it.
+    const WORD = "noise";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    const field = fieldFor("day4.enough.excess");
+    dictate(field, WORD);
+
+    // Assert
+    assert.equal(
+      field.classList.contains("fill-said"),
+      true,
+      "an answered blank in a sentence was left looking empty",
+    );
+    answers.stop();
+  });
+
+  it("fit_AShortAnswerThatOutgrewItsLine_IsBothGrownAndSaid", async () => {
+    // Arrange — the combination the stylesheet branches on twice: a grown short answer takes
+    // the rail like a paragraph AND must not take the halo a blank in a sentence gets. Losing
+    // either class silently selects the other shape's treatment.
+    const LONG = "test hw to make this long, and longer still";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await withFakeLayout(async () => {
+      await bindAnswers(document, answers, store);
+      dictate(fieldFor("day4.enough.excess"), LONG);
+    });
+
+    // Assert
+    const field = fieldFor("day4.enough.excess");
+    assert.equal(field.classList.contains("fill-grown"), true, "the answer never took its own line");
+    assert.equal(
+      field.classList.contains("fill-said"),
+      true,
+      "a grown answer lost the mark saying the words are the reader's",
+    );
+    answers.stop();
+  });
+
+  it("fit_LayoutUnavailable_StillMarksWhatWasSaid", async () => {
+    // Arrange — negative case, and the only thing that makes `fit`'s ordering comment true.
+    // Reading `scrollHeight` is the last thing `fit` does and the likeliest to fail; the mark
+    // is set first so a throw can never leave a field claiming the wrong state. Move the
+    // toggle below the height writes and this is the test that notices.
+    const SPOKEN = "said while the layout was refusing to answer";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+    await bindAnswers(document, answers, store);
+    const field = fieldFor("day1.patterns");
+    Object.defineProperty(field, "scrollHeight", {
+      configurable: true,
+      get() {
+        throw new Error("layout is unavailable");
+      },
+    });
+    const logged: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => logged.push(args);
+
+    // Act
+    try {
+      dictate(field, SPOKEN);
+    } finally {
+      console.error = original;
+    }
+
+    // Assert
+    assert.equal(
+      field.classList.contains("fill-said"),
+      true,
+      "a field that failed to resize was left looking unanswered",
+    );
+    assert.ok(logged.length > 0, "the resize failure went unreported");
+    answers.stop();
+  });
+
+  it("fit_WhitespaceAlone_IsNotAnAnswer", async () => {
+    // Arrange — negative case. A newline left behind while correcting a dictated phrase is not
+    // something the reader said, and it is worst where it is least visible: `fit` already
+    // gives any value containing a newline a full-width line of its own, so untrimmed this
+    // would colour an empty block as the reader's work.
+    const NOTHING_REALLY = "\n  ";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    const field = fieldFor("day4.enough.excess");
+    dictate(field, NOTHING_REALLY);
+
+    // Assert
+    assert.equal(
+      field.classList.contains("fill-said"),
+      false,
+      "whitespace was treated as the reader's words",
+    );
+    answers.stop();
+  });
+
+  it("fit_OneSlotOfARepeatAnswered_LeavesTheOtherWaiting", async () => {
+    // Arrange — a half-finished repeat is the state a reader actually comes back to. A mark
+    // that landed on the group rather than the control would tell them the work is done.
+    const TITLE = "the year everything moved";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    dictate(fieldFor("day1.chapters.title", 0), TITLE);
+
+    // Assert
+    assert.equal(
+      fieldFor("day1.chapters.title", 0).classList.contains("fill-said"),
+      true,
+      "the answered slot was not marked",
+    );
+    assert.equal(
+      fieldFor("day1.chapters.title", 1).classList.contains("fill-said"),
+      false,
+      "a slot nobody has answered was marked as the reader's words",
     );
     answers.stop();
   });

@@ -258,7 +258,7 @@ export async function buildPages(options: BuildOptions = {}): Promise<BuildResul
       });
     }
     // Refused here, with the other page checks, because the build is the one gate every
-    // page passes through: a hand-written blank renders correctly, draws its underline,
+    // page passes through: a hand-written blank renders correctly, looks like a field,
     // and is invisible to storage — or worse, copies an existing data-field and shares
     // its address — so nothing after the build would ever notice it. The render reports
     // it from the token stream so the decision records can keep discussing the markup
