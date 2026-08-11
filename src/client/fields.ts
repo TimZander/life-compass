@@ -101,6 +101,22 @@ function widthOf(control: HTMLTextAreaElement): number {
 const GROWN = "fill-grown";
 
 /**
+ * The class a blank wears once it holds something the reader said.
+ *
+ * The whole of #97 rests on this one bit: a line means the page is waiting, a fill means
+ * the words are yours. The stylesheet cannot work it out alone — `:empty` reads child
+ * nodes, and a control's value is not one, so there is no selector for "has a value". The
+ * state has to be published.
+ *
+ * Set from the value rather than from an event, so it is equally right for a word just
+ * dictated, an answer restored from a previous visit, and an answer deleted back to
+ * nothing. An earlier sketch toggled it on `input` alone and left every restored answer
+ * wearing the waiting treatment — the page telling a reader it wanted an answer that was
+ * sitting on the screen in front of them.
+ */
+const SAID = "fill-said";
+
+/**
  * Size a control to what is in it, so nothing said is hidden by its box.
  *
  * Both directions. A short blank was given a fixed 6rem, which any real answer overruns —
@@ -121,6 +137,11 @@ const GROWN = "fill-grown";
  * ever feels it, this is the first place to look.
  */
 function fit(control: HTMLTextAreaElement): void {
+  // First, and ahead of everything below that can throw. This is cosmetic in the same sense
+  // the rest of `fit` is — which is to say the caller treats a failure here as survivable —
+  // but a field left wearing the wrong state tells the reader something false about their
+  // own work, so it should not be downstream of a `getComputedStyle` that might not answer.
+  control.classList.toggle(SAID, control.value !== "");
   if (control.classList.contains("fill-sm")) {
     // The width the answer would need on a single line, measured independently of how the
     // control is laid out right now — so this cannot oscillate between the two states by

@@ -5,6 +5,10 @@
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --bg:#f6f4ee;--ink:#33373a;--ink-strong:#23262a;--muted:#9a948a;
   --accent:#9a6b3f;--accent-dark:#7c5430;--rule:#e3ded2;--quote-bg:#efe9dc;
+  /* Behind the reader's own words, and nothing else (#97). Deliberately not --quote-bg:
+     the worksheet quotes things AT the reader constantly, and a colour that means both
+     "we said this" and "you said this" means neither. */
+  --answer:#eae2ce;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:1.22rem;line-height:1.85;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -28,10 +32,21 @@ blockquote p:last-child{margin-bottom:0}
 hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
 .eg{font-size:.82em;color:var(--muted);font-style:italic;margin:-.3em 0 1.15em}
 .wm-mark{vertical-align:-1px}
-/* Fill-in blanks: uniform, fixed-width underlines. Underscores inside the
-   span keep a real blank on GitHub; on the site they're hidden and the
-   border draws a clean, consistent line. */
-.fill,.fill-sm{display:inline-block;max-width:100%;border-bottom:1px solid #b9b1a0;overflow:hidden;white-space:nowrap;vertical-align:baseline;text-indent:-9999px}
+/* Fill-in blanks. Underscores inside the span keep a real blank on GitHub; on the site
+   they're hidden and the outline draws the box instead.
+                        ────────────────────────────────
+   Two states, one rule, and it governs every field on the site (#97): A LINE MEANS THE
+   PAGE IS WAITING, A FILL MEANS THE WORDS ARE YOURS. Nothing wears both. So a half-answered
+   sentence shows what is left without a legend, and an empty field needs no separate
+   decision about whether it counts as the reader's — it plainly does not.
+
+   Dashed, and in the accent, because the old #b9b1a0 hairline measured 1.94:1 against the
+   paper. WCAG 1.4.11 wants 3:1 for anything that identifies where a control is, and this
+   line is the only thing that does. No grey reaches it without reading as ink; the accent
+   clears it at one pixel (4.20:1) and already means "the app wants something from you"
+   everywhere else on the page. The dash carries the same distinction by SHAPE, which is
+   what survives being printed without colour. */
+.fill,.fill-sm{display:inline-block;max-width:100%;outline:1px dashed var(--accent);outline-offset:1px;overflow:hidden;white-space:nowrap;vertical-align:baseline;text-indent:-9999px}
 .fill{width:15rem}
 .fill-sm{width:6rem}
 /* Once the page loads, every blank above is replaced by a real control carrying the
@@ -40,9 +55,36 @@ hr{border:0;border-top:1px solid var(--rule);width:3.5rem;margin:2.8em auto}
    pushes a dictated paragraph 9999px off-screen — so a control undoes all of it and
    keeps only the ruled line. Without these rules the site looks correct and is
    unusable, which is exactly what shipped before a device saw it. */
-textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;border-bottom:1px solid #b9b1a0;border-radius:0;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
+textarea.fill,textarea.fill-sm{text-indent:0;font:inherit;color:inherit;background:transparent;border:0;border-radius:2px;padding:0;resize:none;overflow:hidden;white-space:pre-wrap;line-height:inherit}
+/* Waiting. An OUTLINE rather than a border, and this is load-bearing rather than a taste:
+   `fit` in fields.ts sizes a short blank to the pixel width of its own text, and
+   `box-sizing:border-box` would then take any horizontal border or padding out of the
+   space the text needs — clipping the last glyph of every answer, on the device only,
+   where nothing in the suite can see it (0014 · C3). An outline occupies no layout at all.
+   The focus ring below is a later rule with the same specificity, so it wins while the
+   reader is in the field, which is the state that should read as active. */
+textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:1px dashed var(--accent);outline-offset:1px}
+/* Yours. */
+textarea.fill.fill-said,textarea.fill-sm.fill-said{background:var(--answer)}
+/* An inline blank carries the tint alone — a rail cannot follow a gap that sits mid-sentence,
+   and 31 of the 74 short blanks do. The tint is pushed a little past the glyphs with a
+   shadow rather than padding, for the border-box reason above: a shadow paints outside the
+   box without being part of it.
+
+   Not once it has grown, though: a short answer that outran its line becomes a full-width
+   block and takes the rail with the paragraphs, and a shadow spread around a block that
+   wide paints a halo over the rail beside it. */
+textarea.fill-sm.fill-said:not(.fill-grown){box-shadow:0 0 0 .18em var(--answer)}
 /* Long answers are dictated paragraphs: full width, wrapping, growing downward. */
 textarea.fill{display:block;width:100%;max-width:34rem;margin:.15em 0 .35em}
+/* A paragraph gets the rail as well, because a full-width box tinted end to end colours
+   mostly empty space — the field is sized for the answer the reader MIGHT dictate, not the
+   one they have. The rail marks the block at whatever height it happens to be.
+   The geometry is on the empty state too, in transparent, so the first word said into a
+   field changes its colour and never its width. Nothing shifts under a reader mid-sentence
+   (0001). `fit` sizes only the short blanks, so the indent here costs nothing it measures. */
+textarea.fill,textarea.fill-sm.fill-grown{border-left:3px solid transparent;padding-left:.7em}
+textarea.fill.fill-said,textarea.fill-sm.fill-grown.fill-said{border-left-color:var(--accent)}
 /* Short answers sit inside a sentence — "The world has enough ___" — so they stay in the
    line and grow along it as they fill (fields.ts sets the width where the browser will
    not). A fixed-width input was tried here and scrolled the answer out of sight while the
@@ -55,12 +97,27 @@ textarea.fill-sm.fill-grown{display:block;width:100%;max-width:34rem;margin:.15e
 /* Except in a heading — Day 2 puts five of them in an h3 ("Value 1 — ____"), where a
    full-width block box breaks the heading in half. These hold a name, not a paragraph. */
 h3 textarea.fill{display:inline-block;width:14rem;max-width:100%;vertical-align:baseline;margin:0}
-textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px;border-bottom-color:var(--accent-dark)}
+/* A rail down the side of a heading reads as a pull-quote, and day 2 has five of these in a
+   row. A name in a heading is a short answer wearing a big font, so it gets what the short
+   ones get. */
+h3 textarea.fill{border-left:0;padding-left:0}
+h3 textarea.fill.fill-said{box-shadow:0 0 0 .18em var(--answer)}
+textarea.fill:focus,textarea.fill-sm:focus{outline:2px solid var(--accent-dark);outline-offset:3px}
 /* Printing a bound page. The height fields.ts pins is for the screen's column width, and
    a print column is narrower, so the answer rewraps longer than the box and overflow:hidden
    would cut it off on paper. Print lets the box grow instead — 0010 makes printing a
    supported output, and an answer that prints truncated is worse than an ugly one. */
-@media print{textarea.fill,textarea.fill-sm{height:auto!important;overflow:visible;white-space:pre-wrap}}
+@media print{
+  textarea.fill,textarea.fill-sm{height:auto!important;overflow:visible;white-space:pre-wrap}
+  /* On paper a blank is a line to write on, not a box to tap — and an outline is the one
+     thing here a printer may decline to draw. A rule cannot be declined. */
+  .fill,.fill-sm,textarea.fill:not(.fill-said),textarea.fill-sm:not(.fill-said){outline:0;border-bottom:1px solid #8a8272}
+  /* Browsers strip backgrounds from printed pages unless asked not to, and for an inline
+     blank the tint is the ONLY thing separating the reader's words from the sentence
+     around them. 0010 makes printing a supported output, so this asks. The rail is a
+     border and prints either way, which is why a paragraph is safe without this. */
+  textarea.fill.fill-said,textarea.fill-sm.fill-said{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 code{font-family:var(--mono);font-size:.84em;background:#ece6d8;padding:.12em .38em;border-radius:4px}
 pre{background:#f0ebdd;color:#3a352c;border:1px solid var(--rule);padding:1em 1.15em;border-radius:8px;overflow:auto;font-size:.82rem;line-height:1.6;font-style:normal}
 pre code{background:none;padding:0;color:inherit}
@@ -176,6 +233,8 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .paste-change{margin:0 0 1.2em}
 .paste-change-title{font-family:var(--sans);font-size:.88rem;font-weight:600;color:var(--ink);margin:0 0 .3em}
 .paste-label{font-family:var(--sans);font-size:.78rem;color:var(--ink);margin:.4em 0 .15em}
-.paste-before,.paste-after{margin:0;padding:.5em .7em;border-radius:4px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--rule);background:var(--quote-bg)}
+/* Both of these are the reader's words — what they had, and what they are about to have —
+   so both take the colour that means exactly that, and the rail that goes with it (#97). */
+.paste-before,.paste-after{margin:0;padding:.5em .7em;border-radius:4px;font-size:.95rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--rule);background:var(--answer)}
 .paste-after{border-left-color:var(--accent)}
 @media print{.agent-open,.agent-panel,#agent,#paste{display:none}}

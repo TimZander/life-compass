@@ -879,3 +879,98 @@ describe("listeners and the load they race", () => {
     answers.stop();
   });
 });
+
+/**
+ * Which words on the page are the reader's own (#97).
+ *
+ * The stylesheet draws a field that is waiting differently from one that has been answered,
+ * and it takes that difference from a class set here — there is no CSS selector for "a
+ * textarea holding a value", because a control's value is not a child node. So this class
+ * IS the feature. Get it wrong and the page tells a reader it is still waiting for an
+ * answer that is sitting on the screen in front of them.
+ */
+describe("marking what the reader said", () => {
+  it("bindAnswers_AFieldNobodyHasAnswered_IsLeftWaiting", async () => {
+    // Arrange — the state every field starts in, and the one the dashed blank is for.
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+
+    // Assert
+    assert.equal(
+      fieldFor("day1.patterns").classList.contains("fill-said"),
+      false,
+      "an untouched field claimed to hold the reader's words",
+    );
+    answers.stop();
+  });
+
+  it("bindAnswers_SomethingDictated_MarksTheFieldAsTheReadersWords", async () => {
+    // Arrange
+    const PHRASE = "leaving things better than I found them";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    dictate(fieldFor("day1.patterns"), PHRASE);
+
+    // Assert
+    assert.equal(
+      fieldFor("day1.patterns").classList.contains("fill-said"),
+      true,
+      "a dictated answer was left looking like an empty blank",
+    );
+    answers.stop();
+  });
+
+  it("bindAnswers_AnAnswerDeleted_ReturnsTheFieldToWaiting", async () => {
+    // Arrange — negative case, and the reason the class is computed from the value rather
+    // than latched on the first `input`: a reader who clears an answer is back to owing one.
+    const PHRASE = "something I changed my mind about";
+    const document = render();
+    const store = recorder();
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+    const field = fieldFor("day1.patterns");
+    dictate(field, PHRASE);
+    retype(field, "");
+
+    // Assert
+    assert.equal(
+      field.classList.contains("fill-said"),
+      false,
+      "a cleared field still claimed to hold an answer",
+    );
+    answers.stop();
+  });
+
+  it("bindAnswers_AnAnswerRestoredFromStorage_IsMarkedWithoutBeingTouched", async () => {
+    // Arrange — the regression worth pinning. Restoring assigns `value` directly, so no
+    // `input` event ever fires for it; a class toggled from that event alone would leave
+    // every answer from a previous visit wearing the waiting treatment.
+    const LAST_WEEK = "craftsmanship, autonomy, curiosity";
+    const document = render();
+    const store = recorder(new Map([["day1.patterns", LAST_WEEK]]));
+    const answers = createAnswers(store, { quietMs: QUIET_MS });
+
+    // Act
+    await bindAnswers(document, answers, store);
+
+    // Assert
+    const field = fieldFor("day1.patterns");
+    assert.equal(field.value, LAST_WEEK);
+    assert.equal(
+      field.classList.contains("fill-said"),
+      true,
+      "an answer restored from a previous visit was shown as an empty blank",
+    );
+    answers.stop();
+  });
+});
