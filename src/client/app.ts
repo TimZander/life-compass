@@ -47,6 +47,37 @@ export async function start(): Promise<void> {
   // than on anything the worker is about to do.
   confirmRecentUpdate();
   registerWorker();
+  // Coming BACK to a page, which is not the same as loading it.
+  //
+  // A browser may keep a whole page alive when the reader navigates away — DOM, scripts and
+  // this module's autosave with it — and hand it back intact on Back. What returns is a
+  // photograph of how things were, and after an erase or a restore that photograph is a page
+  // full of answers the store no longer holds. Reported from a device: erase, press Back, and
+  // there is an answer that was just deleted.
+  //
+  // Worse than looking wrong. That page's autosave was never stopped — `stop` ran on the copy
+  // of this module on the backup page, a different document — so one keystroke writes the
+  // stale answer back into the store the reader was told was empty. That is the resurrection
+  // #103 describes, reached by pressing Back rather than by opening a second tab, which makes
+  // it the likely path rather than the exotic one.
+  //
+  // Stopped first and reloaded second. The reload alone would fix what is on screen, but
+  // between this handler and the navigation the page is still live and still typeable, and
+  // the latch is what makes that interval safe. Nothing is lost by either: `pagehide` flushed
+  // on the way out, and the reload reads the store again.
+  //
+  // Registered here rather than beside the other lifecycle handlers, which sit inside the
+  // block that runs only once a store opens. A page restored from the cache is stale whether
+  // or not this document ever opened one, and putting it there made it untestable as well as
+  // conditional. `persisted` is false on an ordinary load, so this cannot loop.
+  window.addEventListener("pageshow", (event) => {
+    if (!(event as PageTransitionEvent).persisted) {
+      return;
+    }
+    stopAnswers?.();
+    window.location.reload();
+  });
+
   confirmRecentRestore();
   confirmRecentErase();
   try {
@@ -216,6 +247,8 @@ function registerWorker(): void {
  * reading. They run outside the store path and hold no reference to the `Answers` instance.
  */
 let flushAnswers: (() => Promise<void>) | null = null;
+/** Stops autosave for good. Set once the fields are bound; null before that. */
+let stopAnswers: (() => void) | null = null;
 
 /**
  * Bind the page's blanks to on-device storage.
@@ -254,6 +287,7 @@ async function bindAnswerFields(): Promise<void> {
   // and a reader who backgrounds the tab during that read is the same reader this handler
   // exists for.
   flushAnswers = () => answers.flush();
+  stopAnswers = () => answers.stop();
 
   window.addEventListener("pagehide", () => {
     void answers.flush();
@@ -263,6 +297,7 @@ async function bindAnswerFields(): Promise<void> {
       void answers.flush();
     }
   });
+
 
 
   // 0008 · C5. Asked for once the store is open, so the line reports what is true rather
