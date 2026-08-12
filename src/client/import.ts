@@ -254,7 +254,7 @@ function answersAmong(values: Iterable<string>): number {
 }
 
 /** `3 answers`, `1 answer` — so the sentence a reader weighs is not "1 answers". */
-function tally(count: number): string {
+export function tally(count: number): string {
   return `${count} ${count === 1 ? "answer" : "answers"}`;
 }
 

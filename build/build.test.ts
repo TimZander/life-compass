@@ -925,7 +925,7 @@ describe("the stylesheet and the page agreeing", () => {
 
     // Assert — every selector named here must appear in the markup the build emits, which is
     // what the dead `.backup` rule did not.
-    for (const selector of ["#backup", "#restore", "#agent", ".agent-open", ".agent-panel"]) {
+    for (const selector of ["#backup", "#restore", "#erase", "#agent", ".agent-open", ".agent-panel"]) {
       assert.ok(hidden.includes(selector), `${selector} is not hidden in print`);
     }
   });

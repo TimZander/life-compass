@@ -225,6 +225,10 @@ describe("shipped client scripts", () => {
       // would mean the one page that exists to be straight about storage is the page that
       // waits to say so.
       "assets/js/durability.js",
+      // Statically imported by app.js beside import.js, for the same reason: the control
+      // lives on the backup page, and the page that exists for data management should not
+      // be the page that waits to offer it.
+      "assets/js/erase.js",
       "assets/js/export.js",
       "assets/js/fields.js",
       "assets/js/import.js",
