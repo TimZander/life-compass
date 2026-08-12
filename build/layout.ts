@@ -114,6 +114,47 @@ function backupTools(): string {
     <p><button type="button" id="restore-go" aria-disabled="true">Replace every answer on this device</button>
     <button type="button" id="restore-cancel">Cancel</button></p>
   </div>
+</section>
+
+<!-- #63. The application's claim is that this stays on your own device; an application that
+     says so and then offers no way to act on it is asking to be trusted further than it has
+     earned. A shared laptop, a borrowed phone, or simply changing your mind about having
+     written any of it down.
+     Answers only, deliberately. "Erase everything" was the issue's title and is the wrong
+     label for what this does: the assistant preference stays and the workbook is not
+     removed. Saying so on the page costs two lines and stops a reader assuming an uninstall
+     happened when it did not. The last-backup date is the one thing that does go with the
+     answers, because it describes them (app.ts).
+     Third of the three, because it is the one nobody should reach by accident, and because
+     the order of the page is the order of the argument: keep a copy, put one back, and only
+     then remove. -->
+<section class="tools" id="erase" aria-labelledby="erase-heading" hidden>
+  <h2 id="erase-heading">Erase your answers</h2>
+  <p>Removes every answer saved on this device. There is no undo and no copy is kept, so
+  save a backup first if you want any of it.</p>
+  <!-- What it does NOT do, said out loud. A reader who presses this and assumes the workbook
+       has been removed from their device has been misled by omission — and "stays installed"
+       would itself be false for the majority, who are in an ordinary browser tab and have
+       installed nothing. -->
+  <p>Your assistant setting is left as it is. The workbook itself is not removed and still
+  works offline.</p>
+  <p><button type="button" id="erase-start" aria-expanded="false"
+    aria-controls="erase-confirm">Erase your answers</button></p>
+
+  <div id="erase-confirm" role="group" aria-labelledby="erase-confirm-heading" hidden>
+    <h3 id="erase-confirm-heading">Erase every answer on this device?</h3>
+    <p id="erase-summary"></p>
+    <p>This cannot be undone. Once it is done the only copy of your answers is one you
+    saved yourself.</p>
+    <p><button type="button" id="erase-backup-first">Download a backup of this device first</button></p>
+    <p><label><input type="checkbox" id="erase-ack"> I understand these answers cannot be
+    brought back.</label></p>
+    <!-- "on this device" kept on the button actually pressed, exactly as the restore control
+         keeps it. It is the one string where the scope of the act matters most, and dropping
+         it invites the reading that backups or other devices go too. -->
+    <p><button type="button" id="erase-go" aria-disabled="true">Erase every answer on this device</button>
+    <button type="button" id="erase-cancel">Cancel</button></p>
+  </div>
 </section>`;
 }
 

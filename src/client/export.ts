@@ -209,7 +209,7 @@ export async function saveBackup(
  * imports it, which is what every other suite here already does.
  */
 export function needsStore(document: Document): boolean {
-  return document.querySelector(`${BLANK_SELECTOR}, #backup, #restore`) !== null;
+  return document.querySelector(`${BLANK_SELECTOR}, #backup, #restore, #erase`) !== null;
 }
 
 export type BackupOptions = {

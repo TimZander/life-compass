@@ -19,3 +19,17 @@ wrote. Keep it somewhere you would keep a private notebook.
 
 Restoring reads a backup file and replaces every answer on this device with what the file
 holds. Anything here that is not in the file is gone, and there is no undo.
+
+## Taking them off this device
+
+Erasing removes every answer saved here. There is no undo and no copy is kept, so save a
+backup first if there is anything you want.
+
+It removes your answers and nothing else. Your assistant setting is left as it is, the
+workbook is not removed, and it still works offline afterwards — so this is not the same as
+uninstalling, and uninstalling is not a reliable way to do it either. Removing an app clears
+its storage on some devices and not others, and it does nothing at all if you go on using
+the workbook in a browser tab.
+
+Worth doing on a shared or borrowed device, on a work laptop, or simply because you have
+finished and would rather it were gone.

@@ -15,16 +15,21 @@ import {
   installed,
   lastBackup,
   persisted,
+  forgetBackup,
   recordBackup,
   requestPersistence,
   showDurability,
 } from "./durability.ts";
 
-/** Where a just-completed restore leaves its count, to be reported after the reload. */
-const RESTORED_KEY = "life-compass:restored";
 import { explain, wireRestore } from "./import.ts";
+import { wireErase } from "./erase.ts";
 import { openStore, type Store } from "./store.ts";
 import { dismissBanner, showBanner } from "./banner.ts";
+
+/** Where a just-completed restore leaves its count, to be reported after the reload. */
+const RESTORED_KEY = "life-compass:restored";
+/** Where a just-completed erase leaves its count, to be reported after the reload. */
+const ERASED_KEY = "life-compass:erased";
 
 /**
  * Everything this page does, in one awaitable call.
@@ -42,7 +47,39 @@ export async function start(): Promise<void> {
   // than on anything the worker is about to do.
   confirmRecentUpdate();
   registerWorker();
+  // Coming BACK to a page, which is not the same as loading it.
+  //
+  // A browser may keep a whole page alive when the reader navigates away — DOM, scripts and
+  // this module's autosave with it — and hand it back intact on Back. What returns is a
+  // photograph of how things were, and after an erase or a restore that photograph is a page
+  // full of answers the store no longer holds. Reported from a device: erase, press Back, and
+  // there is an answer that was just deleted.
+  //
+  // Worse than looking wrong. That page's autosave was never stopped — `stop` ran on the copy
+  // of this module on the backup page, a different document — so one keystroke writes the
+  // stale answer back into the store the reader was told was empty. That is the resurrection
+  // #103 describes, reached by pressing Back rather than by opening a second tab, which makes
+  // it the likely path rather than the exotic one.
+  //
+  // Stopped first and reloaded second. The reload alone would fix what is on screen, but
+  // between this handler and the navigation the page is still live and still typeable, and
+  // the latch is what makes that interval safe. Nothing is lost by either: `pagehide` flushed
+  // on the way out, and the reload reads the store again.
+  //
+  // Registered here rather than beside the other lifecycle handlers, which sit inside the
+  // block that runs only once a store opens. A page restored from the cache is stale whether
+  // or not this document ever opened one, and putting it there made it untestable as well as
+  // conditional. `persisted` is false on an ordinary load, so this cannot loop.
+  window.addEventListener("pageshow", (event) => {
+    if (!(event as PageTransitionEvent).persisted) {
+      return;
+    }
+    stopAnswers?.();
+    window.location.reload();
+  });
+
   confirmRecentRestore();
+  confirmRecentErase();
   try {
     await bindAnswerFields();
   } catch (error) {
@@ -210,6 +247,8 @@ function registerWorker(): void {
  * reading. They run outside the store path and hold no reference to the `Answers` instance.
  */
 let flushAnswers: (() => Promise<void>) | null = null;
+/** Stops autosave for good. Set once the fields are bound; null before that. */
+let stopAnswers: (() => void) | null = null;
 
 /**
  * Bind the page's blanks to on-device storage.
@@ -248,6 +287,7 @@ async function bindAnswerFields(): Promise<void> {
   // and a reader who backgrounds the tab during that read is the same reader this handler
   // exists for.
   flushAnswers = () => answers.flush();
+  stopAnswers = () => answers.stop();
 
   window.addEventListener("pagehide", () => {
     void answers.flush();
@@ -257,6 +297,7 @@ async function bindAnswerFields(): Promise<void> {
       void answers.flush();
     }
   });
+
 
 
   // 0008 · C5. Asked for once the store is open, so the line reports what is true rather
@@ -382,6 +423,53 @@ async function bindAnswerFields(): Promise<void> {
     },
     reload: () => window.location.reload(),
   });
+
+  wireErase(document, answers, store, {
+    onBackupFirst: () => {
+      void saveBackup(answers, store, document, new Date())
+        .then((filename) =>
+          showBanner({
+            id: "erase",
+            text: `Downloading ${filename}. Check your files before erasing anything.`,
+            actions: [{ label: "Dismiss", onSelect: () => dismissBanner("erase") }],
+          }),
+        )
+        .catch((error: unknown) => {
+          console.error("life-compass: the backup could not be saved", error);
+          showBanner({
+            id: "erase",
+            text: "That backup could not be saved, so nothing has been erased.",
+            actions: [{ label: "Dismiss", onSelect: () => dismissBanner("erase") }],
+          });
+        });
+    },
+    onErased: (count) => {
+      // The date describes answers that no longer exist, and the storage line three inches
+      // above this control would go on reporting it. Cleared here rather than inside
+      // `wireErase`, which owns the store and knows nothing about localStorage.
+      forgetBackup(held);
+      void refreshDurability();
+      // Guarded for the reason the restore path above is: storage access throws where site
+      // data is blocked, which describes a privacy-minded reader — the exact audience for a
+      // button that erases things. Losing the sentence afterwards costs little; letting the
+      // throw escape would cost a reader the confirmation that the thing they asked for
+      // actually happened.
+      try {
+        window.sessionStorage.setItem(ERASED_KEY, String(count));
+      } catch {
+        // The erase has already landed. Only the sentence afterwards is lost.
+      }
+    },
+    onFailure: (error: unknown) => {
+      console.error("life-compass: the answers could not be erased", error);
+      showBanner({
+        id: "erase",
+        text: "Your answers could not be erased. Nothing on this device has changed.",
+        actions: [{ label: "Dismiss", onSelect: () => dismissBanner("erase") }],
+      });
+    },
+    reload: () => window.location.reload(),
+  });
 }
 
 /**
@@ -416,6 +504,46 @@ function confirmRecentRestore(): void {
     id: "restore",
     text: `Restored ${count} ${count === "1" ? "answer" : "answers"} from your backup.`,
     actions: [{ label: "Dismiss", onSelect: () => dismissBanner("restore") }],
+  });
+}
+
+/**
+ * Report an erase that happened just before this page loaded.
+ *
+ * Same mechanism and the same reason as the restore above: the reload is what makes the
+ * screen match the store, and it takes the banner with it — so the one message confirming
+ * an irreversible action would be the one message nobody ever sees. It matters more here.
+ * A restore leaves a page full of answers, which is its own evidence that something
+ * happened; an erase leaves a page of empty blanks, which looks exactly like a device that
+ * was never written on, or like a bug.
+ */
+function confirmRecentErase(): void {
+  let count: string | null = null;
+  // Guarded, and the getter itself can throw. Unguarded at module scope this would abort
+  // evaluation before the fields were bound, disabling the whole application for readers
+  // whose browser blocks site data — the audience most likely to have pressed erase.
+  try {
+    count = window.sessionStorage.getItem(ERASED_KEY);
+  } catch {
+    return;
+  }
+  if (count === null) {
+    return;
+  }
+  try {
+    window.sessionStorage.removeItem(ERASED_KEY);
+  } catch {
+    // Said once is the intent; said twice is better than the application not starting.
+  }
+  showBanner({
+    id: "erase",
+    // Past tense and unambiguous. Nothing here says "cleared" or "reset", which both sound
+    // like something that could be undone.
+    text:
+      count === "0"
+        ? "There were no answers saved on this device."
+        : `Erased ${count} ${count === "1" ? "answer" : "answers"} from this device.`,
+    actions: [{ label: "Dismiss", onSelect: () => dismissBanner("erase") }],
   });
 }
 

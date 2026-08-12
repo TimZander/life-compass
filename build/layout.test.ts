@@ -70,6 +70,17 @@ describe("the backup and restore controls", () => {
     "restore-ack",
     "restore-go",
     "restore-cancel",
+    "erase",
+    "erase-start",
+    "erase-confirm",
+    "erase-summary",
+    "erase-backup-first",
+    "erase-ack",
+    "erase-go",
+    "erase-cancel",
+    // Not looked up by the drift guard in erase.ts — it is optional-chained, so a rename
+    // loses the focus move to the confirmation silently. Listed here instead.
+    "erase-confirm-heading",
   ];
 
   it("layout_TheBackupPage_CarriesEveryElementTheClientLooksUp", () => {
@@ -99,6 +110,28 @@ describe("the backup and restore controls", () => {
       /id="restore-go"[^>]*aria-disabled="true"/.test(html),
       "the replace button ships unlocked",
     );
+    assert.ok(/<section class="tools" id="erase"[^>]*\shidden>/.test(html), "erase not hidden");
+    assert.ok(/id="erase-confirm"[^>]*\shidden>/.test(html), "the erase confirmation is not hidden");
+    assert.ok(
+      /id="erase-go"[^>]*aria-disabled="true"/.test(html),
+      "the erase button ships unlocked",
+    );
+  });
+
+  it("layout_TheErasePage_SaysWhatItDoesNotRemove", () => {
+    // Arrange — the scope decision (#63) is answers only, and a reader who presses this and
+    // assumes the workbook has been removed from their device has been misled by omission.
+    // The sentence saying so is the whole of that disclosure, and nothing else pins it.
+    // Act
+    const html = layout("<p>body</p>", "Backup", "backup");
+
+    // Assert
+    assert.match(html, /assistant setting is left as it is/);
+    assert.match(html, /workbook itself is not removed/);
+    assert.match(html, /cannot be undone/);
+    assert.match(html, /cannot be\s+brought back/);
+    // The scope belongs on the button that is actually pressed, exactly as restore keeps it.
+    assert.match(html, /id="erase-go"[^>]*>Erase every answer on this device</);
   });
 
   it("layout_TheRestoreControl_WarnsThatReplacingCannotBeUndone", () => {

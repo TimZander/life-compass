@@ -236,6 +236,47 @@ describe("reporting a restore that happened before this load", () => {
     assert.deepEqual(result.remaining, {}, "the flag was left behind to repeat forever");
   });
 
+  it("app_AJustCompletedErase_IsConfirmedOnceAndThenForgotten", async () => {
+    // Arrange — the same mechanism as the restore above and it matters more. A restore
+    // leaves a page full of answers, which is its own evidence that something happened; an
+    // erase leaves a page of empty blanks, indistinguishable from a device nobody ever wrote
+    // on, or from a bug.
+    // Act
+    const result = await run(pageBody(null), { seed: { "life-compass:erased": "7" } });
+
+    // Assert
+    assert.ok(
+      result.banner.includes("Erased 7 answers"),
+      `the erase was never confirmed: ${JSON.stringify(result.banner)}`,
+    );
+    assert.deepEqual(result.remaining, {}, "the flag was left behind to repeat forever");
+  });
+
+  it("app_ASingleErasedAnswer_IsCountedInTheSingular", async () => {
+    // Arrange & Act — negative case for the pluralisation, in the sentence a reader reads
+    // immediately after the one act in this application that cannot be undone.
+    const result = await run(pageBody(null), { seed: { "life-compass:erased": "1" } });
+
+    // Assert
+    assert.ok(
+      result.banner.includes("Erased 1 answer") && !result.banner.includes("1 answers"),
+      `the singular was not used: ${JSON.stringify(result.banner)}`,
+    );
+  });
+
+  it("app_AnEraseOfAnEmptyStore_SaysThereWasNothingRatherThanErasedZero", async () => {
+    // Arrange & Act — negative case, and the only branch of this banner that is not about a
+    // number. "Erased 0 answers" reads as a failure; the truth is that there was nothing.
+    const result = await run(pageBody(null), { seed: { "life-compass:erased": "0" } });
+
+    // Assert
+    assert.ok(
+      result.banner.includes("no answers saved on this device"),
+      `the empty case was reported as a count: ${JSON.stringify(result.banner)}`,
+    );
+    assert.ok(!result.banner.includes("Erased 0"), "the reader was told zero answers were erased");
+  });
+
   it("app_ASingleRestoredAnswer_IsCountedInTheSingular", async () => {
     // Arrange & Act — negative case for the pluralisation, which is in the sentence a
     // reader reads immediately after an irreversible action.
@@ -259,5 +300,62 @@ describe("reporting a restore that happened before this load", () => {
       result.banner.includes("cannot be saved"),
       `evaluation stopped at the session flag: ${JSON.stringify(result.banner)}`,
     );
+  });
+});
+
+/**
+ * Coming back to a page rather than loading it (#63).
+ *
+ * Reported from a device: erase every answer, press Back, and a worksheet still shows one.
+ * The store was empty — the browser had kept the whole page alive and handed it back, so
+ * what the reader saw was a photograph of how things were. The danger is not the picture:
+ * that page's autosave was never stopped, because `stop` ran on the copy of this module on
+ * the backup page, so one keystroke writes the stale answer back into the emptied store.
+ */
+describe("a page handed back from the browser's cache", () => {
+  /** Run `start()` on a page and report what a bfcache restore does to it. */
+  async function restored(persisted: boolean): Promise<{ reloads: number; stopped: boolean }> {
+    const window = install(new Window({ url: "https://example.test/days/day-1-excavation" }), {});
+    window.document.body.innerHTML = pageBody(null);
+    let reloads = 0;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { reload: () => (reloads += 1), href: "https://example.test/" },
+    });
+    const noise = console.error;
+    console.error = () => {};
+    try {
+      await start();
+    } finally {
+      console.error = noise;
+    }
+    // `defineProperty`, not assignment: `persisted` is a getter on a real PageTransitionEvent
+    // and happy-dom's Event does not take a stray property, so assigning it silently does
+    // nothing and the test would pass against a handler that ignored the flag entirely.
+    const event = new window.Event("pageshow");
+    Object.defineProperty(event, "persisted", { configurable: true, value: persisted });
+    window.dispatchEvent(event);
+    // The latch is observable only through a later write, and this page has no store to
+    // write to; the reload is what this test can see, and it is what makes the page truthful.
+    const outcome = { reloads, stopped: reloads > 0 };
+    void window.close();
+    return outcome;
+  }
+
+  it("start_APageRestoredFromTheBackForwardCache_IsReloadedRatherThanTrusted", async () => {
+    // Arrange & Act
+    const outcome = await restored(true);
+
+    // Assert
+    assert.equal(outcome.reloads, 1, "a restored page was left showing answers the store may not hold");
+  });
+
+  it("start_AnOrdinaryLoad_IsNotReloaded", async () => {
+    // Arrange & Act — negative case, and the one that matters: `persisted` is false on a
+    // normal load, so a handler that ignored it would reload every page forever.
+    const outcome = await restored(false);
+
+    // Assert
+    assert.equal(outcome.reloads, 0, "an ordinary load reloaded itself");
   });
 });

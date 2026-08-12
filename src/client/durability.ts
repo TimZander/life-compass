@@ -116,6 +116,26 @@ export function lastBackup(storage: Storage | null): Date | null {
 }
 
 /** Record that a backup was saved. Failure is silent: this is a note, not the backup. */
+/**
+ * Forget when the last backup was taken.
+ *
+ * Called when the answers themselves are erased (#63). The date is not a setting and not
+ * something the reader chose — it is a fact ABOUT answers, so it outliving them puts a
+ * true-looking sentence on the page that removed them: "Last backup saved from this device
+ * on <date>", printed by `showDurability` above a store with nothing in it.
+ */
+export function forgetBackup(storage: Storage | null): void {
+  if (storage === null) {
+    return;
+  }
+  try {
+    storage.removeItem(LAST_BACKUP);
+  } catch {
+    // Same reason the writer swallows: storage access throws where site data is blocked,
+    // and the erase itself has already succeeded.
+  }
+}
+
 export function recordBackup(storage: Storage | null, when: Date): void {
   if (storage === null) {
     return;
