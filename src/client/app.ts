@@ -15,6 +15,7 @@ import {
   installed,
   lastBackup,
   persisted,
+  forgetBackup,
   recordBackup,
   requestPersistence,
   showDurability,
@@ -408,6 +409,11 @@ async function bindAnswerFields(): Promise<void> {
         });
     },
     onErased: (count) => {
+      // The date describes answers that no longer exist, and the storage line three inches
+      // above this control would go on reporting it. Cleared here rather than inside
+      // `wireErase`, which owns the store and knows nothing about localStorage.
+      forgetBackup(held);
+      void refreshDurability();
       // Guarded for the reason the restore path above is: storage access throws where site
       // data is blocked, which describes a privacy-minded reader — the exact audience for a
       // button that erases things. Losing the sentence afterwards costs little; letting the

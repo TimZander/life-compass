@@ -8,13 +8,20 @@
  * Uninstalling is not the answer — it clears storage on some platforms and not others, and
  * does nothing at all for somebody still using the site in a browser tab.
  *
- * ANSWERS ONLY, and the scope is a decision rather than an omission. The assistant
- * preference in `localStorage` is left alone: it is the only setting there is, it holds
- * nothing personal, and clearing it would make the assistant controls vanish from every
- * worksheet as a side effect of a button about answers. The service worker and its cache
- * hold application assets rather than anything the reader wrote, so removing them would cost
- * offline use and buy no privacy. Both choices are stated on the page, because a reader who
- * presses "erase" and assumes an uninstall happened has been misled by omission.
+ * ANSWERS ONLY, and the scope is a decision rather than an omission. The assistant preference
+ * in `localStorage` is left alone: it holds nothing personal, and clearing it would make the
+ * assistant controls vanish from every worksheet as a side effect of a button about answers.
+ * The service worker and its cache hold application assets rather than anything the reader
+ * wrote, so removing them would cost offline use and buy no privacy.
+ *
+ * The last-backup date is the exception, and it is cleared — by `app.ts`, which owns that
+ * key. It is not a setting but a fact ABOUT the answers, and leaving it behind put a false
+ * sentence on the very page that erased them: the storage line reads "Last backup saved from
+ * this device on <date>" above a store with nothing in it. A privacy feature that leaves a
+ * true-looking statement about data it just removed has failed at the only thing it does.
+ *
+ * All of this is stated on the page, because a reader who presses "erase" and assumes an
+ * uninstall happened has been misled by omission.
  *
  * The shape is `wireRestore`'s, deliberately and almost line for line. 0009 · C8 asks for a
  * count taken at the moment of asking, the export offered first, an explicit acknowledgement,
@@ -83,7 +90,16 @@ export function wireErase(
 
   /** Nothing is pending; the confirmation is put away and cannot be acted on. */
   const standDown = (): void => {
+    // Focus first, while it still has somewhere to go. Hiding a panel that contains the
+    // focused element drops a keyboard or screen-reader reader to `<body>` with nothing
+    // announced — the same failure this module cites two rules down as the reason
+    // `aria-disabled` is used instead of `disabled`. Restore had no obvious anchor to return
+    // to; this control does, and it is the button that opened the panel.
+    if (!confirm.hidden && confirm.contains(document.activeElement)) {
+      start.focus();
+    }
     confirm.hidden = true;
+    start.setAttribute("aria-expanded", "false");
     acknowledge.checked = false;
     go.setAttribute("aria-disabled", "true");
   };
@@ -119,6 +135,7 @@ export function wireErase(
             ? "There are no answers saved on this device."
             : `This will remove the ${tally(count)} saved on this device.`;
         confirm.hidden = false;
+        start.setAttribute("aria-expanded", "true");
         // Focus moves to the heading of the thing that just appeared, so a screen-reader
         // reader is taken to it and hears what it says. Unhiding a div announces nothing.
         const heading = document.getElementById("erase-confirm-heading");
@@ -154,7 +171,6 @@ export function wireErase(
     if (pending === undefined || !acknowledge.checked || running) {
       return;
     }
-    const count = pending;
     pending = undefined;
     running = true;
     go.setAttribute("aria-disabled", "true");
@@ -165,14 +181,18 @@ export function wireErase(
     // been told is empty, which is the worst available outcome for this operation.
     answers
       .flush()
-      .then(() => {
+      .then(async () => {
         answers.stop();
-        return store.replaceAll(new Map());
+        // Counted AFTER the flush and before the clear, which is the only moment the number
+        // is true. The figure shown in the confirmation is necessarily from the moment of
+        // asking — it is what the reader weighed — but `flush` deliberately writes everything
+        // dictated since then, and `replaceAll` removes that too. Announcing the asked-at
+        // number could tell a reader "there were no answers saved on this device" directly
+        // after erasing one they had just spoken.
+        const removed = countStored(await store.readAll());
+        await store.replaceAll(new Map());
+        return removed;
       })
-      // The count carried through as the success value, exactly as restore carries its own.
-      // `replaceAll` resolves to nothing, so without this the two paths are indistinguishable
-      // downstream and a failure would be announced as an erase.
-      .then(() => count)
       .catch((error: unknown) => {
         running = false;
         standDown();

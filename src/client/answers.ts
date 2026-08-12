@@ -193,6 +193,9 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
     oldestPendingAt = pending.size === 0 ? undefined : Date.now();
   }
 
+  /** Set once `stop` is called; nothing queues or writes afterwards. */
+  let stopped = false;
+
   function scheduleDrain(): void {
     if (timer !== undefined) {
       clearTimeout(timer);
@@ -209,6 +212,14 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
   }
 
   function flush(): Promise<void> {
+    // Stopped means stopped. Without this the latch below is only half a latch: `pagehide`
+    // calls `flush` (app.ts), and a value that failed mid-drain is put back in `pending`
+    // while `flush` still RESOLVES — so a caller that flushed, stopped, and then emptied the
+    // store had that value written back into it by the page it was navigating away from.
+    // erase.ts and import.ts both promise the reader nothing can land after this point.
+    if (stopped) {
+      return Promise.resolve();
+    }
     if (timer !== undefined) {
       clearTimeout(timer);
       timer = undefined;
@@ -247,6 +258,9 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
     load: () => store.readAll(),
 
     set(field, value) {
+      if (stopped) {
+        return;
+      }
       pending.set(field, value);
       oldestPendingAt ??= Date.now();
       scheduleDrain();
@@ -255,10 +269,22 @@ export function createAnswers(store: Store, options: AnswersOptions = {}): Answe
     flush,
 
     stop() {
+      // A latch, not a timer cancellation. It was the latter, and the contract above —
+      // "queued values are NOT written" — was therefore false in the one case that matters:
+      // a write that failed during a drain is deferred back into `pending`, so clearing the
+      // timer left it sitting there for the next `flush` to pick up. The callers that rely
+      // on this are the two irreversible operations, which stop autosave precisely so that
+      // nothing lands on top of a store they are about to replace or empty.
+      // Three guards for one property, and they are not equivalent: this flag is what
+      // `flush` reads, clearing the queue is what makes the contract above literally true,
+      // and refusing later `set`s is what stops a stopped instance arming fresh timers. Only
+      // the first is observable from outside, so only the first is pinned by a test.
+      stopped = true;
       if (timer !== undefined) {
         clearTimeout(timer);
         timer = undefined;
       }
+      pending.clear();
     },
   };
 }

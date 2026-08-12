@@ -220,6 +220,7 @@ describe("the acknowledgement gate", () => {
     // Act
     wireErase(page.document, answersSpy(), store, options(log));
     await page.ask();
+    assert.equal(page.hidden("erase-confirm"), false, "the confirmation never opened, so this proves nothing");
     page.press("erase-go");
     await page.settle();
 
@@ -255,12 +256,16 @@ describe("the acknowledgement gate", () => {
     wireErase(page.document, answersSpy(), store, options(log));
     await page.ask();
     page.tick();
+    assert.equal(page.hidden("erase-confirm"), false, "the confirmation never opened, so this proves nothing");
+    assert.equal(page.locked(), false, "the button never armed, so cancelling cannot be observed");
     page.press("erase-cancel");
     page.press("erase-go");
     await page.settle();
 
     // Assert
     assert.equal(page.hidden("erase-confirm"), true, "the confirmation stayed on screen");
+    assert.equal(page.locked(), true, "cancelling left the button armed");
+    assert.equal(page.element("erase-ack").checked, false, "cancelling left the acknowledgement ticked");
     assert.equal(store.kept.size, 1, "a cancelled erase still emptied the store");
     assert.deepEqual(log, []);
   });
@@ -421,5 +426,167 @@ describe("when it cannot be done", () => {
 
     // Assert
     assert.equal(logged.length, 1, "a missing control was not reported");
+  });
+});
+
+describe("the guards the copy nearly dropped", () => {
+  it("wireErase_AStoreThatOpens_RevealsTheControl", async () => {
+    // Arrange — the section ships `hidden` and only a working store reveals it. Deleting the
+    // reveal shipped an invisible control on the one page that exists for it, and export.ts
+    // records the same defect having shipped once already.
+    const page = control();
+    const log: string[] = [];
+
+    // Act
+    wireErase(page.document, answersSpy(), recorder(), options(log));
+
+    // Assert
+    assert.equal(page.hidden("erase"), false, "the control was never revealed");
+  });
+
+  it("wireErase_CancelledWhileTheCountIsStillLoading_DoesNotReopenTheConfirmation", async () => {
+    // Arrange — what the generation counter is for. `cancel` bumps it, so a `readAll` still
+    // in flight must not come back and re-show the panel with the button armed after the
+    // reader has said no.
+    let release: (value: Map<string, string>) => void = () => {};
+    const store = recorder(new Map([["day1.patterns", "one"]]));
+    store.readAll = () => new Promise((resolve) => (release = resolve));
+    const page = control();
+    const log: string[] = [];
+
+    // Act
+    wireErase(page.document, answersSpy(), store, options(log));
+    page.press("erase-start");
+    page.press("erase-cancel");
+    release(new Map([["day1.patterns", "one"]]));
+    await page.settle();
+
+    // Assert
+    assert.equal(page.hidden("erase-confirm"), true, "a cancelled ask came back and reopened");
+  });
+
+  it("wireErase_TheStoreCannotBeRead_ReportsItAndOffersNothing", async () => {
+    // Arrange — negative case. The ask path can fail too, and it must not leave a panel
+    // standing over a count nobody could take.
+    const store = recorder();
+    store.readAll = () => Promise.reject(new Error("the store would not open"));
+    const page = control();
+    const log: string[] = [];
+
+    // Act
+    wireErase(page.document, answersSpy(), store, options(log));
+    await page.ask();
+
+    // Assert
+    assert.deepEqual(log, ["failed"]);
+    assert.equal(page.hidden("erase-confirm"), true, "a failed read left the confirmation open");
+  });
+
+  it("wireErase_TickedThenUnticked_LocksTheButtonAgain", async () => {
+    // Arrange — negative case. Changing one's mind has to disarm, or the acknowledgement is
+    // a formality that only has to be satisfied once.
+    const page = control();
+    const log: string[] = [];
+
+    // Act
+    wireErase(page.document, answersSpy(), recorder(new Map([["a", "b"]])), options(log));
+    await page.ask();
+    page.tick();
+    const box = page.element("erase-ack");
+    box.checked = false;
+    box.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+
+    // Assert
+    assert.equal(page.locked(), true, "unticking left the button armed");
+  });
+
+  it("wireErase_AnnouncingThrows_StillReloadsRatherThanLeavingTheAnswersOnScreen", async () => {
+    // Arrange — negative case, and the one the try/catch exists for. The store is already
+    // empty by this point; skipping the reload would leave every erased answer on screen,
+    // which the module calls the worst available outcome because the next keystroke saves
+    // it back.
+    const store = recorder(new Map([["day1.patterns", "one"]]));
+    const page = control();
+    const log: string[] = [];
+    const logged: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => logged.push(args);
+
+    // Act
+    try {
+      wireErase(page.document, answersSpy(), store, {
+        ...options(log),
+        onErased: () => {
+          throw new Error("the banner could not be shown");
+        },
+      });
+      await page.ask();
+      page.tick();
+      page.press("erase-go");
+      await page.settle();
+    } finally {
+      console.error = original;
+    }
+
+    // Assert
+    assert.equal(store.kept.size, 0, "the store was not emptied");
+    assert.deepEqual(log, ["reloaded"], "a throw from the announcement took the reload with it");
+    assert.equal(logged.length, 1, "the failed announcement went unreported");
+  });
+
+  it("wireErase_SomethingDictatedAfterTheAsk_IsCountedInWhatWasRemoved", async () => {
+    // Arrange — the count shown in the confirmation is from the moment of asking, which is
+    // what the reader weighed. The count ANNOUNCED afterwards must be what actually went:
+    // `flush` deliberately writes everything said since the ask, and `replaceAll` removes
+    // that too. Announcing the asked-at number told a reader "there were no answers saved on
+    // this device" directly after erasing one they had just spoken.
+    const store = recorder();
+    const page = control();
+    const log: string[] = [];
+    const answers = {
+      async load() {
+        return new Map<string, string>();
+      },
+      set() {},
+      async flush() {
+        // What a real flush does: the phrase dictated between the ask and the press lands.
+        await store.write("day1.patterns", "said between asking and pressing");
+      },
+      stop() {},
+    };
+
+    // Act
+    wireErase(page.document, answers, store, options(log));
+    await page.ask();
+    page.tick();
+    page.press("erase-go");
+    await page.settle();
+
+    // Assert
+    assert.match(page.text("erase-summary"), /no answers/i, "the confirmation showed the wrong figure");
+    assert.deepEqual(log, ["erased:1", "reloaded"], "the announced count was taken before the flush");
+    assert.equal(store.kept.size, 0);
+  });
+
+  it("wireErase_Cancelled_TakesFocusBackToTheButtonThatOpenedIt", async () => {
+    // Arrange — hiding a panel that contains the focused element drops a keyboard or
+    // screen-reader reader to the body with nothing announced. This module gives that exact
+    // failure as its reason for using `aria-disabled` rather than `disabled`, so leaving it
+    // in the cancel path would be the same defect through a different door.
+    const page = control();
+    const log: string[] = [];
+
+    // Act
+    wireErase(page.document, answersSpy(), recorder(new Map([["a", "b"]])), options(log));
+    await page.ask();
+    page.element("erase-cancel").focus();
+    page.press("erase-cancel");
+
+    // Assert
+    assert.equal(
+      window.document.activeElement,
+      page.element("erase-start") as unknown as Element,
+      "focus was dropped to the body when the panel closed",
+    );
   });
 });

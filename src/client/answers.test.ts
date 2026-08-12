@@ -544,3 +544,68 @@ describe("load", () => {
     assert.deepEqual([...(await answers.load())], [...stored]);
   });
 });
+
+/**
+ * `stop` as a latch rather than a timer cancellation (#63).
+ *
+ * Two irreversible operations — restoring over the store and erasing it — stop autosave
+ * precisely so nothing lands on top of what they are about to replace or empty, and both
+ * promise the reader exactly that. The promise was false: `stop` only cleared the timer.
+ */
+describe("stopping for good", () => {
+  it("stop_AWriteThatFailedDuringTheFlush_IsNotWrittenByALaterOne", async () => {
+    // Arrange — the path that made the guarantee false. A failed write is deferred back into
+    // the queue and `flush` still RESOLVES, so a caller that flushed, stopped, and then
+    // emptied the store had that value written back by the page-hide flush on its way out —
+    // one answer surviving an erase the reader was told had completed.
+    const FIELD = "day1.patterns";
+    const SPOKEN = "said just before the store was emptied";
+    const store = recorder();
+    const answers = answersFor(store);
+    store.fail = true;
+    answers.set(FIELD, SPOKEN);
+    await answers.flush();
+    store.fail = false;
+    store.writes.length = 0;
+
+    // Act — exactly what erase.ts does, then what `pagehide` does behind it.
+    answers.stop();
+    await answers.flush();
+
+    // Assert
+    assert.deepEqual(store.writes, [], "a queued write outlived the stop");
+  });
+
+  it("stop_ThenSomethingDictated_QueuesNothingAndWritesNothing", async () => {
+    // Arrange — negative case. After the store has been emptied the fields are still on
+    // screen until the reload lands, so a phrase arriving in that window must go nowhere.
+    const FIELD = "day1.patterns";
+    const store = recorder();
+    const answers = answersFor(store);
+
+    // Act
+    answers.stop();
+    answers.set(FIELD, "dictated into a page that is going away");
+    await answers.flush();
+    await new Promise((resolve) => setTimeout(resolve, QUIET * 3));
+
+    // Assert
+    assert.deepEqual(store.writes, [], "a value dictated after the stop reached the store");
+  });
+
+  it("stop_BeforeAnythingWasSaid_IsHarmless", async () => {
+    // Arrange — the ordinary case, so the latch cannot be satisfied by breaking normal use.
+    const FIELD = "day1.patterns";
+    const SPOKEN = "written the ordinary way";
+    const store = recorder();
+    const answers = answersFor(store);
+
+    // Act
+    answers.set(FIELD, SPOKEN);
+    await answers.flush();
+
+    // Assert
+    assert.deepEqual(store.writes, [`${FIELD}=${SPOKEN}`], "an ordinary write was lost");
+    answers.stop();
+  });
+});

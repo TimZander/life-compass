@@ -236,6 +236,47 @@ describe("reporting a restore that happened before this load", () => {
     assert.deepEqual(result.remaining, {}, "the flag was left behind to repeat forever");
   });
 
+  it("app_AJustCompletedErase_IsConfirmedOnceAndThenForgotten", async () => {
+    // Arrange — the same mechanism as the restore above and it matters more. A restore
+    // leaves a page full of answers, which is its own evidence that something happened; an
+    // erase leaves a page of empty blanks, indistinguishable from a device nobody ever wrote
+    // on, or from a bug.
+    // Act
+    const result = await run(pageBody(null), { seed: { "life-compass:erased": "7" } });
+
+    // Assert
+    assert.ok(
+      result.banner.includes("Erased 7 answers"),
+      `the erase was never confirmed: ${JSON.stringify(result.banner)}`,
+    );
+    assert.deepEqual(result.remaining, {}, "the flag was left behind to repeat forever");
+  });
+
+  it("app_ASingleErasedAnswer_IsCountedInTheSingular", async () => {
+    // Arrange & Act — negative case for the pluralisation, in the sentence a reader reads
+    // immediately after the one act in this application that cannot be undone.
+    const result = await run(pageBody(null), { seed: { "life-compass:erased": "1" } });
+
+    // Assert
+    assert.ok(
+      result.banner.includes("Erased 1 answer") && !result.banner.includes("1 answers"),
+      `the singular was not used: ${JSON.stringify(result.banner)}`,
+    );
+  });
+
+  it("app_AnEraseOfAnEmptyStore_SaysThereWasNothingRatherThanErasedZero", async () => {
+    // Arrange & Act — negative case, and the only branch of this banner that is not about a
+    // number. "Erased 0 answers" reads as a failure; the truth is that there was nothing.
+    const result = await run(pageBody(null), { seed: { "life-compass:erased": "0" } });
+
+    // Assert
+    assert.ok(
+      result.banner.includes("no answers saved on this device"),
+      `the empty case was reported as a count: ${JSON.stringify(result.banner)}`,
+    );
+    assert.ok(!result.banner.includes("Erased 0"), "the reader was told zero answers were erased");
+  });
+
   it("app_ASingleRestoredAnswer_IsCountedInTheSingular", async () => {
     // Arrange & Act — negative case for the pluralisation, which is in the sentence a
     // reader reads immediately after an irreversible action.
