@@ -146,11 +146,12 @@ export type Part = {
    * named them — `contextFrom` builds it.
    *
    * A map rather than a list, and keyed by the declaration rather than carrying its own idea
-   * of what it is: `promptFor` walks the question's own `reads` and looks each entry up here.
-   * So a caller cannot slip in material the schema never said this question builds on — the
-   * one thing that would turn an opt-in scoped to a numbered item back into "everything we
-   * happened to have". What a caller controls is whether the answers travel at all, which is
-   * the reader's tick.
+   * of what it is: `promptFor` walks the question's own `reads` and looks each entry up here,
+   * so a key this question does not declare is never read. That bounds WHICH earlier questions
+   * an item can carry — the thing that would otherwise turn an opt-in scoped to a numbered item
+   * back into "everything we happened to have" — and it bounds nothing else: the values are the
+   * caller's verbatim, so this is not a check on what the words are. `contextFrom` is what makes
+   * them the reader's own, and the reader's tick is what makes them travel.
    */
   readonly context?: ReadonlyMap<string, Prior> | undefined;
 };
@@ -343,8 +344,9 @@ function onlyField(prior: Prior, field: string): Prior | undefined {
  */
 export function contextFrom(
   // `Question` rather than `Answerable`, to sit beside `priorFrom` at the same call site and
-  // take what the caller holds. A checklist needs no arm of its own: `readsOf` gives it no
-  // targets, so the loop below runs zero times and this returns `undefined`.
+  // take what the caller holds. A checklist needs no arm of its own: the build refuses one as
+  // a `reads` target and a checklist declares none, so `READS` holds no key for it and the
+  // loop below runs zero times.
   question: Question,
   entries: ReadonlyMap<string, string>,
   includeAnswers: boolean,
@@ -660,7 +662,6 @@ function carriedIn(asking: readonly Asked[]): readonly Carried[] {
       if (done.has(entry.target)) {
         continue;
       }
-      done.add(entry.target);
       const answers = one.context?.get(entry.target);
       if (answers === undefined) {
         continue;
@@ -673,6 +674,12 @@ function carriedIn(asking: readonly Asked[]): readonly Carried[] {
       if (lines.length === 0) {
         continue;
       }
+      // Recorded where it is RENDERED, not where it is first seen. `agent.ts` builds every
+      // part's context from one store and one tick, so the two agree — but `Part.context` is
+      // optional per part, and marking a target done on the question that carried nothing for
+      // it silently drops it from the question that did. That is the "carries nothing while
+      // the prompt still reads well" failure this whole feature exists to remove.
+      done.add(entry.target);
       const name = nameFor(other, other.id);
       const already = byName.get(name);
       if (already === undefined) {
@@ -695,6 +702,14 @@ function carriedIn(asking: readonly Asked[]): readonly Carried[] {
  * an assistant handed twenty of the reader's values under a heading treats them as a question
  * it has been given and interviews on them — and, worse, offers a block for them, which the
  * importer would accept as an answer to a question the reader never opened.
+ *
+ * "What I worked out earlier", deliberately not "what I have already written". That is
+ * `priorSection`'s heading, and the two sections say opposite things — it asks to be asked
+ * about, this asks not to be. A question with a prior AND a carry prints both, adjacent, and
+ * the first wording made the second heading a strict prefix extension of the first: two
+ * paragraphs three lines apart, near-identically titled, one saying "Ask me about these too"
+ * and the other "**not** something to ask me about". Reachable today on rigorous Day 4's
+ * intersection. A heading that shares no opening with the other is the whole fix.
  */
 function carriedSection(carried: readonly Carried[], count: number): string {
   if (carried.length === 0) {
@@ -720,7 +735,7 @@ function carriedSection(carried: readonly Carried[], count: number): string {
         `something here looks wrong to you, say so in ordinary words and leave it alone — I\n` +
         `will change it on the page myself.\n`;
   return (
-    `\n## What I have already written that this builds on\n\n${instruction}\n` +
+    `\n## What I worked out earlier that this builds on\n\n${instruction}\n` +
     `${blocks.join("\n\n")}\n`
   );
 }
@@ -932,7 +947,11 @@ export function promptFor(item: string, parts: readonly Part[]): Generated {
 
   // The carried section supplies its own leading and trailing blank line, exactly as
   // `priorSection` does, so an item that carries nothing produces the string this function
-  // produced before contexts existed — byte for byte, which is what its own test asserts.
+  // produced before contexts existed — byte for byte, which
+  // `promptFor_AQuestionThatCarriesNothing_IsAssembledExactlyAsItWasBefore` asserts by
+  // rebuilding that string from its parts. A stray newline here reaches every prompt in the
+  // workbook, and every other test in this file reads the prompt with patterns a blank line
+  // does not disturb.
   return {
     ok: true,
     text:

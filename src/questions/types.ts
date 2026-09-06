@@ -41,9 +41,14 @@ export type Size = "short" | "long";
  *
  * An entry is a frozen identifier: either a whole question (`day2.brainstorm`) or one field of
  * one (`day5.career.change`). The field form exists because Day 5 asks for "the five 'one
- * change' answers" out of four questions holding twenty, and carrying the other fifteen is the
- * quiet bundling 0007 · 2 forbids. The build refuses an entry that names nothing, names a
- * checklist, or names the question declaring it.
+ * change' answers" out of five questions holding seventeen fields, and carrying the other
+ * twelve is the quiet bundling 0007 · 2 forbids. The build refuses an entry that names
+ * nothing, names a checklist, or names the question declaring it.
+ *
+ * "Earlier" means earlier in the exercise, not earlier in `WORKSHEETS`. `day2.shortlist_ten`
+ * reads `values.additions`, which sits on a reference page listed last, so the build cannot
+ * check the order — a reader meets that page during Day 2's first item. What the build can
+ * check, and does, is that the entry resolves to something a prompt could carry.
  *
  * Only what a question names — never what names it. This does not travel transitively: a
  * prompt for `day2.operationalised` carries the five, not the five and the ten and the fifty.
@@ -54,7 +59,7 @@ export type Size = "short" | "long";
 export type Reads = readonly string[];
 
 /** What one `reads` entry names: a question, and — where the entry named one — its field. */
-export type ReadTarget = {
+type ReadTarget = {
   readonly group: string;
   readonly field?: string;
 };
@@ -81,10 +86,10 @@ export type ResolvedRead = ReadTarget & {
  * Both a question id and a field id contain dots, so the split cannot be done on the string
  * alone — `day5.career.change` is a field of `day5.career`, and `day2.brainstorm` is a whole
  * question, and nothing about their shapes says which is which. `has` is what decides, and it
- * is a parameter because the two callers hold the questions differently: the build has a
- * `Map` of the schema it is verifying, the client has `findQuestion` over what it shipped
- * with. One rule in one place; two copies of it would let the build accept an entry the
- * prompt then silently drops.
+ * is a parameter rather than a fixed lookup because the build calls this twice over two
+ * different maps — `checkSchema`'s and `resolveReads`' — and a third caller would be the
+ * client, which is exactly why there is not one: it is handed `ResolvedRead` instead, so this
+ * rule runs at build time only and cannot be spelled differently at the two ends.
  *
  * The whole-question reading wins where both would resolve. It cannot arise today —
  * `checkIdentifiers` refuses one identifier produced by two questions — and preferring the

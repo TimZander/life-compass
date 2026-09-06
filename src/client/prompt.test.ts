@@ -1763,7 +1763,7 @@ describe("the earlier answers a question builds on", () => {
 
     // Assert
     assert.ok(text.includes(CIRCLED), "the circled list the ask names did not travel");
-    assert.match(text, /^## What I have already written that this builds on$/m);
+    assert.match(text, /^## What I worked out earlier that this builds on$/m);
   });
 
   it("promptFor_AnswersWithheld_CarriesNothingAQuestionBuildsOnEither", () => {
@@ -1775,7 +1775,10 @@ describe("the earlier answers a question builds on", () => {
 
     // Assert
     assert.ok(!text.includes(CIRCLED), "an earlier answer travelled with the tick off");
-    assert.ok(!text.includes("builds on"), "a heading was printed over nothing");
+    // Anchored on the heading rather than on a fragment of it. `includes("builds on")` is
+    // satisfied or broken by any prose that happens to use the words, which makes a negative
+    // assertion about a heading into an assertion about the whole document.
+    assert.doesNotMatch(text, /^## What I worked out earlier/m, "a heading was printed over nothing");
   });
 
   it("contextFrom_AnswersWithheld_IsNothingRatherThanAnEmptyMap", () => {
@@ -1792,7 +1795,7 @@ describe("the earlier answers a question builds on", () => {
   });
 
   it("contextFrom_AQuestionThatReadsNothing_CarriesNothing", () => {
-    // Arrange — negative case. 79 of the 113 questions declare no reads, and every one of them
+    // Arrange — negative case. 84 of the 111 answerable questions declare no reads, and every one
     // must produce exactly the prompt it produced before this existed.
     const question = findQuestion(BRAINSTORM);
     assert.ok(question !== undefined, `${BRAINSTORM} is no longer in the schema`);
@@ -1868,7 +1871,11 @@ describe("the earlier answers a question builds on", () => {
       ONCE,
       "a question asked about in this item was also carried as material",
     );
-    assert.ok(!text.includes("builds on"), "a heading was printed for a question already above it");
+    assert.doesNotMatch(
+      text,
+      /^## What I worked out earlier/m,
+      "a heading was printed for a question already above it",
+    );
   });
 
   it("promptFor_TwoQuestionsOfOneItemReadingTheSameThing_CarryItOnce", () => {
@@ -1895,10 +1902,10 @@ describe("the earlier answers a question builds on", () => {
   });
 
   it("contextFrom_AnEntryNamingOneField_CarriesThatFieldAndNoOther", () => {
-    // Arrange — day 5 asks for "the five 'one change' answers" out of four questions holding
-    // twenty. The other fifteen are the reader's account of their money, their marriage and
-    // their calendar, and this question does not name them: carrying them is the quiet
-    // bundling 0007 · 2 forbids.
+    // Arrange — day 5 asks for "the five 'one change' answers" out of five questions holding
+    // seventeen fields. The other twelve are the reader's account of their money, their
+    // marriage and their calendar, and this question does not name them: carrying them is the
+    // quiet bundling 0007 · 2 forbids.
     const MOVE = "one change I would make";
     const PRIVATE = "what I am overspending on and would rather not say";
     const entries = new Map<string, string>([
@@ -1987,8 +1994,12 @@ describe("the earlier answers a question builds on", () => {
     // still reads well, and still leaves the assistant without the list it was told to work
     // from. Only running every one of them against a store says otherwise.
     const DECLARED = Object.keys(READS);
-    const AT_LEAST = 20;
-    assert.ok(DECLARED.length >= AT_LEAST, `only ${DECLARED.length} questions declare what they build on`);
+    // Exact, not a floor. This file's own sweeps say why: a floor stays green while coverage
+    // erodes under it, and this one erodes in a way nothing else would notice — the loop
+    // iterates what is DECLARED, so deleting a declaration deletes it from its own check.
+    // `>= 20` let seven of the twenty-seven vanish silently.
+    const DECLARING = 27;
+    assert.equal(DECLARED.length, DECLARING, "the questions declaring what they build on changed");
 
     for (const group of DECLARED) {
       const question = findQuestion(group);
@@ -2005,30 +2016,142 @@ describe("the earlier answers a question builds on", () => {
           continue;
         }
         const words = `carried from ${entry.target}`;
-        wanted.push(words);
         if (other.kind === "single") {
+          wanted.push(words);
           entries.set(other.id, words);
           continue;
         }
         const fields = other.fields.filter((one) => entry.field === undefined || one.id === entry.field);
         assert.ok(fields.length > 0, `${group} reads ${entry.target}, which names no field of ${entry.group}`);
+        // Every field seeded distinctly and every one of them wanted. Pushing the shared
+        // prefix instead asserted only that SOMETHING from this target arrived: deleting the
+        // "every field after the first" loop in `carriedLines` — which loses all but the first
+        // field of every carried instance — left this green.
         if (other.kind === "repeat") {
           const INSTANCE = "carried";
           entries.set(orderKey(other.id), writeOrder([INSTANCE]));
           for (const field of fields) {
+            wanted.push(`${words} ${field.id}`);
             entries.set(answerKey(other.id, INSTANCE, field.id), `${words} ${field.id}`);
           }
           continue;
         }
         for (const field of fields) {
+          wanted.push(`${words} ${field.id}`);
           entries.set(fieldKey(other.id, field.id), `${words} ${field.id}`);
         }
       }
 
+      // Act
       const text = itemText(ITEM, { group, context: contextFrom(question, entries, true) });
+
+      // Assert
       for (const words of wanted) {
         assert.ok(text.includes(words), `${group} did not carry what it says it builds on: ${words}`);
       }
     }
+  });
+
+  it("promptFor_ATargetTheFirstQuestionCarriesNothingFor_StillTravelsWithTheSecond", () => {
+    // Arrange — `carriedIn` used to mark a target done where it was first SEEN rather than where
+    // it was rendered, so the first question naming it consumed it even having carried nothing,
+    // and a later question of the same item that did carry it was dropped. `agent.ts` builds
+    // every part's context from one store and one tick, but `Part.context` is optional per
+    // part and this file builds parts by hand.
+    const FIVE = "day2.shortlist_five";
+    const ONLY = "Freedom";
+    const entries = new Map<string, string>([
+      [orderKey(FIVE), writeOrder(["v1"])],
+      [answerKey(FIVE, "v1", "value"), ONLY],
+    ]);
+    const second = findQuestion("day2.ranked");
+    assert.ok(second !== undefined, "day2.ranked is no longer in the schema");
+
+    // Act — the first part names the same target and carries nothing for it.
+    const text = itemText(
+      "5. Conflict test (10 min)",
+      { group: "day2.conflicts" },
+      { group: "day2.ranked", context: contextFrom(second, entries, true) },
+    );
+
+    // Assert
+    assert.ok(text.includes(ONLY), "a target the first question carried nothing for was consumed by it");
+  });
+
+  it("promptFor_AQuestionThatCarriesNothing_IsTheSameStringWithAndWithoutAContext", () => {
+    // Arrange — the claim `promptFor` makes about its own seam: `carriedSection` returns "" when
+    // there is nothing to carry, so a question declaring no reads produces exactly the string
+    // this function produced before contexts existed. 84 of the 111 answerable questions are in
+    // that case, which is most of the workbook.
+    const withReads = new Set(Object.keys(READS));
+    let checked = 0;
+
+    for (const worksheet of WORKSHEETS) {
+      for (const question of worksheet.questions) {
+        if (question.kind === "checklist" || withReads.has(question.id)) {
+          continue;
+        }
+
+        // Act — the same part, once with the context the caller would build and once without.
+        const bare = promptFor(ITEM, [{ group: question.id }]);
+        const asked = promptFor(ITEM, [
+          { group: question.id, context: contextFrom(question, new Map(), true) },
+        ]);
+
+        // Assert
+        assert.ok(bare.ok && asked.ok, `${question.id} was refused`);
+        assert.equal(asked.text, bare.text, `${question.id} changed when a context was offered`);
+        checked += 1;
+      }
+    }
+
+    const WITHOUT_READS = 84;
+    assert.equal(checked, WITHOUT_READS, "the questions declaring no reads changed");
+  });
+
+  it("promptFor_EveryPromptInTheWorkbook_SeparatesItsSectionsByOneBlankLine", () => {
+    // Arrange — what pins the seam itself, which the assertion above cannot: an extra newline
+    // there lands in EVERY prompt, so both sides of that comparison move together. I mutated
+    // the concatenation to emit one and all 745 tests passed — every other test in this file
+    // reads the prompt with patterns a blank line does not disturb.
+    //
+    // The invariant rather than a golden file, which would be regenerated by the code it
+    // checks: this is hard-wrapped prose, and nothing in it separates two sections by more
+    // than one blank line. Swept with answers withheld and carried, so the carried section's
+    // own leading and trailing newlines are held to it too.
+    const RUN = "\n\n\n";
+    const entries = storeHolding(
+      WORKSHEETS.flatMap((worksheet) => worksheet.questions.map((question) => question.id)),
+    ).entries;
+    let checked = 0;
+
+    for (const worksheet of WORKSHEETS) {
+      for (const question of worksheet.questions) {
+        if (question.kind === "checklist") {
+          continue;
+        }
+        for (const wanted of [false, true]) {
+          // Act
+          const made = promptFor(ITEM, [
+            {
+              group: question.id,
+              prior: priorFrom(question, entries, wanted),
+              context: contextFrom(question, entries, wanted),
+            },
+          ]);
+
+          // Assert
+          assert.ok(made.ok, `${question.id} was refused`);
+          assert.ok(
+            !made.text.includes(RUN),
+            `${question.id} has a blank line too many, carrying ${wanted ? "answers" : "nothing"}`,
+          );
+          checked += 1;
+        }
+      }
+    }
+
+    const SWEPT = 222;
+    assert.equal(checked, SWEPT, "the prompts swept for their spacing changed");
   });
 });

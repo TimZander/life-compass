@@ -49,7 +49,10 @@ function asksIn(code: string): Record<string, string> {
 
 /** Read READS back out of generated source, the way an importer would. */
 function readsIn(code: string): Record<string, { target: string; group: string; field?: string }[]> {
-  const found = /^export const READS[^=]*= ([\s\S]*);\n$/m.exec(code);
+  // Non-greedy and anchored on a blank line OR the end of the file — not `;\n$`, which is
+  // `asksIn`'s old bug re-planted on whichever export happens to be last. READS is last today;
+  // the next one added would silently over-capture this the same way.
+  const found = /^export const READS[^=]*= ([\s\S]*?);\n(?:\n|$)/m.exec(code);
   assert.ok(found?.[1] !== undefined, "the module does not export READS");
   return JSON.parse(found[1]) as Record<string, { target: string; group: string; field?: string }[]>;
 }
@@ -138,7 +141,7 @@ describe("schemaSource", () => {
   });
 
   it("schemaSource_AQuestionThatReadsNothing_IsLeftOutRatherThanCarriedEmpty", () => {
-    // Arrange — negative case. 79 of the 113 questions declare nothing, and the client treats
+    // Arrange — negative case. 84 of the 111 answerable questions declare nothing, and the client treats
     // a missing key and an empty list identically, so an entry per question would be bytes
     // shipped to every reader to say nothing.
     // Act

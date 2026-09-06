@@ -176,7 +176,7 @@ function checkIdentifiers(schema: Schema): readonly string[] {
  * Every `reads` entry names something a prompt can actually carry.
  *
  * This is the same class of failure as a sentence gap with no field: nothing about the built
- * page changes, and nothing says anything. A entry naming a question that does not exist is
+ * page changes, and nothing says anything. An entry naming a question that does not exist is
  * simply dropped when the prompt is built, so the reader gets an assistant told to work from
  * "your circled list" and handed no list — which is the defect the declaration exists to fix,
  * arriving through the fix. The build is the only place it can be seen.
@@ -190,7 +190,7 @@ function checkReads(schema: Schema, question: Question): readonly string[] {
 
   for (const target of readsOf(question)) {
     if (seen.has(target)) {
-      problems.push(`${question.id} reads ${target} twice`);
+      problems.push(`${question.id} reads ${JSON.stringify(target)} twice`);
       continue;
     }
     seen.add(target);
@@ -213,18 +213,22 @@ function checkReads(schema: Schema, question: Question): readonly string[] {
       continue;
     }
     if (other.kind === "checklist") {
-      problems.push(`${question.id} reads ${target}, which is a checklist`);
+      problems.push(`${question.id} reads ${JSON.stringify(target)}, which is a checklist`);
       continue;
     }
     if (named.field === undefined) {
       continue;
     }
     if (other.kind === "single") {
-      problems.push(`${question.id} reads ${target}, but ${named.group} has no fields of its own`);
+      problems.push(
+        `${question.id} reads ${JSON.stringify(target)}, but ${named.group} has no fields of its own`,
+      );
       continue;
     }
     if (!other.fields.some((field) => field.id === named.field)) {
-      problems.push(`${question.id} reads ${target}, but ${named.group} has no such field`);
+      problems.push(
+        `${question.id} reads ${JSON.stringify(target)}, but ${named.group} has no such field`,
+      );
     }
   }
 
@@ -234,11 +238,14 @@ function checkReads(schema: Schema, question: Question): readonly string[] {
 /**
  * Every question's `reads`, resolved against the schema — the form the client is shipped.
  *
- * Runs after `checkSchema`, which is what makes the silent `continue` below unreachable rather
- * than lossy: an entry that resolves to nothing is a refused build, so by here every one of
- * them names something. Questions with no reads are left out entirely; the client's lookup
- * treats a missing key and an empty list the same way, and 79 of the 113 questions declare
- * nothing.
+ * Runs after `checkSchema` — `writeSchemaModule` orders them, and only that ordering makes the
+ * silent `continue` below unreachable rather than lossy, since an entry that resolves to
+ * nothing is a refused build. A caller that skipped the check would drop entries here without
+ * saying so; nothing in this signature can enforce the order, which is worth knowing before
+ * moving either call.
+ *
+ * Questions with no reads are left out entirely; the client's lookup treats a missing key and
+ * an empty list the same way, and 84 of the 111 answerable questions declare nothing.
  */
 export function resolveReads(schema: Schema): ReadonlyMap<string, readonly ResolvedRead[]> {
   const resolved = new Map<string, readonly ResolvedRead[]>();

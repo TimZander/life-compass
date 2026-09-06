@@ -36,7 +36,8 @@ corollary is that the tradeoff must be legible at the moment it is made:
    clipboard, not a description of it. Nobody can meaningfully consent to "your relevant
    answers."
 2. **Prior answers default to off**, opted in per section. Generating a prompt for one
-   task should never quietly bundle four days of reflection.
+   task should never quietly bundle four days of reflection. *Amended by C6* — a question
+   whose prose is built on an earlier one carries that answer too, on the same tick.
 3. **One plain sentence at the copy control**, not a link to a privacy page.
 4. **Say it once.** A confirmation dialog on every copy trains people to dismiss it,
    which is worse than not warning at all.
@@ -77,7 +78,7 @@ exists to remove.
 What holds 2 together at the widened boundary is that the widening is *declared*, not
 inferred: a question carries only what its schema entry names, the build refuses an entry
 naming nothing, and a field may be named on its own so that Day 5's five "one change"
-answers travel without the fifteen answers beside them. What holds 1 together is that the
+answers travel without the twelve answers beside them. What holds 1 together is that the
 carried words are in the preview like every other word, and that the tick says so.
 
 Two things are deliberately not done. Nothing travels transitively — a prompt for the
