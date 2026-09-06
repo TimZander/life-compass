@@ -36,7 +36,8 @@ corollary is that the tradeoff must be legible at the moment it is made:
    clipboard, not a description of it. Nobody can meaningfully consent to "your relevant
    answers."
 2. **Prior answers default to off**, opted in per section. Generating a prompt for one
-   task should never quietly bundle four days of reflection.
+   task should never quietly bundle four days of reflection. *Amended by C6* — a question
+   whose prose is built on an earlier one carries that answer too, on the same tick.
 3. **One plain sentence at the copy control**, not a link to a privacy page.
 4. **Say it once.** A confirmation dialog on every copy trains people to dismiss it,
    which is worse than not warning at all.
@@ -66,3 +67,23 @@ its version rule, and what an importer does with one it cannot read.
 
 **C5.** This is the one place data leaves the device, and it does so because the user
 chose it. That is the correct place for that decision to sit.
+
+**C6.** *Added 2026-09-06 (#105).* "Opted in per section" is a rule about the control, not
+about the boundary of what one tick may carry. A question whose own prose is built on an
+earlier one — "from your circled list", "for each of your 5" — carries that earlier answer
+too, or the prompt names material the assistant cannot see and the reader is made to recite
+their own work aloud, which is the cost [0001](0001-voice-first-input-is-a-primary-constraint.md)
+exists to remove.
+
+What holds 2 together at the widened boundary is that the widening is *declared*, not
+inferred: a question carries only what its schema entry names, the build refuses an entry
+naming nothing, and a field may be named on its own so that Day 5's five "one change"
+answers travel without the twelve answers beside them. What holds 1 together is that the
+carried words are in the preview like every other word, and that the tick says so.
+
+Two things are deliberately not done. Nothing travels transitively — a prompt for the
+operationalising step carries the five, not the five and the ten and the fifty. And no
+carried answer travels with the instance identifiers [0015 · C3](0015-assistant-output-is-self-describing-blocks.md)
+sends for the question being asked about: those exist so a reply can name the entry it
+updates, and an identifier for a question the reader did not open is an invitation to
+overwrite it.

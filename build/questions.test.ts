@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ANCHOR, checkRegistry, checkSchema, loadSchema, renderQuestion } from "./questions.ts";
-import { gapsOf, identifiersOf, type Question } from "../src/questions/types.ts";
+import { ANCHOR, checkRegistry, checkSchema, loadSchema, renderQuestion, resolveReads } from "./questions.ts";
+import { gapsOf, identifiersOf, readsOf, type Question } from "../src/questions/types.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
 /**
@@ -1046,5 +1046,167 @@ describe("repeat ranges", () => {
       FLOOR,
       "the two shapes disagree about how many instances a range prints",
     );
+  });
+});
+
+describe("checkReads", () => {
+  /** A question that names another, and the pair loaded as one worksheet. */
+  function withReads(reads: readonly string[], others: readonly Question[] = []): readonly string[] {
+    const question: Question = {
+      kind: "single",
+      id: "t.builds_on",
+      label: "Builds on",
+      size: "long",
+      reads,
+    };
+    return checkSchema(loadSchema([{ source: "t.md", questions: [question, ...others] }]));
+  }
+
+  const EARLIER: Question = {
+    kind: "group",
+    id: "t.earlier",
+    fields: [{ id: "one", label: "One", size: "long" }],
+  };
+
+  it("checkSchema_AReadNamingAQuestionThatExists_IsAccepted", () => {
+    // Arrange — the positive case, so the negatives below are known to be failing for their
+    // own reason rather than because nothing here can ever pass.
+    // Act
+    const problems = withReads(["t.earlier"], [EARLIER]);
+
+    // Assert
+    assert.deepEqual(problems, []);
+  });
+
+  it("checkSchema_AReadNamingOneFieldOfAQuestion_IsAccepted", () => {
+    // Arrange — day 5 names five fields out of twenty, so this form has to resolve.
+    // Act
+    const problems = withReads(["t.earlier.one"], [EARLIER]);
+
+    // Assert
+    assert.deepEqual(problems, []);
+  });
+
+  it("checkSchema_AReadNamingNoQuestion_IsReported", () => {
+    // Arrange — negative case, and the reason this check exists at all: the prompt drops an
+    // entry it cannot resolve, so a typo ships as an assistant told to work from "your circled
+    // list" and handed no list. Nothing about the built page changes and nothing says so.
+    // Act
+    const problems = withReads(["t.no_such_question"]);
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("names no question")), problems.join("; "));
+  });
+
+  it("checkSchema_AReadNamingNoFieldOfTheQuestion_IsReported", () => {
+    // Arrange — negative case. `t.earlier` exists and `two` is not one of its fields, so this
+    // resolves as far as the question and no further.
+    // Act
+    const problems = withReads(["t.earlier.two"], [EARLIER]);
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("no such field")), problems.join("; "));
+  });
+
+  it("checkSchema_AReadNamingAFieldOfASingle_IsReported", () => {
+    // Arrange — negative case. A single stores its answer under the question identifier
+    // itself, so `t.only.something` names a key that can never hold anything.
+    const ONLY: Question = { kind: "single", id: "t.only", label: "Only", size: "long" };
+
+    // Act
+    const problems = withReads(["t.only.something"], [ONLY]);
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("no fields of its own")), problems.join("; "));
+  });
+
+  it("checkSchema_AReadNamingAChecklist_IsReported", () => {
+    // Arrange — negative case, and a misreading rather than a mistype: 0015 keeps readiness
+    // ticks out of the contract entirely, so there is nothing there to build on.
+    const TICKS: Question = {
+      kind: "checklist",
+      id: "t.ready",
+      items: [{ id: "one", label: "One" }],
+    };
+
+    // Act
+    const problems = withReads(["t.ready"], [TICKS]);
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("is a checklist")), problems.join("; "));
+  });
+
+  it("checkSchema_AReadNamingItself_IsReported", () => {
+    // Arrange — negative case. A question's own answers are already in its prompt, as the
+    // `prior` that carries the identifiers a reply has to echo, so this could only ever print
+    // them twice — once with the ids and once under "do not answer this".
+    // Act
+    const problems = withReads(["t.builds_on"]);
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("which is itself")), problems.join("; "));
+  });
+
+  it("checkSchema_TheSameReadTwice_IsReported", () => {
+    // Arrange — negative case. Harmless in the prompt, which dedupes, and a sign the list was
+    // edited without being read.
+    // Act
+    const problems = withReads(["t.earlier", "t.earlier"], [EARLIER]);
+
+    // Assert
+    assert.ok(problems.some((problem) => problem.includes("twice")), problems.join("; "));
+  });
+});
+
+describe("resolveReads", () => {
+  it("resolveReads_TheRealSchema_ResolvesEveryEntryEveryQuestionDeclares", () => {
+    // Arrange — what the client is shipped. An entry that failed to resolve here would be
+    // dropped silently from the generated module, so the page would carry a question that
+    // declares it builds on something and carries nothing.
+    const schema = loadSchema();
+
+    // Act
+    const resolved = resolveReads(schema);
+
+    // Assert
+    for (const question of schema.byId.values()) {
+      const declared = readsOf(question);
+      if (declared.length === 0) {
+        assert.equal(resolved.get(question.id), undefined, `${question.id} declares nothing and was carried anyway`);
+        continue;
+      }
+      assert.deepEqual(
+        (resolved.get(question.id) ?? []).map((entry) => entry.target),
+        [...declared],
+        `${question.id} lost an entry between declaring it and shipping it`,
+      );
+    }
+  });
+
+  it("resolveReads_AnEntryNamingAField_KeepsTheFieldSeparateFromTheQuestion", () => {
+    // Arrange — the whole reason the client is handed a resolved form. Only the schema knows
+    // where the question id ends and the field id begins; a client splitting on the last dot
+    // would read `day2.brainstorm` as a `brainstorm` field of a `day2` question.
+    const EARLIER: Question = {
+      kind: "group",
+      id: "t.earlier",
+      fields: [{ id: "one", label: "One", size: "long" }],
+    };
+    const question: Question = {
+      kind: "single",
+      id: "t.builds_on",
+      label: "Builds on",
+      size: "long",
+      reads: ["t.earlier.one", "t.earlier"],
+    };
+
+    // Act
+    const resolved = resolveReads(loadSchema([{ source: "t.md", questions: [question, EARLIER] }]));
+
+    // Assert
+    assert.deepEqual(resolved.get("t.builds_on"), [
+      { target: "t.earlier.one", group: "t.earlier", field: "one" },
+      { target: "t.earlier", group: "t.earlier" },
+    ]);
   });
 });

@@ -14,7 +14,10 @@ import {
   GAP,
   gapsOf,
   identifiersOf,
+  readTarget,
+  readsOf,
   type Field,
+  type ResolvedRead,
   type Question,
   type RepeatQuestion,
   type SentenceQuestion,
@@ -106,6 +109,7 @@ export function checkSchema(schema: Schema): readonly string[] {
   for (const question of schema.byId.values()) {
     problems.push(...checkText(question));
     problems.push(...checkParts(question));
+    problems.push(...checkReads(schema, question));
     if (question.kind === "repeat") {
       problems.push(...checkRange(question));
     }
@@ -166,6 +170,101 @@ function checkIdentifiers(schema: Schema): readonly string[] {
     }
   }
   return problems;
+}
+
+/**
+ * Every `reads` entry names something a prompt can actually carry.
+ *
+ * This is the same class of failure as a sentence gap with no field: nothing about the built
+ * page changes, and nothing says anything. An entry naming a question that does not exist is
+ * simply dropped when the prompt is built, so the reader gets an assistant told to work from
+ * "your circled list" and handed no list — which is the defect the declaration exists to fix,
+ * arriving through the fix. The build is the only place it can be seen.
+ *
+ * A checklist is refused rather than dropped. 0015 keeps readiness ticks out of the contract
+ * entirely, and a question declaring it builds on one has been misread rather than mistyped.
+ */
+function checkReads(schema: Schema, question: Question): readonly string[] {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+
+  for (const target of readsOf(question)) {
+    if (seen.has(target)) {
+      problems.push(`${question.id} reads ${JSON.stringify(target)} twice`);
+      continue;
+    }
+    seen.add(target);
+
+    const named = readTarget(target, (id) => schema.byId.has(id));
+    if (named === undefined) {
+      problems.push(`${question.id} reads ${JSON.stringify(target)}, which names no question`);
+      continue;
+    }
+    if (named.group === question.id) {
+      // Including the field form: a question that reads one of its own fields has said
+      // nothing, since the whole of it is already in the prompt being asked about.
+      problems.push(`${question.id} reads ${JSON.stringify(target)}, which is itself`);
+      continue;
+    }
+    // Present by construction — `readTarget` resolved through the same map — so this is a
+    // narrowing rather than a check, and there is nothing to report if it somehow fails.
+    const other = schema.byId.get(named.group);
+    if (other === undefined) {
+      continue;
+    }
+    if (other.kind === "checklist") {
+      problems.push(`${question.id} reads ${JSON.stringify(target)}, which is a checklist`);
+      continue;
+    }
+    if (named.field === undefined) {
+      continue;
+    }
+    if (other.kind === "single") {
+      problems.push(
+        `${question.id} reads ${JSON.stringify(target)}, but ${named.group} has no fields of its own`,
+      );
+      continue;
+    }
+    if (!other.fields.some((field) => field.id === named.field)) {
+      problems.push(
+        `${question.id} reads ${JSON.stringify(target)}, but ${named.group} has no such field`,
+      );
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * Every question's `reads`, resolved against the schema — the form the client is shipped.
+ *
+ * Runs after `checkSchema` — `writeSchemaModule` orders them, and only that ordering makes the
+ * silent `continue` below unreachable rather than lossy, since an entry that resolves to
+ * nothing is a refused build. A caller that skipped the check would drop entries here without
+ * saying so; nothing in this signature can enforce the order, which is worth knowing before
+ * moving either call.
+ *
+ * Questions with no reads are left out entirely; the client's lookup treats a missing key and
+ * an empty list the same way, and 84 of the 111 answerable questions declare nothing.
+ */
+export function resolveReads(schema: Schema): ReadonlyMap<string, readonly ResolvedRead[]> {
+  const resolved = new Map<string, readonly ResolvedRead[]>();
+
+  for (const question of schema.byId.values()) {
+    const entries: ResolvedRead[] = [];
+    for (const target of readsOf(question)) {
+      const named = readTarget(target, (id) => schema.byId.has(id));
+      if (named === undefined) {
+        continue;
+      }
+      entries.push(named.field === undefined ? { target, group: named.group } : { target, ...named });
+    }
+    if (entries.length > 0) {
+      resolved.set(question.id, entries);
+    }
+  }
+
+  return resolved;
 }
 
 /** Every author-written string a question can carry, paired with what to call it. */

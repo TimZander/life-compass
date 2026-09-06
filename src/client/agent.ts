@@ -19,8 +19,7 @@
  * mid-dictation on the same screen.
  */
 
-import { promptFor, priorFrom, findQuestion, explain } from "./prompt.ts";
-import { ASKS } from "./schema.ts";
+import { promptFor, priorFrom, contextFrom, findQuestion, explain, nameFor } from "./prompt.ts";
 import { showBanner, dismissBanner } from "./banner.ts";
 import { bridgeIsOn, setBridge } from "./bridge.ts";
 
@@ -59,55 +58,6 @@ export function wireAgentPage(document: Document, storage: Storage | null): void
         : "Copy buttons are off. The worksheets are unchanged.",
     );
   });
-}
-
-/** Trim a line of its Markdown and cut it to something a screen reader will not read forever. */
-function clip(line: string): string {
-  const plain = line.replace(/[*_`>#]/g, "").trim();
-  return plain.length > 60 ? `${plain.slice(0, 57)}…` : plain;
-}
-
-/**
- * A short human name for a question, for the places a screen reader reads one out.
- *
- * Ordered by what the reader can actually see, which is not what the schema calls the thing.
- *
- * A `repeat`'s label names one SLOT, not the question: day 2 has four separate groups whose
- * label is "Value", because each renders "Value 1", "Value 2"… underneath a heading that is
- * the real question. Preferring the label gave that page four identical buttons standing for
- * four different things — and the same on rigorous day 2 (five) and day 1 (three).
- *
- * A `sentence` is the sentence. Everything else is named by the FIRST line of its ask, which
- * is the heading printed directly above the control. This read the LAST line, which is the
- * line nearest the anchor — usually the tail of a paragraph. All five of day 5's questions
- * came out as "gap?", so the attribute added to stop a quarter of these buttons reading out
- * an identifier had replaced unique identifiers with identical fragments: worse on the one
- * axis it exists for. Across the workbook the three rules together take the pages carrying a
- * duplicate name from nine to one.
- */
-export function nameFor(
-  question: { readonly kind: string; readonly id: string },
-  group: string,
-): string {
-  if (
-    question.kind === "sentence" &&
-    "template" in question &&
-    typeof question.template === "string" &&
-    question.template !== ""
-  ) {
-    // Gaps are spelled `{excess}` in the template. Read aloud the braces are noise, and
-    // dropping them alone inverts the sentence — "the world has enough excess" — so the gap
-    // is named as the gap it is.
-    return clip(question.template.replace(/\{[^}]*\}/g, "blank"));
-  }
-  const heading = (ASKS[group] ?? "").split("\n").find((line) => clip(line) !== "");
-  if (heading !== undefined) {
-    return clip(heading);
-  }
-  if ("label" in question && typeof question.label === "string" && question.label !== "") {
-    return question.label;
-  }
-  return group;
 }
 
 /** Put text on the clipboard, or say why not. */
@@ -163,7 +113,14 @@ function panelFor(
   const include = document.createElement("input");
   include.type = "checkbox";
   const includeLabel = document.createElement("label");
-  includeLabel.append(include, document.createTextNode(" Include what I have already written"));
+  // What the tick covers grew with #105 and the label grew with it. A question that names an
+  // earlier one — "from your circled list" — carries that answer too, and a checkbox saying
+  // only "what I have already written" would be describing half of what it does on the one
+  // surface 0007 · 1 makes responsible for the whole of it.
+  includeLabel.append(
+    include,
+    document.createTextNode(" Include what I have already written, here and in what this builds on"),
+  );
 
   const preview = document.createElement("pre");
   preview.className = "agent-preview";
@@ -263,6 +220,10 @@ function panelFor(
         item.parts.map(({ group, question }) => ({
           group,
           prior: priorFrom(question, entries, wanted),
+          // Read from the same entries and gated on the same tick. `contextFrom` returns
+          // nothing at all when the tick is off, so nothing an earlier question holds can
+          // reach the clipboard without the reader having asked for it here.
+          context: contextFrom(question, entries, wanted),
         })),
       );
       if (!made.ok) {

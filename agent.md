@@ -33,7 +33,19 @@ it ever weakens.
 
 What reaches an assistant is what you paste into it. Before you copy anything you are shown
 the exact text, in full, so the decision is one you can actually make. Your existing answers
-are never included unless you ask for them, one question at a time.
+are never included unless you ask for them, one numbered item at a time.
+
+Some questions are built on earlier ones — Day 2 asks you to narrow a long list of values to
+ten, then to five, and each step is worked from the one before it. Where that is so, asking
+for your answers carries the earlier ones as well, because the question cannot be worked on
+without them. They are marked as material to read rather than questions to answer.
+
+**The earlier answer is sometimes on a different page, and sometimes from a different day.**
+Day 3's energy question is worked from Day 1's energy audit, and Day 4's purpose work from
+Day 3's themes, so ticking the box on one day can send what you wrote on another. Which
+answers those are is fixed for each question rather than decided in the moment, and every
+word of it is in the preview like everything else: nothing is carried that you have not been
+shown, on the page where you decide whether to copy it.
 
 That claim is about this application, and it is worth being precise about where the boundary
 is rather than letting it sound wider than it is. Two things sit outside it and always have:

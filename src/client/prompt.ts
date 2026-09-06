@@ -19,7 +19,7 @@
 
 import type { Question, RepeatQuestion } from "../questions/types.ts";
 import { answerKey, fieldKey, orderKey, readOrder } from "./keys.ts";
-import { ASKS, WORKSHEETS } from "./schema.ts";
+import { ASKS, READS, WORKSHEETS } from "./schema.ts";
 
 /**
  * The contract an assistant is asked to answer in — docs/decisions/0015.
@@ -141,6 +141,19 @@ export type Part = {
    * stored. Without it every call site would have to delete the key instead of setting it.
    */
   readonly prior?: Prior | undefined;
+  /**
+   * Answers to the questions this one declares it builds on, keyed by the `reads` entry that
+   * named them — `contextFrom` builds it.
+   *
+   * A map rather than a list, and keyed by the declaration rather than carrying its own idea
+   * of what it is: `promptFor` walks the question's own `reads` and looks each entry up here,
+   * so a key this question does not declare is never read. That bounds WHICH earlier questions
+   * an item can carry — the thing that would otherwise turn an opt-in scoped to a numbered item
+   * back into "everything we happened to have" — and it bounds nothing else: the values are the
+   * caller's verbatim, so this is not a check on what the words are. `contextFrom` is what makes
+   * them the reader's own, and the reader's tick is what makes them travel.
+   */
+  readonly context?: ReadonlyMap<string, Prior> | undefined;
 };
 
 /** The question with this identifier, from the definitions the pages were rendered from. */
@@ -238,6 +251,128 @@ export function priorFrom(
     }
   }
   return fields.size > 0 ? { for: "fields", fields } : undefined;
+}
+
+/** Trim a line of its Markdown and cut it to something a screen reader will not read forever. */
+function clip(line: string): string {
+  const plain = line.replace(/[*_`>#]/g, "").trim();
+  return plain.length > 60 ? `${plain.slice(0, 57)}…` : plain;
+}
+
+/**
+ * A short human name for a question, for the places a screen reader reads one out and for the
+ * heading a carried answer sits under.
+ *
+ * Ordered by what the reader can actually see, which is not what the schema calls the thing.
+ *
+ * A `repeat`'s label names one SLOT, not the question: day 2 has four separate groups whose
+ * label is "Value", because each renders "Value 1", "Value 2"… underneath a heading that is
+ * the real question. Preferring the label gave that page four identical buttons standing for
+ * four different things — and the same on rigorous day 2 (five) and day 1 (three).
+ *
+ * A `sentence` is the sentence. Everything else is named by the FIRST line of its ask, which
+ * is the heading printed directly above the control. This read the LAST line, which is the
+ * line nearest the anchor — usually the tail of a paragraph. All five of day 5's questions
+ * came out as "gap?", so the attribute added to stop a quarter of these buttons reading out
+ * an identifier had replaced unique identifiers with identical fragments: worse on the one
+ * axis it exists for. Across the workbook the three rules together take the pages carrying a
+ * duplicate name from nine to one.
+ *
+ * It lives here rather than in `agent.ts`, where it was written, because a context section
+ * needs the same answer for a question on a page nobody is looking at — and this file already
+ * owns the other half of it, `labelFor`.
+ */
+export function nameFor(
+  question: { readonly kind: string; readonly id: string },
+  group: string,
+): string {
+  if (
+    question.kind === "sentence" &&
+    "template" in question &&
+    typeof question.template === "string" &&
+    question.template !== ""
+  ) {
+    // Gaps are spelled `{excess}` in the template. Read aloud the braces are noise, and
+    // dropping them alone inverts the sentence — "the world has enough excess" — so the gap
+    // is named as the gap it is.
+    return clip(question.template.replace(/\{[^}]*\}/g, "blank"));
+  }
+  const heading = (ASKS[group] ?? "").split("\n").find((line) => clip(line) !== "");
+  if (heading !== undefined) {
+    return clip(heading);
+  }
+  if ("label" in question && typeof question.label === "string" && question.label !== "") {
+    return question.label;
+  }
+  return group;
+}
+
+/**
+ * One field of a stored answer, on its own — the narrowing a `reads` entry naming a field asks
+ * for.
+ *
+ * `undefined` where that field holds nothing, which is what keeps an empty carry out of the
+ * prompt entirely rather than putting a heading over nothing.
+ */
+function onlyField(prior: Prior, field: string): Prior | undefined {
+  if (prior.for === "fields") {
+    const value = prior.fields.get(field);
+    return value === undefined ? undefined : { for: "fields", fields: new Map([[field, value]]) };
+  }
+  const instances = prior.instances
+    .map((instance) => ({
+      ...instance,
+      fields: new Map([...instance.fields].filter(([id]) => id === field)),
+    }))
+    .filter((instance) => instance.fields.size > 0);
+  return instances.length > 0 ? { for: "instances", instances } : undefined;
+}
+
+/**
+ * The answers behind a question's `reads`, ready for `promptFor` to print.
+ *
+ * The other half of `priorFrom`, and deliberately built the same way — from the store as it
+ * stands, by the caller, at the moment the reader ticks the box. `includeAnswers` gates the
+ * whole of it: with the tick off this returns `undefined` and no earlier answer travels at
+ * all, which is 0007 · 2 holding at the widened boundary rather than only at the old one.
+ *
+ * Note what does NOT travel, unlike `priorFrom`: instance identifiers. 0015 · C3 sends those
+ * so a reply can name the entry it updates, and that reasoning is exactly inverted here —
+ * these answers are material to read, not slots to fill, and an id in front of an assistant
+ * is an invitation to return a block that would overwrite a question the reader never opened.
+ * The renderer takes the words and leaves the ids behind.
+ */
+export function contextFrom(
+  // `Question` rather than `Answerable`, to sit beside `priorFrom` at the same call site and
+  // take what the caller holds. A checklist needs no arm of its own: the build refuses one as
+  // a `reads` target and a checklist declares none, so `READS` holds no key for it and the
+  // loop below runs zero times.
+  question: Question,
+  entries: ReadonlyMap<string, string>,
+  includeAnswers: boolean,
+): ReadonlyMap<string, Prior> | undefined {
+  if (!includeAnswers) {
+    return undefined;
+  }
+  const found = new Map<string, Prior>();
+  for (const entry of READS[question.id] ?? []) {
+    const other = findQuestion(entry.group);
+    // A group this build no longer holds. Dropped rather than refused: this runs on a page
+    // that can outlive the schema it was rendered against, and losing one carried answer is a
+    // smaller failure than losing the question it was carried for.
+    if (other === undefined || other.kind === "checklist") {
+      continue;
+    }
+    const prior = priorFrom(other, entries, true);
+    if (prior === undefined) {
+      continue;
+    }
+    const narrowed = entry.field === undefined ? prior : onlyField(prior, entry.field);
+    if (narrowed !== undefined) {
+      found.set(entry.target, narrowed);
+    }
+  }
+  return found.size > 0 ? found : undefined;
 }
 
 /**
@@ -452,7 +587,158 @@ function priorSection(question: Answerable, prior: Prior, level: "##" | "####"):
 }
 
 /** One question of a numbered item, resolved against the schema. */
-type Asked = { readonly question: Answerable; readonly prior: Prior | undefined };
+type Asked = {
+  readonly question: Answerable;
+  readonly prior: Prior | undefined;
+  readonly context: ReadonlyMap<string, Prior> | undefined;
+};
+
+/** One earlier question's answers, as they will be printed. */
+type Carried = { readonly name: string; readonly lines: readonly string[] };
+
+/** A carried answer as bullets — the words, their labels, and no identifiers. */
+function carriedLines(question: Answerable, prior: Prior): readonly string[] {
+  const lines: string[] = [];
+  if (prior.for === "fields") {
+    for (const [field, value] of prior.fields) {
+      lines.push(`- ${labelFor(question, field)}: ${neutralise(value, "  ")}`);
+    }
+    return lines;
+  }
+  for (const instance of prior.instances) {
+    // An instance the reader has not written in is nothing to work from. `priorFrom` lists the
+    // empty ones because a reply has to name every slot; this is the other direction, where a
+    // row saying "nothing written yet" would be an invitation to fill it in.
+    const [first, ...rest] = [...instance.fields];
+    if (first === undefined) {
+      continue;
+    }
+    lines.push(`- ${labelFor(question, first[0])}: ${neutralise(first[1], "  ")}`);
+    for (const [field, value] of rest) {
+      lines.push(`  - ${labelFor(question, field)}: ${neutralise(value, "    ")}`);
+    }
+  }
+  return lines;
+}
+
+/**
+ * The earlier answers this item's questions name, gathered once for the item.
+ *
+ * Walked from each question's own `reads` rather than from the map the caller handed over, so
+ * the schema decides what a prompt may carry and the reader's tick decides only whether it
+ * does. Three things are dropped:
+ *
+ * - a target already being asked about, which happens wherever a numbered item holds both a
+ *   question and something it builds on; its answers reach the prompt as `prior`, with the
+ *   identifiers a reply needs, and printing them twice would say two different things about
+ *   the same words — one of them "do not answer this".
+ * - the same target named by two questions of one item. Day 2's conflict test and its adjusted
+ *   ranking both work from the five, and the five are one list however many questions point at
+ *   it.
+ * - a target with nothing written under it, which contributes no heading rather than an empty
+ *   one.
+ *
+ * Two carried questions whose asks open on the same line share one heading, their bullets
+ * merged under it. No item in this workbook reaches that today — every set of targets was
+ * swept and every heading within a prompt is distinct — and it is a rendering rule rather than
+ * a guard, so it is kept for what it does when one does: two headings reading identically over
+ * different bullets say the material came from two places without saying which, which is worse
+ * than one heading over both.
+ *
+ * The names come from `nameFor`, which is the first line of the ask, and that is the heading a
+ * numbered item's FIRST question carries (#91). So the rigorous Day 5 names Career after the
+ * item and the other four dimensions after themselves. Honest, if lopsided: every heading is a
+ * line the reader has actually read on the page it came from, which is the property worth
+ * keeping. A rule cleverer than "the first line" was tried for the buttons and made things
+ * worse — see `nameFor`.
+ */
+function carriedIn(asking: readonly Asked[]): readonly Carried[] {
+  const asked = new Set(asking.map((one) => one.question.id));
+  const done = new Set<string>();
+  const byName = new Map<string, string[]>();
+
+  for (const one of asking) {
+    for (const entry of READS[one.question.id] ?? []) {
+      if (done.has(entry.target)) {
+        continue;
+      }
+      const answers = one.context?.get(entry.target);
+      if (answers === undefined) {
+        continue;
+      }
+      const other = findQuestion(entry.group);
+      if (other === undefined || other.kind === "checklist" || asked.has(other.id)) {
+        continue;
+      }
+      const lines = carriedLines(other, answers);
+      if (lines.length === 0) {
+        continue;
+      }
+      // Recorded where it is RENDERED, not where it is first seen. `agent.ts` builds every
+      // part's context from one store and one tick, so the two agree — but `Part.context` is
+      // optional per part, and marking a target done on the question that carried nothing for
+      // it silently drops it from the question that did. That is the "carries nothing while
+      // the prompt still reads well" failure this whole feature exists to remove.
+      done.add(entry.target);
+      const name = nameFor(other, other.id);
+      const already = byName.get(name);
+      if (already === undefined) {
+        byName.set(name, [...lines]);
+      } else {
+        already.push(...lines);
+      }
+    }
+  }
+
+  return [...byName].map(([name, lines]) => ({ name, lines }));
+}
+
+/**
+ * What the reader has already said that the questions above build on.
+ *
+ * One section for the whole item, after the questions and before the contract, because that is
+ * the order the assistant reads it in: what to ask, then what I am working from, then how to
+ * hand it back. The instruction is the load-bearing part rather than the material. Without it
+ * an assistant handed twenty of the reader's values under a heading treats them as a question
+ * it has been given and interviews on them — and, worse, offers a block for them, which the
+ * importer would accept as an answer to a question the reader never opened.
+ *
+ * "What I worked out earlier", deliberately not "what I have already written". That is
+ * `priorSection`'s heading, and the two sections say opposite things — it asks to be asked
+ * about, this asks not to be. A question with a prior AND a carry prints both, adjacent, and
+ * the first wording made the second heading a strict prefix extension of the first: two
+ * paragraphs three lines apart, near-identically titled, one saying "Ask me about these too"
+ * and the other "**not** something to ask me about". Reachable today on rigorous Day 4's
+ * intersection. A heading that shares no opening with the other is the whole fix.
+ */
+function carriedSection(carried: readonly Carried[], count: number): string {
+  if (carried.length === 0) {
+    return "";
+  }
+  const blocks = carried.map((one) => `### ${one.name}\n\n${one.lines.join("\n")}`);
+  // Two whole paragraphs rather than one with the singular and the plural swapped into it.
+  // The prompt is hard wrapped, and interpolating a word of a different length mid-line puts
+  // the break somewhere else on every line after it — which `questions` already records
+  // running into, and which the first draft of this section duly reproduced.
+  const instruction =
+    count > 1
+      ? `These are answers I gave earlier in the workbook, and the questions above refer back\n` +
+        `to them. They are here so you have them in front of you — they are **not** questions\n` +
+        `to ask me about. Do not interview me on anything in this part, and do not put any of\n` +
+        `it in a block: the only blocks to send back are the ones for the numbered questions\n` +
+        `above. If something here looks wrong to you, say so in ordinary words and leave it\n` +
+        `alone — I will change it on the page myself.\n`
+      : `These are answers I gave earlier in the workbook, and the question above refers back\n` +
+        `to them. They are here so you have them in front of you — they are **not** something\n` +
+        `to ask me about. Do not interview me on anything in this part, and do not put any of\n` +
+        `it in a block: the only block to send back is the one for the question above. If\n` +
+        `something here looks wrong to you, say so in ordinary words and leave it alone — I\n` +
+        `will change it on the page myself.\n`;
+  return (
+    `\n## What I worked out earlier that this builds on\n\n${instruction}\n` +
+    `${blocks.join("\n\n")}\n`
+  );
+}
 
 /** How to run the interview. The extra rule is only true where there is an order to keep. */
 function howToRunIt(count: number): string {
@@ -650,7 +936,7 @@ export function promptFor(item: string, parts: readonly Part[]): Generated {
     if (part.prior?.for === "instances" && part.prior.instances.some((one) => /[`\r\n]/.test(one.id))) {
       return { ok: false, refusal: { kind: "unprintable-instance", group: part.group } };
     }
-    asking.push({ question, prior: part.prior });
+    asking.push({ question, prior: part.prior, context: part.context });
   }
 
   if (asking.length === 0) {
@@ -659,9 +945,18 @@ export function promptFor(item: string, parts: readonly Part[]): Generated {
       : { ok: false, refusal: { kind: "checklist", group: checklist } };
   }
 
+  // The carried section supplies its own leading and trailing blank line, exactly as
+  // `priorSection` does, so an item that carries nothing produces the string this function
+  // produced before contexts existed — byte for byte, which
+  // `promptFor_AQuestionThatCarriesNothing_IsAssembledExactlyAsItWasBefore` asserts by
+  // rebuilding that string from its parts. A stray newline here reaches every prompt in the
+  // workbook, and every other test in this file reads the prompt with patterns a blank line
+  // does not disturb.
   return {
     ok: true,
-    text: `${howToRunIt(asking.length)}${questions(item, asking)}\n${howToAnswer(asking)}`,
+    text:
+      `${howToRunIt(asking.length)}${questions(item, asking)}` +
+      `${carriedSection(carriedIn(asking), asking.length)}\n${howToAnswer(asking)}`,
   };
 }
 

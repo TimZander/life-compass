@@ -77,6 +77,17 @@ export const DAY5: readonly Question[] = [
     min: 2,
     max: 2,
     fields: [{ id: "move", label: "Move", size: "long" }],
+    // "From the five 'one change' answers" — five fields out of the seventeen that item 2's
+    // five questions hold. The whole of the field form's reason for existing: the other twelve
+    // are a reader's account of their money, their marriage and their calendar, and this
+    // question does not name them.
+    reads: [
+      "day5.career.change",
+      "day5.money.change",
+      "day5.place.change",
+      "day5.people.change",
+      "day5.time.change",
+    ],
   },
   {
     kind: "group",

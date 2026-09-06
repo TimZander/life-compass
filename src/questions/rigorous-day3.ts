@@ -29,6 +29,9 @@ export const RIGOROUS_DAY3: readonly Question[] = [
       { id: "context", label: "What / how / who?", size: "long" },
       { id: "fuel", label: "What specifically fuels me", size: "long" },
     ],
+    // "Return to Day 1's energy audit" — the rigorous track's audit splits the month from the
+    // year, and the ask is about the energizing half of both.
+    reads: ["rday1.month_energized", "rday1.year_energizing"],
   },
   {
     kind: "group",
@@ -78,6 +81,19 @@ export const RIGOROUS_DAY3: readonly Question[] = [
       { id: "name", label: "Theme", size: "long" },
       { id: "data_example", label: "Data example", size: "long" },
       { id: "other_example", label: "Other example", size: "long" },
+    ],
+    // "Group everything above into 3–5 themes" — and every theme "must point to at least one
+    // data example", which is what makes the three record questions part of the material
+    // rather than colour beside it.
+    reads: [
+      "rday3.energy",
+      "rday3.calendar",
+      "rday3.history",
+      "rday3.spending",
+      "rday3.flow",
+      "rday3.attention",
+      "rday3.hypothetical",
+      "rday3.reconciling",
     ],
   },
 ];

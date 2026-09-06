@@ -9,7 +9,8 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
-import { nameFor, wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { nameFor } from "./prompt.ts";
 import { renderQuestion } from "../../build/questions.ts";
 import { buildPages } from "../../build/build.ts";
 import { WORKSHEETS } from "../questions/index.ts";
@@ -1460,5 +1461,82 @@ describe("the copy control on a question", () => {
     assert.match(note, /exactly what goes to your clipboard/i);
     const ONCE = 1;
     assert.equal(document.querySelectorAll(".agent-note").length, ONCE, "it is said more than once");
+  });
+});
+
+describe("the answers an item builds on", () => {
+  const CIRCLED = "Autonomy, Craftsmanship, Curiosity, Freedom, Integrity, Solitude, Wonder";
+  const BRAINSTORM = "day2.brainstorm";
+  const TEN = "day2.shortlist_ten";
+
+  it("wireQuestionControls_TheTick_CarriesWhatTheQuestionBuildsOnAsWellAsItsOwn", async () => {
+    // Arrange — #105. Day 2 renders as five numbered items and each one's input is the previous
+    // one's output, so the prompt for "Narrow to 10" says "From your circled list" and the list
+    // lives under a question in a different item.
+    const document = numbered(["narrow", "2. Narrow to 10 (10 min)", TEN]);
+    wireQuestionControls(
+      document,
+      memoryStorage("on"),
+      entriesFrom(new Map([[BRAINSTORM, CIRCLED]])),
+    );
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+
+    // Act
+    const before = document.querySelector(".agent-preview")?.textContent ?? "";
+    const include = document.querySelector(".agent-panel input") as HTMLInputElement;
+    include.checked = true;
+    include.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+    await settle();
+    const after = document.querySelector(".agent-preview")?.textContent ?? "";
+
+    // Assert — 0007 · 2 holds at the widened boundary: off until asked for, in both directions.
+    assert.ok(!before.includes(CIRCLED), "an earlier item's answer travelled without being asked for");
+    assert.ok(after.includes(CIRCLED), "opting in did not carry what the question builds on");
+  });
+
+  it("wireQuestionControls_UntickingTheBox_TakesTheCarriedAnswersBackOut", async () => {
+    // Arrange — negative case, and the one the preview is answerable for: 0007 · 1 makes the
+    // previewed string and the copied string one value, so a carried answer left standing after
+    // the tick came off would be on the clipboard as well as on the screen.
+    const document = numbered(["narrow", "2. Narrow to 10 (10 min)", TEN]);
+    wireQuestionControls(
+      document,
+      memoryStorage("on"),
+      entriesFrom(new Map([[BRAINSTORM, CIRCLED]])),
+    );
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    const include = document.querySelector(".agent-panel input") as HTMLInputElement;
+    include.checked = true;
+    include.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+    await settle();
+
+    // Act
+    include.checked = false;
+    include.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+    await settle();
+
+    // Assert
+    assert.ok(
+      !(document.querySelector(".agent-preview")?.textContent ?? "").includes(CIRCLED),
+      "a carried answer survived the tick coming off",
+    );
+  });
+
+  it("wireQuestionControls_TheTicksLabel_SaysItCoversWhatTheQuestionBuildsOnToo", async () => {
+    // Arrange — 0007 · 1 asks for the trade to be legible at the moment it is made. What the
+    // tick covers grew with #105, so a label still saying only "what I have already written"
+    // would describe half of what it does on the surface responsible for all of it.
+    const document = numbered(["narrow", "2. Narrow to 10 (10 min)", TEN]);
+    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+
+    // Act
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+
+    // Assert
+    const label = document.querySelector(".agent-panel label");
+    assert.match(label?.textContent ?? "", /builds on/, "the tick does not say what it now covers");
   });
 });

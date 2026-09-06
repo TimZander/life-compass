@@ -30,6 +30,10 @@ export const DAY2: readonly Question[] = [
     min: 10,
     max: 10,
     fields: [{ id: "value", label: "Value", size: "long" }],
+    // "From your circled list" — which is the brainstorm, plus whatever the reader added on
+    // the list's own page. Both, because item 1 says "Add your own" and the reference page is
+    // where those additions are kept, so either alone is a partial reading of one list.
+    reads: ["day2.brainstorm", "values.additions"],
   },
   {
     kind: "repeat",
@@ -39,6 +43,9 @@ export const DAY2: readonly Question[] = [
     min: 5,
     max: 5,
     fields: [{ id: "value", label: "Value", size: "long" }],
+    // The ten, not the fifty. "Force-rank down to 5" is a step of the narrowing, and handing
+    // back the whole brainstorm would reopen a decision the reader has already made.
+    reads: ["day2.shortlist_ten"],
   },
   {
     kind: "repeat",
@@ -53,6 +60,9 @@ export const DAY2: readonly Question[] = [
       { id: "living", label: "Living it looks like", size: "long" },
       { id: "betraying", label: "Betraying it looks like", size: "long" },
     ],
+    // "For each of your 5" — and the five are five words the assistant otherwise has to ask
+    // the reader to say again before it can define the first of them.
+    reads: ["day2.shortlist_five"],
   },
   {
     kind: "repeat",
@@ -65,6 +75,9 @@ export const DAY2: readonly Question[] = [
       { id: "decision", label: "Decision", size: "long" },
       { id: "chosen", label: "The value I actually chose by", size: "long" },
     ],
+    // "Take your ranking from step 3" — the whole exercise is testing that ranking against
+    // real decisions, so a prompt without it is asking about nothing in particular.
+    reads: ["day2.shortlist_five"],
   },
   {
     kind: "repeat",
@@ -74,5 +87,8 @@ export const DAY2: readonly Question[] = [
     min: 5,
     max: 5,
     fields: [{ id: "value", label: "Value", size: "long" }],
+    // The same five its sibling tests. An adjusted ranking is an edit of that list, and the
+    // context section carries it once for the item rather than twice.
+    reads: ["day2.shortlist_five"],
   },
 ];
