@@ -27,11 +27,35 @@ export const RIGOROUS_DAY2: readonly Question[] = [
       { id: "evidence", label: "Evidence", size: "short" },
     ],
   },
-  { kind: "single", id: "rday2.added_from_list", label: "Added from the list", size: "long" },
+  // "Add only words that name something real you missed". Missed from what is the whole
+  // instruction, and the rigorous track's own point is that step 1 comes first.
+  {
+    kind: "single",
+    id: "rday2.added_from_list",
+    label: "Added from the list",
+    size: "long",
+    reads: ["rday2.generated"],
+  },
   // Two singles rather than a group, for the same reason as Day 0: each is introduced by
   // its own bold question and the second carries a sentence after it.
-  { kind: "single", id: "rday2.claimed_not_lived", label: "Claimed but not lived", size: "long" },
-  { kind: "single", id: "rday2.disconfirming", label: "Disconfirming evidence", size: "long" },
+  //
+  // Both run the contrarian check over the candidates from steps 1 and 2, so both name them.
+  // Declared per question rather than once for the item: the item is a fact about the page,
+  // and a question that moved to another page would take its dependency with it.
+  {
+    kind: "single",
+    id: "rday2.claimed_not_lived",
+    label: "Claimed but not lived",
+    size: "long",
+    reads: ["rday2.generated", "rday2.added_from_list"],
+  },
+  {
+    kind: "single",
+    id: "rday2.disconfirming",
+    label: "Disconfirming evidence",
+    size: "long",
+    reads: ["rday2.generated", "rday2.added_from_list"],
+  },
   {
     kind: "repeat",
     id: "rday2.shortlist_ten",
@@ -40,6 +64,15 @@ export const RIGOROUS_DAY2: readonly Question[] = [
     min: 10,
     max: 10,
     fields: [{ id: "value", label: "Value", size: "long" }],
+    // "From everything above" — which on this track is four questions across three items,
+    // the disconfirmation pass included: a candidate this reader has already crossed out is
+    // exactly what an assistant must not put back on the list.
+    reads: [
+      "rday2.generated",
+      "rday2.added_from_list",
+      "rday2.claimed_not_lived",
+      "rday2.disconfirming",
+    ],
   },
   {
     kind: "repeat",
@@ -49,6 +82,7 @@ export const RIGOROUS_DAY2: readonly Question[] = [
     min: 5,
     max: 5,
     fields: [{ id: "value", label: "Value", size: "long" }],
+    reads: ["rday2.shortlist_ten"],
   },
   {
     kind: "repeat",
@@ -64,6 +98,8 @@ export const RIGOROUS_DAY2: readonly Question[] = [
       { id: "betraying", label: "Betraying it looks like", size: "long" },
       { id: "evidence", label: "Day 1 evidence", size: "long" },
     ],
+    // "For each of your 5".
+    reads: ["rday2.shortlist_five"],
   },
   { kind: "single", id: "rday2.aspirations", label: "Aspirations", size: "long" },
   {
@@ -77,6 +113,8 @@ export const RIGOROUS_DAY2: readonly Question[] = [
       { id: "decision", label: "Decision", size: "long" },
       { id: "chosen", label: "The value I actually chose by", size: "long" },
     ],
+    // "Test your ranking against 3 recent hard decisions."
+    reads: ["rday2.shortlist_five"],
   },
   {
     kind: "repeat",
@@ -86,5 +124,6 @@ export const RIGOROUS_DAY2: readonly Question[] = [
     min: 5,
     max: 5,
     fields: [{ id: "value", label: "Value", size: "long" }],
+    reads: ["rday2.shortlist_five"],
   },
 ];

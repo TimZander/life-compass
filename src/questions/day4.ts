@@ -77,5 +77,8 @@ export const DAY4: readonly Question[] = [
       { id: "draft", label: "Draft number", size: "short" },
       { id: "reason", label: "Because", size: "short" },
     ],
+    // "Compare against your three drafts. Which one rings truest?" — a question that names a
+    // draft by number is unanswerable without the numbered drafts in front of you.
+    reads: ["day4.statements"],
   },
 ];

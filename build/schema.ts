@@ -32,7 +32,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CLIENT_DIR } from "./client.ts";
-import { checkSchema, loadSchema } from "./questions.ts";
+import { checkSchema, loadSchema, resolveReads } from "./questions.ts";
 import { asksIn } from "./markdown.ts";
 import { WORKSHEETS, type Worksheet } from "../src/questions/index.ts";
 
@@ -85,11 +85,18 @@ export function schemaSource(
     `//\n` +
     `// The question definitions, served to the page as script because connect-src 'none'\n` +
     `// means it cannot fetch them (docs/decisions/0015).\n` +
-    `import type { Worksheet } from "${toQuestions}/index.ts";\n\n` +
+    `import type { Worksheet } from "${toQuestions}/index.ts";\n` +
+    `import type { ResolvedRead } from "${toQuestions}/types.ts";\n\n` +
     `export const WORKSHEETS: readonly Worksheet[] = ${JSON.stringify(worksheets, null, 2)};\n\n` +
     `/** Question id -> the prose that introduces it on its page (docs/decisions/0004 · C8). */\n` +
     `export const ASKS: Readonly<Record<string, string>> = ${JSON.stringify(
       Object.fromEntries(asks),
+      null,
+      2,
+    )};\n\n` +
+    `/** Question id -> the earlier answers it builds on, already resolved (#105). */\n` +
+    `export const READS: Readonly<Record<string, readonly ResolvedRead[]>> = ${JSON.stringify(
+      Object.fromEntries(resolveReads(loadSchema(worksheets))),
       null,
       2,
     )};\n`

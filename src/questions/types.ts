@@ -23,6 +23,85 @@
  */
 export type Size = "short" | "long";
 
+/**
+ * The earlier answers a question's own prose names.
+ *
+ * Day 2 narrows: fifty words, then ten, then five. Each numbered item's input is the previous
+ * item's output, and the worksheet says so out loud — "from your circled list", "for each of
+ * your 5", "your ranking from step 3". A prompt is built per numbered item (#82), so without
+ * this the assistant is handed an instruction referring to material it cannot see, and its
+ * only move is to make the reader recite their own earlier answers by voice. That is the cost
+ * the bridge exists to remove (0001), and #98 already fixed the same shape for material that
+ * happened to be prose rather than an answer.
+ *
+ * Declared rather than derived. Nothing here may be computed from a heading or a position
+ * (0011), and "which question does this one build on" is a reading of the worksheet's prose
+ * that only a person can make — the ask says "everything above", and what counts as above is
+ * a judgement about the exercise rather than about the page.
+ *
+ * An entry is a frozen identifier: either a whole question (`day2.brainstorm`) or one field of
+ * one (`day5.career.change`). The field form exists because Day 5 asks for "the five 'one
+ * change' answers" out of four questions holding twenty, and carrying the other fifteen is the
+ * quiet bundling 0007 · 2 forbids. The build refuses an entry that names nothing, names a
+ * checklist, or names the question declaring it.
+ *
+ * Only what a question names — never what names it. This does not travel transitively: a
+ * prompt for `day2.operationalised` carries the five, not the five and the ten and the fifty.
+ *
+ * A sibling in the same numbered item needs no entry. Those questions are already in the
+ * prompt, being asked about, and `promptFor` drops a context that duplicates one.
+ */
+export type Reads = readonly string[];
+
+/** What one `reads` entry names: a question, and — where the entry named one — its field. */
+export type ReadTarget = {
+  readonly group: string;
+  readonly field?: string;
+};
+
+/**
+ * A `reads` entry with the question it names already found — what the client is given.
+ *
+ * The client never resolves a target of its own. Splitting one needs the whole schema to say
+ * where the question id ends and the field begins, and a client that did its own splitting
+ * could disagree with the build that verified the declaration: the build would accept
+ * `day5.career.change`, the page would read it as a question called `day5.career.change`, find
+ * nothing, and quietly carry no answers — the defect `reads` exists to fix, arriving through
+ * the fix and saying nothing. So the build resolves every entry once and ships the answer,
+ * exactly as it ships `ASKS` rather than teaching the client to parse Markdown.
+ */
+export type ResolvedRead = ReadTarget & {
+  /** The entry as written, and the key a carried answer travels under. */
+  readonly target: string;
+};
+
+/**
+ * Split a `reads` entry into the question it names and, where it names one, the field.
+ *
+ * Both a question id and a field id contain dots, so the split cannot be done on the string
+ * alone — `day5.career.change` is a field of `day5.career`, and `day2.brainstorm` is a whole
+ * question, and nothing about their shapes says which is which. `has` is what decides, and it
+ * is a parameter because the two callers hold the questions differently: the build has a
+ * `Map` of the schema it is verifying, the client has `findQuestion` over what it shipped
+ * with. One rule in one place; two copies of it would let the build accept an entry the
+ * prompt then silently drops.
+ *
+ * The whole-question reading wins where both would resolve. It cannot arise today —
+ * `checkIdentifiers` refuses one identifier produced by two questions — and preferring the
+ * larger thing is the reading that stays true if that ever changes.
+ */
+export function readTarget(target: string, has: (id: string) => boolean): ReadTarget | undefined {
+  if (has(target)) {
+    return { group: target };
+  }
+  const cut = target.lastIndexOf(".");
+  if (cut <= 0 || cut === target.length - 1) {
+    return undefined;
+  }
+  const group = target.slice(0, cut);
+  return has(group) ? { group, field: target.slice(cut + 1) } : undefined;
+}
+
 /** One answerable field inside a repeated group. */
 export type Field = {
   /** Final identifier segment. Full identifier is `<question id>.<field id>`. */
@@ -38,6 +117,8 @@ export type SingleQuestion = {
   readonly id: string;
   readonly label: string;
   readonly size: Size;
+  /** Earlier answers this question's prose names — see {@link Reads}. */
+  readonly reads?: Reads;
 };
 
 /**
@@ -89,6 +170,8 @@ export type RepeatQuestion = {
   /** Most the reader may add once #24 can add them. Not printed. */
   readonly max: number;
   readonly fields: readonly Field[];
+  /** Earlier answers this question's prose names — see {@link Reads}. */
+  readonly reads?: Reads;
 };
 
 /**
@@ -124,6 +207,8 @@ export type SentenceQuestion = {
   readonly id: string;
   readonly template: string;
   readonly fields: readonly Field[];
+  /** Earlier answers this question's prose names — see {@link Reads}. */
+  readonly reads?: Reads;
 };
 
 /**
@@ -139,6 +224,8 @@ export type GroupQuestion = {
   readonly kind: "group";
   readonly id: string;
   readonly fields: readonly Field[];
+  /** Earlier answers this question's prose names — see {@link Reads}. */
+  readonly reads?: Reads;
 };
 
 export type Question =
@@ -147,6 +234,18 @@ export type Question =
   | RepeatQuestion
   | ChecklistQuestion
   | SentenceQuestion;
+
+/**
+ * What this question builds on — nothing at all for a checklist.
+ *
+ * A checklist is out of the contract entirely (0015), so it neither declares reads nor is a
+ * legal target of one. Reading through this rather than through `question.reads` is what keeps
+ * every caller from having to narrow the union first, and what makes the checklist case one
+ * answer in one place rather than a condition repeated at each of them.
+ */
+export function readsOf(question: Question): Reads {
+  return question.kind === "checklist" ? [] : (question.reads ?? []);
+}
 
 /** Every identifier a question contributes, group and fields alike. */
 export function identifiersOf(question: Question): readonly string[] {

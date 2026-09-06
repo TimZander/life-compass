@@ -23,7 +23,7 @@ import { readBlocks, planFor, explain, type Change, type Plan } from "./agent-an
 import { showBanner, dismissBanner } from "./banner.ts";
 import { bridgeIsOn } from "./bridge.ts";
 import { findQuestion } from "./prompt.ts";
-import { nameFor } from "./agent.ts";
+import { nameFor } from "./prompt.ts";
 import type { Store } from "./store.ts";
 
 function say(text: string): void {

@@ -39,9 +39,19 @@ function worksheetsIn(code: string): unknown {
 }
 
 function asksIn(code: string): Record<string, string> {
-  const found = /^export const ASKS[^=]*= ([\s\S]*);\n$/m.exec(code);
+  // Non-greedy, and anchored on the blank line that separates one export from the next. It was
+  // `([\s\S]*);\n$`, which ran to the end of the file — correct only while ASKS happened to be
+  // last, and silently broken by the export added after it.
+  const found = /^export const ASKS[^=]*= ([\s\S]*?);\n\n/m.exec(code);
   assert.ok(found?.[1] !== undefined, "the module does not export ASKS");
   return JSON.parse(found[1]) as Record<string, string>;
+}
+
+/** Read READS back out of generated source, the way an importer would. */
+function readsIn(code: string): Record<string, { target: string; group: string; field?: string }[]> {
+  const found = /^export const READS[^=]*= ([\s\S]*);\n$/m.exec(code);
+  assert.ok(found?.[1] !== undefined, "the module does not export READS");
+  return JSON.parse(found[1]) as Record<string, { target: string; group: string; field?: string }[]>;
 }
 
 describe("schemaSource", () => {
@@ -54,6 +64,7 @@ describe("schemaSource", () => {
     // Assert
     assert.match(code, /^export const WORKSHEETS/m);
     assert.match(code, /^export const ASKS/m);
+    assert.match(code, /^export const READS/m);
   });
 
   it("schemaSource_Always_ImportsItsTypeAsATypeOnly", () => {
@@ -65,6 +76,7 @@ describe("schemaSource", () => {
 
     // Assert
     assert.match(code, /^import type \{ Worksheet \}/m);
+    assert.match(code, /^import type \{ ResolvedRead \}/m);
   });
 
   it("schemaSource_TheWorksheetsGiven_AreTheWorksheetsCarried", () => {
@@ -102,6 +114,39 @@ describe("schemaSource", () => {
     // Assert
     assert.deepEqual(worksheetsIn(code), []);
     assert.deepEqual(asksIn(code), {});
+    assert.deepEqual(readsIn(code), {});
+  });
+
+  it("schemaSource_AQuestionThatReadsAField_CarriesTheTargetAlreadySplit", () => {
+    // Arrange — the client never splits a target of its own, because only the schema knows
+    // where a question id ends and a field id begins. `day5.career.change` is one field of
+    // `day5.career`; read as a whole question it names nothing, and the answers are silently
+    // never carried.
+    // Act
+    const carried = readsIn(schemaSource(WORKSHEETS, new Map()));
+
+    // Assert
+    assert.deepEqual(carried["day5.realignment"]?.[0], {
+      target: "day5.career.change",
+      group: "day5.career",
+      field: "change",
+    });
+    assert.deepEqual(carried["day2.shortlist_ten"]?.[0], {
+      target: "day2.brainstorm",
+      group: "day2.brainstorm",
+    });
+  });
+
+  it("schemaSource_AQuestionThatReadsNothing_IsLeftOutRatherThanCarriedEmpty", () => {
+    // Arrange — negative case. 79 of the 113 questions declare nothing, and the client treats
+    // a missing key and an empty list identically, so an entry per question would be bytes
+    // shipped to every reader to say nothing.
+    // Act
+    const carried = readsIn(schemaSource(WORKSHEETS, new Map()));
+
+    // Assert
+    assert.equal(carried["day2.brainstorm"], undefined);
+    assert.equal(carried["day1.chapters"], undefined);
   });
 });
 

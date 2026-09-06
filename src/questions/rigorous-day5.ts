@@ -52,6 +52,9 @@ export const RIGOROUS_DAY5: readonly Question[] = [
   {
     kind: "repeat",
     id: "rday5.realignment",
+    // "From the five 'one change' answers" — on this track each dimension IS its one change,
+    // so the five questions travel whole rather than a field out of each.
+    reads: ["rday5.career", "rday5.money", "rday5.place", "rday5.people", "rday5.time"],
     instances: "row",
     label: "Move",
     min: 2,

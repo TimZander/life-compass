@@ -72,6 +72,16 @@ export const DAY5: readonly Question[] = [
     id: "day5.realignment",
     instances: "row",
     label: "Move",
+    // "From the five 'one change' answers" — five fields out of the twenty item 2 holds. The
+    // whole of the field form's reason for existing: the other fifteen are a reader's account
+    // of their money, their marriage and their calendar, and this question does not name them.
+    reads: [
+      "day5.career.change",
+      "day5.money.change",
+      "day5.place.change",
+      "day5.people.change",
+      "day5.time.change",
+    ],
     // "pick the 1–2 you'll actually do" — one is a complete answer, but two slots are
     // what the worksheet printed and what the ask invites. See the note on min.
     min: 2,

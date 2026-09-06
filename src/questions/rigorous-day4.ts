@@ -28,7 +28,15 @@ export const RIGOROUS_DAY4: readonly Question[] = [
       },
     ],
   },
-  { kind: "single", id: "rday4.outside_input", label: "Strengths others named", size: "long" },
+  // "Compare it against the list above." The list is step 1, and the point of the exercise is
+  // finding what somebody else named that the reader did not.
+  {
+    kind: "single",
+    id: "rday4.outside_input",
+    label: "Strengths others named",
+    size: "long",
+    reads: ["rday4.advantages"],
+  },
   { kind: "single", id: "rday4.who", label: "Who", size: "long" },
   { kind: "single", id: "rday4.problem", label: "Problem", size: "long" },
   { kind: "single", id: "rday4.changes", label: "What changes", size: "long" },
@@ -57,9 +65,31 @@ export const RIGOROUS_DAY4: readonly Question[] = [
       { id: "third", label: "Third", size: "short" },
     ],
   },
-  { kind: "single", id: "rday4.good_at", label: "Good at", size: "long" },
-  { kind: "single", id: "rday4.energizes", label: "Energizes me", size: "long" },
-  { kind: "single", id: "rday4.world_needs", label: "The world needs / who I’d serve", size: "long" },
+  // The three inputs to the intersection each name where they come from, in the worksheet's
+  // own parentheses: "(my step-1 unfair advantages)", "(my Day 3 themes)", "(from step 3)".
+  // `intersection` itself names none of them — it is the overlap of the three questions
+  // beside it in the same numbered item, which are already in the prompt.
+  {
+    kind: "single",
+    id: "rday4.good_at",
+    label: "Good at",
+    size: "long",
+    reads: ["rday4.advantages"],
+  },
+  {
+    kind: "single",
+    id: "rday4.energizes",
+    label: "Energizes me",
+    size: "long",
+    reads: ["rday3.themes"],
+  },
+  {
+    kind: "single",
+    id: "rday4.world_needs",
+    label: "The world needs / who I’d serve",
+    size: "long",
+    reads: ["rday4.who", "rday4.problem", "rday4.changes"],
+  },
   { kind: "single", id: "rday4.intersection", label: "Intersection", size: "long" },
   {
     kind: "repeat",
@@ -69,6 +99,8 @@ export const RIGOROUS_DAY4: readonly Question[] = [
     min: 3,
     max: 3,
     fields: [{ id: "statement", label: "To", size: "long" }],
+    // "Build them from the intersection above."
+    reads: ["rday4.intersection"],
   },
   { kind: "single", id: "rday4.eulogy", label: "Eulogy", size: "long" },
   {
@@ -79,6 +111,16 @@ export const RIGOROUS_DAY4: readonly Question[] = [
       { id: "draft", label: "Draft number", size: "short" },
       { id: "reason", label: "Because", size: "short" },
     ],
+    // "Which of your three drafts rings truest against that?" — unanswerable by number alone.
+    reads: ["rday4.statements"],
   },
-  { kind: "single", id: "rday4.revised", label: "Revised purpose statement", size: "long" },
+  // "For your truest draft" — which is the draft `chosen_draft` names, and naming it is a
+  // number until the drafts themselves are here to number.
+  {
+    kind: "single",
+    id: "rday4.revised",
+    label: "Revised purpose statement",
+    size: "long",
+    reads: ["rday4.statements", "rday4.chosen_draft"],
+  },
 ];

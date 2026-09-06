@@ -23,6 +23,9 @@ export const DAY3: readonly Question[] = [
       { id: "context", label: "What / how / who", size: "long" },
       { id: "fuel", label: "What specifically fuels me", size: "long" },
     ],
+    // "Return to Day 1's energy audit" — a different worksheet, which is the case that makes
+    // this a declared identifier rather than anything a page could work out for itself.
+    reads: ["day1.energizers"],
   },
   {
     kind: "repeat",
@@ -54,6 +57,17 @@ export const DAY3: readonly Question[] = [
       { id: "example_1", label: "Example", size: "long" },
       { id: "example_2", label: "Example", size: "long" },
       { id: "example_3", label: "Example", size: "long" },
+    ],
+    // "Look across steps 1–4" — this is the one question in the workbook whose ask names the
+    // whole worksheet above it, so the list is long by the exercise's own design rather than
+    // by an appetite for context. Grouping is what it asks for; there is nothing to group
+    // without them.
+    reads: [
+      "day3.energy",
+      "day3.flow",
+      "day3.attention",
+      "day3.hypothetical",
+      "day3.reveals",
     ],
   },
 ];
