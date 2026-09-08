@@ -13,9 +13,10 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
-import { wirePaste } from "./paste.ts";
+import { wirePaste, wirePasteSurface, type PasteElements } from "./paste.ts";
 import { layout } from "../../build/layout.ts";
 import { answerKey, orderKey, writeOrder } from "./keys.ts";
+import { EXAMPLE_GROUP } from "./prompt.ts";
 import type { Store } from "./store.ts";
 
 let window: Window;
@@ -34,6 +35,8 @@ after(() => {
   void window.close();
 });
 
+/** The live region the layout emits, so banner messages have somewhere to go. */
+const REGION = '<div id="banner-region" role="status" aria-live="polite"></div>';
 const SINGLE = "day4.eulogy";
 const REPEAT = "day1.chapters";
 
@@ -733,5 +736,128 @@ describe("saving what was shown", () => {
 
     // Assert
     assert.equal(fake.merged.length, NOTHING_SAVED);
+  });
+});
+
+describe("the surface away from the page that carries it", () => {
+  /**
+   * The same surface, driven through elements that are on no page and have no identifiers.
+   *
+   * This is what #110's panel will hand over, and it is the whole claim of the split: the
+   * review that keeps 0007 · C3 true is one piece of code, not one per place it appears.
+   */
+  function bare(fake: ReturnType<typeof recorder>, options: Parameters<typeof wirePasteSurface>[3] = {}) {
+    const document = window.document as unknown as Document;
+    document.body.innerHTML = REGION;
+    const make = <K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] =>
+      document.createElement(tag) as HTMLElementTagNameMap[K];
+    const elements = {
+      text: make("textarea"),
+      read: make("button"),
+      confirm: make("div"),
+      summary: make("p"),
+      detail: make("div"),
+      skipped: make("p"),
+      go: make("button"),
+      cancel: make("button"),
+    } satisfies PasteElements;
+    // Attached, because a detached tree has no live region for the banner and no layout for
+    // anything to be hidden from. Nothing here carries an id: finding elements is the job this
+    // function exists to prove the surface no longer does.
+    document.body.append(...Object.values(elements));
+    wirePasteSurface(document, elements, () => Promise.resolve(fake.store), options);
+    return {
+      ...elements,
+      banner: () => document.getElementById("banner-region")?.textContent ?? "",
+    };
+  }
+
+  it("wirePasteSurface_ElementsWithNoIdentifiers_AreDrivenAllTheSame", async () => {
+    // Arrange — read, review and save, against elements this module did not find for itself.
+    const ANSWER = "That I showed up.";
+    const fake = recorder();
+    const view = bare(fake);
+    view.text.value = reply(block(SINGLE, { answer: ANSWER }));
+
+    // Act
+    view.read.click();
+    await settle();
+    const reviewed = view.confirm.hidden;
+    view.go.click();
+    await settle();
+
+    // Assert
+    assert.equal(reviewed, false, "the review never opened");
+    assert.equal(fake.merged.length, 1, "the answers were not saved once");
+    assert.deepEqual([...(fake.merged[0] ?? new Map())], [[SINGLE, ANSWER]]);
+    assert.equal(view.confirm.hidden, true, "the review stayed up after saving");
+  });
+
+  it("wirePasteSurface_ASaveHook_IsGivenWhatLandedAndWhatDidNot", async () => {
+    // Arrange — both numbers, because the caller decides what to say and cannot say it
+    // without them. The stranded count is a block that still named the example question.
+    const seen: { saved: number; stranded: number }[] = [];
+    const fake = recorder();
+    const view = bare(fake, { onSaved: (result) => void seen.push({ ...result }) });
+    view.text.value = [
+      reply(block(SINGLE, { answer: "mine" })),
+      reply(block(EXAMPLE_GROUP, { answer: "left on the placeholder" })),
+    ].join("\n\n");
+
+    // Act
+    view.read.click();
+    await settle();
+    view.go.click();
+    await settle();
+
+    // Assert
+    const ONE = 1;
+    assert.deepEqual(seen, [{ saved: ONE, stranded: ONE }]);
+  });
+
+  it("wirePasteSurface_ASaveHook_ReplacesTheEndingRatherThanRunningBesideIt", async () => {
+    // Arrange — negative case, and the reason the hook exists. #110's panel reloads the page,
+    // so the default ending would empty a box that is about to be thrown away and say "open
+    // the worksheet to see them" to a reader already on it.
+    const REPLY = reply(block(SINGLE, { answer: "mine" }));
+    const fake = recorder();
+    const view = bare(fake, { onSaved: () => undefined });
+    view.text.value = REPLY;
+
+    // Act
+    view.read.click();
+    await settle();
+    view.go.click();
+    await settle();
+
+    // Assert
+    assert.equal(fake.merged.length, 1, "the hook stopped the answers being saved");
+    assert.equal(view.text.value, REPLY, "the default ending emptied the box behind the hook");
+    assert.doesNotMatch(view.banner(), /Saved/, "the default ending spoke behind the hook");
+  });
+
+  it("wirePasteSurface_ASaveHook_RunsOnceTheSurfaceHasAlreadyStoodDown", async () => {
+    // Arrange — a hook that reloads must not race a surface still holding an applied plan. So
+    // what it observes is the settled state, not the one it has to clean up after.
+    const observed: { confirm: boolean; go: string | null }[] = [];
+    const fake = recorder();
+    let view: ReturnType<typeof bare> | undefined;
+    view = bare(fake, {
+      onSaved: () =>
+        void observed.push({
+          confirm: view?.confirm.hidden ?? false,
+          go: view?.go.getAttribute("aria-disabled") ?? null,
+        }),
+    });
+    view.text.value = reply(block(SINGLE, { answer: "mine" }));
+
+    // Act
+    view.read.click();
+    await settle();
+    view.go.click();
+    await settle();
+
+    // Assert
+    assert.deepEqual(observed, [{ confirm: true, go: "true" }]);
   });
 });
