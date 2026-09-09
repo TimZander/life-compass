@@ -22,6 +22,43 @@
 import { promptFor, priorFrom, contextFrom, findQuestion, explain, nameFor } from "./prompt.ts";
 import { showBanner, dismissBanner } from "./banner.ts";
 import { bridgeIsOn, setBridge } from "./bridge.ts";
+// Types only, so the emit carries no edge to it: `paste.ts` reaches the reply reader and the
+// planner, and a worksheet must not pay for either until a reader asks to bring answers back.
+// The value import is the `await import` inside the panel, on a tap.
+import type { PasteElements, PasteSurface } from "./paste.ts";
+import type { Store } from "./store.ts";
+
+/**
+ * What the bridge needs from the page it is wired into.
+ *
+ * An object rather than four positional arguments, and every field required: three of them
+ * exist only for the paste half, and a caller that forgot one would ship a panel whose Save
+ * button writes and then leaves the worksheet showing the answers it had before.
+ */
+export type BridgeOptions = {
+  /** Everything stored, read fresh each time a panel opens. */
+  readonly readEntries: () => Promise<ReadonlyMap<string, string>>;
+  /** Opened when a reader actually pastes something, not when the page loads. */
+  readonly openStore: () => Promise<Store>;
+  /**
+   * Told what to say once answers have landed, to be said after the reload. Must not throw.
+   *
+   * A sentence rather than counts, because the sentence is built where the wording lives: the
+   * stranded half of it is `paste.ts`'s, and that module is in hand at the moment this runs.
+   * Handing counts to `app.ts` would put a second copy of that wording in a third file.
+   */
+  readonly onSaved: (message: string) => void;
+  /**
+   * Start the page again, so the fields show what is now stored.
+   *
+   * `bindAnswers` restores a stored answer only into a blank that is still empty, so without
+   * this the answers just saved are in the store and nowhere on screen. `wireRestore` and
+   * `wireErase` reload for exactly this reason, and both record that `reload()` fires
+   * `pagehide`, which `app.ts` flushes on — so a phrase being dictated elsewhere on the page
+   * is not lost to it.
+   */
+  readonly reload: () => void;
+};
 
 function say(text: string): void {
   // Every message here offers a way out. banner.ts pins the region to the bottom of the
@@ -86,6 +123,15 @@ type Panel = {
   readonly element: HTMLElement;
   /** Rebuild the payload from the store as it is NOW, and show it. */
   readonly refresh: () => Promise<void>;
+  /**
+   * Put the panel back to how it opens: the prompt showing, no plan pending.
+   *
+   * Called when the panel closes. A review is built from one read of the store, so one left
+   * standing behind a closed panel is a Save button offering a plan measured against answers
+   * the reader may have changed since — the staleness #83 records for the copy half, at the
+   * altitude only the thing that owns both halves can see.
+   */
+  readonly rest: () => void;
 };
 
 /**
@@ -96,12 +142,143 @@ type Panel = {
  */
 type ResolvedPart = { readonly group: string; readonly question: NonNullable<ReturnType<typeof findQuestion>> };
 
+/**
+ * The half of the panel that brings a reply back: the box, and the review before it lands.
+ *
+ * Built here, driven by `paste.ts`. The review 0007 · C3 asks for is one piece of code however
+ * many places the surface appears (#111), so nothing about what a reader is shown before an
+ * irreversible write is decided in this file — only where the elements are and what happens
+ * once answers have landed.
+ *
+ * `paste.ts` arrives on the tap that reveals this, not on page load. It reaches the reply
+ * reader and the planner, and a reader who opens a panel to copy a prompt and never pastes
+ * anything should not pay for either.
+ */
+function replyHalfFor(
+  document: Document,
+  item: NumberedItem,
+  options: BridgeOptions,
+): { readonly element: HTMLElement; readonly standDown: () => void; readonly enter: () => void } {
+  const element = document.createElement("div");
+  element.className = "agent-reply";
+  element.id = `agent-reply-${item.id}`;
+  element.hidden = true;
+
+  const text = document.createElement("textarea");
+  text.rows = 6;
+  text.spellcheck = false;
+  const label = document.createElement("label");
+  // The label wraps the field rather than pointing at it, so a panel mints no identifier of
+  // its own. There is one panel per numbered item and up to eight on a page; `for`/`id` would
+  // need a scheme, and the only thing needing one is `aria-controls` on the swap.
+  label.append(document.createTextNode("The assistant's reply — paste the whole of it"), text);
+
+  const read = document.createElement("button");
+  read.type = "button";
+  read.textContent = "Read this reply";
+  read.setAttribute("aria-disabled", "true");
+
+  const confirm = document.createElement("div");
+  confirm.hidden = true;
+  const heading = document.createElement("p");
+  heading.className = "agent-reply-heading";
+  heading.textContent = "What this would change";
+  const summary = document.createElement("p");
+  const skipped = document.createElement("p");
+  // The same class `paste.ts` gives the one on /agent, because it is the same warning doing the
+  // same job and the stylesheet already says how it looks. `role="status"` and present from the
+  // start: a screen reader announces a change to a region that existed beforehand, and one
+  // created and filled in the same task is routinely missed (0001).
+  skipped.className = "paste-skipped";
+  skipped.setAttribute("role", "status");
+  skipped.hidden = true;
+  const detail = document.createElement("div");
+  const go = document.createElement("button");
+  go.type = "button";
+  go.textContent = "Save these answers";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+
+  // INSIDE `confirm`, all of it. `paste.ts` hides the review by hiding that one element, so
+  // siblings would leave this heading standing over a review that had been emptied — the
+  // containment its `PasteElements` states and cannot check.
+  //
+  // A `p` rather than an `h3`: a panel sits at whatever depth its worksheet put it, so a fixed
+  // level would land wrong on most pages, and a heading at the wrong level is worse for
+  // navigation than prose that reads as a heading.
+  confirm.append(heading, summary, skipped, detail, go, cancel);
+  element.append(label, read, confirm);
+
+  const elements = {
+    text,
+    read,
+    confirm,
+    summary,
+    detail,
+    skipped,
+    go,
+    cancel,
+  } satisfies PasteElements;
+
+  let surface: PasteSurface | null = null;
+  let wiring: Promise<void> | null = null;
+
+  // Until the module lands the button is on screen and inert, and a control that appears to do
+  // nothing is the silence 0008 forbids. Registered before the surface's own listener and
+  // saying nothing once there is one.
+  read.addEventListener("click", () => {
+    if (surface === null) {
+      say("Still getting ready to read a reply — try again in a moment.");
+    }
+  });
+
+  const enter = (): void => {
+    // Wired once, which `wirePasteSurface` requires: a second wiring over one element set
+    // attaches a second set of listeners, each with its own pending plan, so one tap of Save
+    // would merge twice.
+    wiring ??= import("./paste.ts")
+      .then(({ wirePasteSurface, strandedNote }) => {
+        surface = wirePasteSurface(elements, options.openStore, {
+          onSaved: ({ answers, strandedBlocks }) => {
+            const line = `Saved ${answers} ${answers === 1 ? "answer" : "answers"}. They are on this page now.`;
+            // Guarded here as well as in `paste.ts`, because the reload must happen either
+            // way. Left to that backstop, a sentence that could not be stashed would take the
+            // reload down with it — and a worksheet still showing blanks over answers that are
+            // saved is worse than a missing message.
+            try {
+              options.onSaved(
+                strandedBlocks === 0 ? line : `${line} ${strandedNote(strandedBlocks)}`,
+              );
+            } catch (error) {
+              console.error("life-compass: the save could not be announced", error);
+            }
+            options.reload();
+          },
+        });
+        read.removeAttribute("aria-disabled");
+      })
+      .catch((error: unknown) => {
+        // Cleared, so the next tap tries again rather than awaiting a promise that has already
+        // failed. Said to the reader as well as the console: this is the route somebody who
+        // cannot type comfortably came for.
+        wiring = null;
+        console.error("life-compass: the reply box could not be loaded", error);
+        say("The box for bringing a reply back could not be loaded. Reloading the page may fix it.");
+      });
+    text.focus();
+  };
+
+  return { element, standDown: () => surface?.standDown(), enter };
+}
+
 /** Build the panel an item's button opens: the payload, in full, and what to do with it. */
 function panelFor(
   document: Document,
   item: NumberedItem,
-  readEntries: () => Promise<ReadonlyMap<string, string>>,
+  options: BridgeOptions,
 ): Panel {
+  const { readEntries } = options;
   const { name } = item;
   const element = document.createElement("div");
   element.className = "agent-panel";
@@ -278,8 +455,66 @@ function panelFor(
   // acts on it come AFTER the payload they describe, so nothing asks the reader to agree to
   // something they have not been shown yet (0007 · 1). Reversing this list left the copy
   // button above the text it copies, with the suite green.
-  element.append(includeLabel, scrollNote, preview, note, copy);
-  return { element, refresh };
+  const prompt = document.createElement("div");
+  prompt.className = "agent-prompt";
+  prompt.append(includeLabel, scrollNote, preview, note, copy);
+
+  const { element: reply, standDown, enter } = replyHalfFor(document, item, options);
+
+  /**
+   * The two halves, one at a time.
+   *
+   * Never both: before a reader has copied there is nothing to paste, and once they have, the
+   * preview has done its job. Showing both would double the panel's height on the phone this
+   * is used from, which is the clutter this shape exists to avoid — #110 asks for the reply to
+   * come back where the prompt was copied, not for a second box beside it.
+   */
+  const show = (half: "prompt" | "reply"): void => {
+    // The plan goes when the reply half does. It was built from one read of the store, and a
+    // reader who goes back to the prompt, dictates, and returns must not find Save still
+    // offering it.
+    if (half === "prompt") {
+      standDown();
+    }
+    prompt.hidden = half === "reply";
+    reply.hidden = half === "prompt";
+    toReply.setAttribute("aria-expanded", half === "reply" ? "true" : "false");
+  };
+
+  const toReply = document.createElement("button");
+  toReply.type = "button";
+  toReply.className = "agent-swap";
+  toReply.textContent = "Paste a reply";
+  // Named for the item, like the button that opens the panel: a screen reader listing this
+  // page's buttons would otherwise find one "Paste a reply" per numbered item with nothing
+  // saying which is which (0001).
+  toReply.setAttribute("aria-label", `Paste an assistant's reply about ${name}`);
+  toReply.setAttribute("aria-controls", reply.id);
+  toReply.setAttribute("aria-expanded", "false");
+  toReply.addEventListener("click", () => {
+    show("reply");
+    // Focus follows the swap, on an explicit tap. 0001 forbids moving somebody mid-dictation;
+    // it does not forbid putting the caret where the reader just asked to type.
+    enter();
+  });
+
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "agent-swap";
+  back.textContent = "Back to the prompt";
+  back.setAttribute("aria-label", `Back to the prompt for ${name}`);
+  back.addEventListener("click", () => {
+    show("prompt");
+    // Returned to the control that left, rather than dropped to the body. `standDown` hides
+    // the review, and hiding an element that holds focus is what `erase.ts` records as
+    // stranding a keyboard reader with nothing announced.
+    toReply.focus();
+  });
+  reply.append(back);
+
+  prompt.append(toReply);
+  element.append(prompt, reply);
+  return { element, refresh, rest: () => show("prompt") };
 }
 
 /** One numbered item's worth of control: what it covers, what to call it, where it goes. */
@@ -407,20 +642,20 @@ function itemsOn(document: Document): readonly NumberedItem[] {
 export function wireQuestionControls(
   document: Document,
   storage: Storage | null,
-  readEntries: () => Promise<ReadonlyMap<string, string>>,
+  options: BridgeOptions,
 ): void {
   if (!bridgeIsOn(storage)) {
     return;
   }
 
   for (const item of itemsOn(document)) {
-    // Idempotent. Nothing calls this twice today, but it is exported, the tests call it
-    // directly, and #68's paste path will want to re-run it — and a second pass would give
-    // every item two controls whose panels share one id.
     // Idempotent, keyed on the panel this item would build rather than on what sits beside it.
-    // Nothing calls this twice today, but it is exported, the tests call it directly, and #68's
-    // paste path will want to re-run it — and a second pass would give every item two controls
-    // whose panels share one id.
+    // Nothing calls this twice today, but it is exported and the tests call it directly — and a
+    // second pass would give every item two controls whose panels share one id, and two reply
+    // boxes wired over one element set, which `wirePasteSurface` forbids.
+    //
+    // Written out twice, in two spellings, until #110 — the duplication this file's own
+    // comments elsewhere argue against.
     if (document.getElementById(`agent-panel-${item.id}`) !== null) {
       continue;
     }
@@ -439,7 +674,7 @@ export function wireQuestionControls(
     // orphan and for the names paste.ts shows per group.
     open.setAttribute("aria-label", `Ask an assistant about ${item.name}`);
 
-    const panel = panelFor(document, item, readEntries);
+    const panel = panelFor(document, item, options);
     open.setAttribute("aria-controls", panel.element.id);
     open.setAttribute("aria-expanded", "false");
 
@@ -451,7 +686,12 @@ export function wireQuestionControls(
         // Built on open rather than on load: up to eight payloads for a page nobody has asked
         // anything of is work with no reader waiting for it.
         void panel.refresh();
+        return;
       }
+      // Closed, so back to how it opens. A review left standing behind a closed panel is a
+      // Save button offering a plan built from a read of the store the reader has had every
+      // opportunity to make stale since.
+      panel.rest();
     });
 
     // Under the heading, never after the questions. Appending put the control after every field

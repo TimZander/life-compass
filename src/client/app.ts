@@ -30,6 +30,15 @@ import { dismissBanner, showBanner } from "./banner.ts";
 const RESTORED_KEY = "life-compass:restored";
 /** Where a just-completed erase leaves its count, to be reported after the reload. */
 const ERASED_KEY = "life-compass:erased";
+/**
+ * Where a reply saved from a worksheet panel leaves its message, to be said after the reload.
+ *
+ * The whole sentence rather than a count, unlike the two above. The wording is built where the
+ * wording lives — the stranded half of it belongs to `paste.ts`, which the panel has in hand at
+ * that moment and this file does not — so carrying a number here would put a second copy of it
+ * in a third place.
+ */
+const PASTED_KEY = "life-compass:pasted";
 
 /**
  * Everything this page does, in one awaitable call.
@@ -80,6 +89,7 @@ export async function start(): Promise<void> {
 
   confirmRecentRestore();
   confirmRecentErase();
+  confirmRecentPaste();
   try {
     await bindAnswerFields();
   } catch (error) {
@@ -182,7 +192,21 @@ async function wireAssistantBridge(): Promise<void> {
         });
     }
 
-    wireQuestionControls(document, storage, async () => {
+    wireQuestionControls(document, storage, {
+      openStore: store,
+      onSaved: (message) => {
+        // Guarded, because storage access throws where site data is blocked — a
+        // privacy-minded reader, which is the audience here. `onRestored` wraps the identical
+        // call for the identical reason: the answers have already landed, and only the
+        // sentence afterwards is lost.
+        try {
+          window.sessionStorage.setItem(PASTED_KEY, message);
+        } catch {
+          // Said nothing rather than said twice. The reload still happens.
+        }
+      },
+      reload: () => window.location.reload(),
+      readEntries: async () => {
       // Answers are written on a debounce (up to five seconds), so without this a reader who
       // dictates a chapter and taps straight away hands over the value from before their
       // last pause. `flushAnswers` is set once the fields are bound; before that there is
@@ -201,6 +225,7 @@ async function wireAssistantBridge(): Promise<void> {
         // the failure has to reach it.
         throw error;
       }
+      },
     });
   } catch (error) {
     // Its own message, distinct from the load failure above. Wrapping these calls in THAT
@@ -480,6 +505,39 @@ async function bindAnswerFields(): Promise<void> {
  * ever sees. Read and cleared immediately, so it is said once rather than on every
  * subsequent load.
  */
+/**
+ * Say what a reply saved from a worksheet panel changed, now the page has started again.
+ *
+ * The same shape as `confirmRecentRestore`, and guarded the same way for the same reason: the
+ * getter itself throws where site data is blocked, and unguarded at this point that would abort
+ * before the fields were bound — a rare-event confirmation disabling the whole application for
+ * the readers most likely to meet it.
+ *
+ * The message is stored whole, so nothing here decides what it says. This runs on every page
+ * load and finds something only after a save the panel did.
+ */
+function confirmRecentPaste(): void {
+  let message: string | null = null;
+  try {
+    message = window.sessionStorage.getItem(PASTED_KEY);
+  } catch {
+    return;
+  }
+  if (message === null) {
+    return;
+  }
+  try {
+    window.sessionStorage.removeItem(PASTED_KEY);
+  } catch {
+    // Said once is the intent; said twice is better than the application not starting.
+  }
+  showBanner({
+    id: "paste",
+    text: message,
+    actions: [{ label: "Dismiss", onSelect: () => dismissBanner("paste") }],
+  });
+}
+
 function confirmRecentRestore(): void {
   let count: string | null = null;
   // Guarded, and the getter itself can throw. Unguarded at module scope this aborted

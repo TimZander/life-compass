@@ -150,7 +150,7 @@ function summarise(plan: Plan): string {
  * than inside the surface, because `wirePaste`'s ending needs it too and a second copy there
  * is exactly what this exists to prevent.
  */
-function strandedNote(count: number): string {
+export function strandedNote(count: number): string {
   return count === 1
     ? "One block of that reply still named the example question, so nothing in it could be matched. If a question you talked about is missing, that is the one — ask your assistant to send it again with the question's own name."
     : `${count} blocks of that reply still named the example question, so nothing in them could be matched. If questions you talked about are missing, those are the ones — ask your assistant to send them again with each question's own name.`;

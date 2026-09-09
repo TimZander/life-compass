@@ -14,8 +14,11 @@ are for you to work through yourself, so they get no button.
 Nothing happens automatically, and nothing happens to a question you do not ask about.
 
 **Bringing the answers back.** The assistant hands you a block of text at the end. Copy the
-whole reply — the block and the words around it — and paste it into the box further down this
-page. One paste can carry a single question, a whole day, or everything you worked through.
+whole reply — the block and the words around it — and paste it back where you copied the
+prompt from: the same panel has a **Paste a reply** button, and it swaps the prompt for a box.
+There is also a box further down this page, which does the same thing for a reply you have
+carried further. One paste can carry a single question, a whole day, or everything you worked
+through, whichever box you use.
 
 Nothing is read until you ask for it, and nothing is saved until you have seen what it would
 change. Answers that fill a blank are counted; anything that would replace words you wrote is
