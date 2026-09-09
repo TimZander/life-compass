@@ -10,9 +10,8 @@
  * question, a day, or a whole compass and route each block where it belongs.
  *
  * Loaded only on /agent, which is why it may import the reader statically: no worksheet page
- * pulls this in yet. #110 is where a worksheet's own panel becomes the second caller, and it
- * will import this on a tap rather than on load, because the reader and the planner arrive
- * with it.
+ * pulls this in. #110 is where a worksheet's own panel becomes a second caller, and it will
+ * import this on a tap rather than on load, because the reader and the planner arrive with it.
  *
  * Nothing is read until the reader asks for it, and nothing is written until they have seen
  * what would change. 0007 · C3 forbids a silent overwrite, and the shape that satisfies it
@@ -20,25 +19,25 @@
  * an addition fills a blank and needs no review, while a whole day's additions shown in full
  * would put a screen of text between the reader and the button.
  *
- * Split into the elements it drives and the behaviour it drives them with, ahead of the
- * caller that needs the split. #110 puts this same surface inside a worksheet's own panel,
- * and two copies of a review surface is the outcome to avoid: this is the code that keeps
- * 0007 · C3 true, and a second one would drift from it in exactly the ways that are hard to
- * see. So the behaviour moved into `wirePasteSurface`, which is handed the elements it drives
- * and a hook for what happens after a save, and `wirePaste` became the part that finds
- * `/agent`'s elements by id and decides whether that page shows them at all.
+ * It comes in two halves. `wirePasteSurface` reads a reply, shows what it would change, and
+ * writes it if the reader says so, against whatever elements it is handed. `wirePaste` finds
+ * `/agent`'s elements by id, decides whether that page shows them at all, and supplies the
+ * ending that is true on that page. The split is there because a review surface is the code
+ * that keeps 0007 · C3 true, and a second copy of it — for the worksheet panel #110 wants —
+ * would drift from this one in exactly the ways that are hard to see.
  *
- * Nothing about /agent changed, and its whole suite is the assertion: every test in
- * paste.test.ts still drives the real page through `wirePaste`. What is new is that the
- * surface can now be driven through elements nobody found on a page, which one describe block
- * proves directly rather than leaving to the second caller to discover.
+ * Nothing about /agent changed when the halves were separated, and its own suite is the
+ * assertion: all 27 tests that drive the real page through `wirePaste` were left untouched.
+ * What the split adds is that the surface can be driven through elements nobody found on a
+ * page, which one describe block proves directly — against a document that still holds
+ * `/agent`'s own box, so a surface that went back to looking things up by id would drive the
+ * wrong elements rather than quietly pass.
  */
 
 import { readBlocks, planFor, explain, type Change, type Plan } from "./agent-answers.ts";
 import { showBanner, dismissBanner } from "./banner.ts";
 import { bridgeIsOn } from "./bridge.ts";
-import { findQuestion } from "./prompt.ts";
-import { nameFor } from "./prompt.ts";
+import { findQuestion, nameFor } from "./prompt.ts";
 import type { Store } from "./store.ts";
 
 function say(text: string): void {
@@ -143,17 +142,42 @@ function summarise(plan: Plan): string {
 }
 
 /**
+ * What the reader is told about answers left out for still naming the example question.
+ *
+ * One wording, built once, because the same fact is said on five paths — the confirmation
+ * surface, the nothing-to-change banner, a refusal, and each caller's own ending — and five
+ * sentences saying it would be five sentences that can drift apart. At module scope rather
+ * than inside the surface, because `wirePaste`'s ending needs it too and a second copy there
+ * is exactly what this exists to prevent.
+ */
+function strandedNote(count: number): string {
+  return count === 1
+    ? "One block of that reply still named the example question, so nothing in it could be matched. If a question you talked about is missing, that is the one — ask your assistant to send it again with the question's own name."
+    : `${count} blocks of that reply still named the example question, so nothing in them could be matched. If questions you talked about are missing, those are the ones — ask your assistant to send them again with each question's own name.`;
+}
+
+/**
  * The elements one paste surface drives.
  *
- * Named rather than found, so the surface has no opinion about where they came from. `/agent`
- * reads them out of the markup `layout.ts` emits; #110's panel builds them. Typed as widely as
- * each use allows — `Element` where the code only listens or toggles an attribute — so a
- * caller constructing them is not made to prove more than the behaviour needs.
+ * Named rather than found, so the surface does not go looking: `/agent` reads them out of the
+ * markup `layout.ts` emits, and a panel builds its own. Typed as widely as each use allows —
+ * `Element` where the code only listens, fills, or sets an attribute — so a caller
+ * constructing them is not made to prove more than the behaviour needs.
+ *
+ * **`summary`, `skipped`, `detail`, `go` and `cancel` must be inside `confirm`.** The surface
+ * hides the review by hiding `confirm` alone, so a caller that builds them as siblings gets a
+ * container that hides nothing and leaves whatever else it holds — a heading, on `/agent` —
+ * standing over an emptied review. It is not checkable from here, since a caller may nest them
+ * any depth down, so it is said here instead.
+ *
+ * They must also live in the document that holds `#banner-region`: every message this surface
+ * produces goes through `banner.ts`, which resolves that region on the global document. The
+ * surface is scoped to the elements it is given, not to a document of its own.
  */
 export type PasteElements = {
   readonly text: HTMLTextAreaElement;
   readonly read: Element;
-  /** Holds the review, and is unhidden when there is one. */
+  /** Holds the review and everything in it, and is unhidden when there is one. */
   readonly confirm: HTMLElement;
   readonly summary: Element;
   readonly detail: Element;
@@ -163,21 +187,59 @@ export type PasteElements = {
   readonly cancel: Element;
 };
 
+/**
+ * What landed, in the units the reader is told about.
+ *
+ * Two counts of two different things, which is why neither is called `count`: `answers` is what
+ * "Saved 3 answers" counts, and `strandedBlocks` is what "2 blocks of that reply" counts. This
+ * module already carries a test for the same class of mistake made one layer down — the right
+ * arithmetic in the wrong unit — and both numbers are about to be rendered to a reader by a
+ * caller that did not compute either of them.
+ */
+export type PasteResult = {
+  readonly answers: number;
+  readonly strandedBlocks: number;
+};
+
 export type PasteOptions = {
   /**
-   * What happens once answers have landed, after the surface has stood down.
+   * Told what landed, once it has. Runs on a successful save and on no other path — not on a
+   * refusal, not on a failed read, not on a failed write, not on Cancel. **Must not throw.**
    *
-   * A hook rather than a flag, because the two callers end differently for a reason rather
-   * than by preference. `/agent` has no fields to update, so it empties the box and says what
-   * was saved. A worksheet has the fields the answers belong in, and `bindAnswers` fills a
-   * blank only while it is empty — so a panel reloads instead, exactly as `wireRestore` and
-   * `wireErase` do, and reports afterwards.
+   * Required, with no default, because the two callers end differently for a reason rather
+   * than by preference and neither ending is the natural fallback for the other. `/agent` has
+   * no fields to update, so it empties the box and says what was saved — wording that is true
+   * on that page and nowhere else. A worksheet has the fields the answers belong in, and
+   * `bindAnswers` fills a blank only while it is empty, so a panel will reload instead, exactly
+   * as `wireRestore` and `wireErase` do, and report afterwards. Making this optional would let
+   * a panel author forget it and ship a reader "open the worksheet to see them" on the
+   * worksheet; required, that is a compile error. `RestoreOptions` and `EraseOptions` take
+   * every one of their callbacks the same way, for the same reason.
    *
-   * `stranded` travels with `saved` because it is said at the end for a reason `readReply`
-   * records: the box is emptied a line earlier, so a reader told only "Saved 3 answers" has
-   * nothing left to learn that a fourth never arrived.
+   * `strandedBlocks` travels with `answers` because it is said at the end for a reason
+   * `readReply` records: the box is emptied a line earlier, so a reader told only "Saved 3
+   * answers" has nothing left to learn that a fourth never arrived.
+   *
+   * A throw here is caught and logged rather than left to become an unhandled rejection —
+   * `import.ts` records what that cost the last time, a reader told "nothing on this device has
+   * changed" after the store had been replaced. Caught is not the same as harmless: the save
+   * has already landed and whatever this was supposed to do has not, so it must not throw.
    */
-  readonly onSaved?: (result: { readonly saved: number; readonly stranded: number }) => void;
+  readonly onSaved: (result: PasteResult) => void;
+};
+
+/**
+ * A wired surface, for a caller that shows and hides it.
+ *
+ * `/agent`'s box is wired once and lives for the page, so it never needs this. A panel that
+ * swaps between a prompt and a paste box does: a review is built from one read of the store, so
+ * one left standing while the reader goes back to the prompt, dictates, and returns is a Save
+ * button offering a plan measured against answers that have since changed. That is the
+ * staleness `generation` guards inside a single read, at the altitude a caller controls.
+ */
+export type PasteSurface = {
+  /** Put it back to rest: no plan pending, no review showing, Save disabled. */
+  readonly standDown: () => void;
 };
 
 /**
@@ -201,19 +263,21 @@ export function wirePaste(
   const skipped = document.getElementById("paste-skipped");
   const go = document.getElementById("paste-go");
   const cancel = document.getElementById("paste-cancel");
-  // `instanceof` on exactly the three the surface does more than listen to: it types the
-  // textarea's `value` and the two elements whose `hidden` it toggles. Everything else is only
-  // ever listened to or filled, which `Element` covers, so a null check is the whole of what
-  // there is to prove about it.
+  // One `instanceof`, for the one element whose subtype the surface actually uses: the
+  // textarea's `value`. `getElementById` already returns `HTMLElement | null`, so a null check
+  // is the whole of what there is to prove about the rest — including the two whose `hidden`
+  // this toggles. An earlier draft of this refactor tightened those two to `instanceof` as
+  // well; that is a runtime behaviour change smuggled into a change that claims to make none,
+  // in a branch no test reaches, so it went back.
   if (
     view === null ||
     section === null ||
     !(text instanceof view.HTMLTextAreaElement) ||
     read === null ||
-    !(confirm instanceof view.HTMLElement) ||
+    confirm === null ||
     summary === null ||
     detail === null ||
-    !(skipped instanceof view.HTMLElement) ||
+    skipped === null ||
     go === null ||
     cancel === null
   ) {
@@ -233,22 +297,51 @@ export function wirePaste(
   reveal();
   document.getElementById("agent-on")?.addEventListener("change", reveal);
 
-  wirePasteSurface(document, { text, read, confirm, summary, detail, skipped, go, cancel }, openStore);
+  wirePasteSurface(
+    { text, read, confirm, summary, detail, skipped, go, cancel },
+    openStore,
+    {
+      // The ending that is true on this page: there are no fields here to fill, so the box is
+      // emptied and the reader is pointed at the worksheet. Passed rather than defaulted, so
+      // the wording lives with the page it describes.
+      onSaved: ({ answers, strandedBlocks }) => {
+        text.value = "";
+        const line = `Saved ${answers} ${answers === 1 ? "answer" : "answers"}. Open the worksheet to see them.`;
+        // Repeated at the end, because this is the end. The notice has just been cleared and
+        // the box has just been emptied, so a reader who is told only "Saved 3 answers" has no
+        // way left to find out that a fourth never arrived.
+        say(strandedBlocks === 0 ? line : `${line} ${strandedNote(strandedBlocks)}`);
+      },
+    },
+  );
 }
 
 /**
  * Read a reply, show what it would change, and write it if the reader says so.
  *
- * The whole of 0007 · C3 lives here, and nowhere else. A caller supplies the elements and
- * what to do afterwards; it does not get to supply a different review, a different refusal,
- * or a different definition of what "nothing was saved" means.
+ * The review 0007 · C3 asks for is assembled here and nowhere else — what a reader is shown
+ * before an irreversible write is one piece of code however many places the surface appears.
+ * The parts it is built from are elsewhere by design: `planFor` works out what is new, changed
+ * and unchanged, and `summarise`, `tallyFor` and `rowFor` render it.
+ *
+ * A caller supplies the elements and what to do once answers have landed. It does not get to
+ * supply a different review, a different refusal, or a different definition of what "nothing
+ * was saved" means.
+ *
+ * **Wire one set of elements once.** Nothing here guards against a second call over the same
+ * elements, and a second call would attach a second set of listeners, each with its own pending
+ * plan — so one tap of Save would merge twice. A caller that imports this module on a tap wants
+ * to keep the surface it made, not make another; that is what `PasteSurface` is returned for.
+ *
+ * The document is taken from the elements rather than passed, so the two cannot disagree about
+ * which one the rows are built in.
  */
 export function wirePasteSurface(
-  document: Document,
   elements: PasteElements,
   openStore: () => Promise<Store>,
-  options: PasteOptions = {},
-): void {
+  options: PasteOptions,
+): PasteSurface {
+  const document = elements.confirm.ownerDocument;
   const { text, read, confirm, summary, detail, skipped, go, cancel } = elements;
 
   /** The plan the reader has been SHOWN, which is the only thing Save may apply. */
@@ -284,35 +377,6 @@ export function wirePasteSurface(
     go.setAttribute("aria-disabled", "true");
   };
   standDown();
-
-  /**
-   * What the reader is told about answers left out for still naming the example question.
-   *
-   * One wording, built once, because the same fact is said on four paths — the confirmation
-   * surface, the nothing-to-change banner, a refusal, and the save that follows — and four
-   * sentences saying it would be four sentences that can drift apart.
-   */
-  const strandedNote = (count: number): string =>
-    count === 1
-      ? "One block of that reply still named the example question, so nothing in it could be matched. If a question you talked about is missing, that is the one — ask your assistant to send it again with the question's own name."
-      : `${count} blocks of that reply still named the example question, so nothing in them could be matched. If questions you talked about are missing, those are the ones — ask your assistant to send them again with each question's own name.`;
-
-  /**
-   * What `/agent` does once answers have landed, and the default for anyone who wants it.
-   *
-   * "Open the worksheet to see them" is true there and only there, which is the whole reason
-   * this is overridable: a panel is already on the worksheet.
-   */
-  const reportSaved =
-    options.onSaved ??
-    (({ saved, stranded }: { readonly saved: number; readonly stranded: number }): void => {
-      text.value = "";
-      const line = `Saved ${saved} ${saved === 1 ? "answer" : "answers"}. Open the worksheet to see them.`;
-      // Repeated at the end, because this is the end. `standDown` has just cleared the notice
-      // and the box has just been emptied, so a reader who is told only "Saved 3 answers" has
-      // no way left to find out that a fourth never arrived.
-      say(stranded === 0 ? line : `${line} ${strandedNote(stranded)}`);
-    });
 
   const readReply = async (): Promise<void> => {
     const mine = (generation += 1);
@@ -442,13 +506,26 @@ export function wirePasteSurface(
         say("Those answers could not be saved on this device. What was already here is unchanged.");
         return;
       }
-      // Stood down BEFORE the caller is told, so nothing a hook does — reloading, in #110's
+      // Stood down BEFORE the caller is told, so nothing the hook does — reloading, for a
       // panel — can race a surface that still holds an applied plan.
       standDown();
-      reportSaved({
-        saved: applying.changes.length + applying.additions.length,
-        stranded: applyingStranded,
-      });
+      // Caught, and only logged. The write has already landed, so the one thing that must not
+      // happen here is the reader being told nothing: outside a `try` this becomes an
+      // unhandled rejection on a `void`ed promise and the banner stays empty over a store that
+      // has changed. `import.ts` records paying for that once — "told the reader 'nothing on
+      // this device has changed' AFTER the store had been replaced, the one sentence that must
+      // never be false, false exactly when it mattered". The hook is documented as not
+      // throwing; this is what happens when it does anyway.
+      try {
+        options.onSaved({
+          answers: applying.changes.length + applying.additions.length,
+          strandedBlocks: applyingStranded,
+        });
+      } catch (error) {
+        console.error("life-compass: the save could not be announced", error);
+      }
     })();
   });
+
+  return { standDown };
 }

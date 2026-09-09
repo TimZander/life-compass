@@ -13,7 +13,13 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
-import { wirePaste, wirePasteSurface, type PasteElements } from "./paste.ts";
+import {
+  wirePaste,
+  wirePasteSurface,
+  type PasteElements,
+  type PasteOptions,
+  type PasteResult,
+} from "./paste.ts";
 import { layout } from "../../build/layout.ts";
 import { answerKey, orderKey, writeOrder } from "./keys.ts";
 import { EXAMPLE_GROUP } from "./prompt.ts";
@@ -35,8 +41,6 @@ after(() => {
   void window.close();
 });
 
-/** The live region the layout emits, so banner messages have somewhere to go. */
-const REGION = '<div id="banner-region" role="status" aria-live="polite"></div>';
 const SINGLE = "day4.eulogy";
 const REPEAT = "day1.chapters";
 
@@ -741,14 +745,22 @@ describe("saving what was shown", () => {
 
 describe("the surface away from the page that carries it", () => {
   /**
-   * The same surface, driven through elements that are on no page and have no identifiers.
+   * The same surface, driven through elements that are on no page and carry no identifiers.
    *
-   * This is what #110's panel will hand over, and it is the whole claim of the split: the
-   * review that keeps 0007 · C3 true is one piece of code, not one per place it appears.
+   * Built the way `layout.ts` builds them, with the review's parts nested inside `confirm`,
+   * because that containment is what makes hiding `confirm` hide the review — and this helper
+   * is the only worked example a second caller has. An earlier version appended all eight as
+   * siblings, which passes every assertion below and models the one structure a caller must
+   * not copy.
+   *
+   * The real `/agent` markup is left in the document as a decoy. Elements built here carry no
+   * ids, so a surface that quietly went on calling `getElementById` would find nothing and the
+   * tests would still pass; with the decoy present, finding them by id would drive the wrong
+   * elements and fail loudly.
    */
-  function bare(fake: ReturnType<typeof recorder>, options: Parameters<typeof wirePasteSurface>[3] = {}) {
+  function bare(fake: ReturnType<typeof recorder>, options: PasteOptions) {
+    window.document.body.innerHTML = layout("<p>body</p>", "Assistant", "agent");
     const document = window.document as unknown as Document;
-    document.body.innerHTML = REGION;
     const make = <K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] =>
       document.createElement(tag) as HTMLElementTagNameMap[K];
     const elements = {
@@ -756,27 +768,46 @@ describe("the surface away from the page that carries it", () => {
       read: make("button"),
       confirm: make("div"),
       summary: make("p"),
-      detail: make("div"),
       skipped: make("p"),
+      detail: make("div"),
       go: make("button"),
       cancel: make("button"),
     } satisfies PasteElements;
-    // Attached, because a detached tree has no live region for the banner and no layout for
-    // anything to be hidden from. Nothing here carries an id: finding elements is the job this
-    // function exists to prove the surface no longer does.
-    document.body.append(...Object.values(elements));
-    wirePasteSurface(document, elements, () => Promise.resolve(fake.store), options);
+    // Nested and ordered explicitly, in the order `layout.ts` emits them — `skipped` above
+    // `detail`, because it is said above the list it is missing from. Spreading an object's
+    // values would make DOM order follow key order, which is not a fact anything here states.
+    elements.confirm.append(
+      elements.summary,
+      elements.skipped,
+      elements.detail,
+      elements.go,
+      elements.cancel,
+    );
+    document.body.append(elements.text, elements.read, elements.confirm);
+    const surface = wirePasteSurface(elements, () => Promise.resolve(fake.store), options);
     return {
       ...elements,
+      surface,
       banner: () => document.getElementById("banner-region")?.textContent ?? "",
+      /** What `/agent`'s own box holds, to prove the constructed elements were the ones driven. */
+      decoy: () => document.getElementById("paste-text") as HTMLTextAreaElement,
     };
   }
 
-  it("wirePasteSurface_ElementsWithNoIdentifiers_AreDrivenAllTheSame", async () => {
-    // Arrange — read, review and save, against elements this module did not find for itself.
+  /** A hook that records every call, for the tests about when it runs and with what. */
+  function recording(): { calls: PasteResult[]; onSaved: (result: PasteResult) => void } {
+    const calls: PasteResult[] = [];
+    return { calls, onSaved: (result) => void calls.push({ ...result }) };
+  }
+
+  it("wirePasteSurface_ElementsWithNoIdentifiers_AreTheOnesDriven", async () => {
+    // Arrange — the whole claim of the split, with `/agent`'s box in the same document as a
+    // decoy. Read, review and save, against elements this module did not find for itself.
     const ANSWER = "That I showed up.";
+    const ONE_MERGE = 1;
     const fake = recorder();
-    const view = bare(fake);
+    const hook = recording();
+    const view = bare(fake, hook);
     view.text.value = reply(block(SINGLE, { answer: ANSWER }));
 
     // Act
@@ -788,19 +819,39 @@ describe("the surface away from the page that carries it", () => {
 
     // Assert
     assert.equal(reviewed, false, "the review never opened");
-    assert.equal(fake.merged.length, 1, "the answers were not saved once");
+    assert.equal(fake.merged.length, ONE_MERGE, "the answers were not saved once");
     assert.deepEqual([...(fake.merged[0] ?? new Map())], [[SINGLE, ANSWER]]);
     assert.equal(view.confirm.hidden, true, "the review stayed up after saving");
+    assert.equal(view.decoy().value, "", "the surface drove the page's box instead of the elements it was given");
   });
 
-  it("wirePasteSurface_ASaveHook_IsGivenWhatLandedAndWhatDidNot", async () => {
-    // Arrange — both numbers, because the caller decides what to say and cannot say it
-    // without them. The stranded count is a block that still named the example question.
-    const seen: { saved: number; stranded: number }[] = [];
+  it("wirePasteSurface_JustWired_IsAtRestWhateverStateItsElementsWereIn", async () => {
+    // Arrange — `/agent`'s markup carries `hidden` on the review itself, so that page can
+    // never see whether wiring establishes the resting state. A caller building its own
+    // elements has no such markup, and without this a fresh panel renders an empty review with
+    // Save enabled that does nothing when tapped.
     const fake = recorder();
-    const view = bare(fake, { onSaved: (result) => void seen.push({ ...result }) });
+
+    // Act
+    const view = bare(fake, recording());
+
+    // Assert
+    assert.equal(view.confirm.hidden, true, "the review is showing before anything was read");
+    assert.equal(view.skipped.hidden, true, "the skipped notice is showing before anything was read");
+    assert.equal(view.go.getAttribute("aria-disabled"), "true", "Save is offered with no plan behind it");
+  });
+
+  it("wirePasteSurface_ASaveHook_IsGivenBothCountsInTheirOwnUnits", async () => {
+    // Arrange — deliberately different numbers. With one answer and one stranded block the
+    // test cannot tell the two keys apart, so swapping them passes and the contract the hook's
+    // caller renders to a reader is pinned only by accident.
+    const TWO_ANSWERS = 2;
+    const ONE_BLOCK = 1;
+    const fake = recorder();
+    const hook = recording();
+    const view = bare(fake, hook);
     view.text.value = [
-      reply(block(SINGLE, { answer: "mine" })),
+      reply(block(REPEAT, { instances: [{ fields: { title: "one" } }, { fields: { title: "two" } }] })),
       reply(block(EXAMPLE_GROUP, { answer: "left on the placeholder" })),
     ].join("\n\n");
 
@@ -811,44 +862,19 @@ describe("the surface away from the page that carries it", () => {
     await settle();
 
     // Assert
-    const ONE = 1;
-    assert.deepEqual(seen, [{ saved: ONE, stranded: ONE }]);
-  });
-
-  it("wirePasteSurface_ASaveHook_ReplacesTheEndingRatherThanRunningBesideIt", async () => {
-    // Arrange — negative case, and the reason the hook exists. #110's panel reloads the page,
-    // so the default ending would empty a box that is about to be thrown away and say "open
-    // the worksheet to see them" to a reader already on it.
-    const REPLY = reply(block(SINGLE, { answer: "mine" }));
-    const fake = recorder();
-    const view = bare(fake, { onSaved: () => undefined });
-    view.text.value = REPLY;
-
-    // Act
-    view.read.click();
-    await settle();
-    view.go.click();
-    await settle();
-
-    // Assert
-    assert.equal(fake.merged.length, 1, "the hook stopped the answers being saved");
-    assert.equal(view.text.value, REPLY, "the default ending emptied the box behind the hook");
-    assert.doesNotMatch(view.banner(), /Saved/, "the default ending spoke behind the hook");
+    assert.deepEqual(hook.calls, [{ answers: TWO_ANSWERS, strandedBlocks: ONE_BLOCK }]);
   });
 
   it("wirePasteSurface_ASaveHook_RunsOnceTheSurfaceHasAlreadyStoodDown", async () => {
-    // Arrange — a hook that reloads must not race a surface still holding an applied plan. So
-    // what it observes is the settled state, not the one it has to clean up after.
-    const observed: { confirm: boolean; go: string | null }[] = [];
+    // Arrange — a hook that reloads must not race a surface still holding an applied plan, so
+    // what it observes is the settled state rather than one it has to clean up after. Only
+    // `confirm.hidden` proves the ordering: `aria-disabled` is set synchronously in the click
+    // handler long before this runs, so asserting it would pass with `standDown` deleted.
+    const seen: boolean[] = [];
     const fake = recorder();
-    let view: ReturnType<typeof bare> | undefined;
-    view = bare(fake, {
-      onSaved: () =>
-        void observed.push({
-          confirm: view?.confirm.hidden ?? false,
-          go: view?.go.getAttribute("aria-disabled") ?? null,
-        }),
-    });
+    let confirm: HTMLElement | undefined;
+    const view = bare(fake, { onSaved: () => void seen.push(confirm?.hidden ?? false) });
+    confirm = view.confirm;
     view.text.value = reply(block(SINGLE, { answer: "mine" }));
 
     // Act
@@ -858,6 +884,151 @@ describe("the surface away from the page that carries it", () => {
     await settle();
 
     // Assert
-    assert.deepEqual(observed, [{ confirm: true, go: "true" }]);
+    assert.deepEqual(seen, [true]);
+  });
+
+  it("wirePasteSurface_AHookThatThrows_LosesNeitherTheAnswersNorTheReader", async () => {
+    // Arrange — negative case. The hook is documented as not throwing; this is what happens
+    // when it does anyway. Outside a `try` it becomes an unhandled rejection on a voided
+    // promise, and the reader is told nothing at all over a store that has just changed —
+    // which is what `import.ts` records paying for once.
+    const ONE_MERGE = 1;
+    const fake = recorder();
+    const failures: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void failures.push(args);
+    try {
+      const view = bare(fake, {
+        onSaved: () => {
+          throw new Error("the caller blew up");
+        },
+      });
+      view.text.value = reply(block(SINGLE, { answer: "mine" }));
+
+      // Act
+      view.read.click();
+      await settle();
+      view.go.click();
+      await settle();
+
+      // Assert
+      assert.equal(fake.merged.length, ONE_MERGE, "the answers were not saved");
+      assert.equal(view.confirm.hidden, true, "the surface was left holding an applied plan");
+      assert.equal(failures.length, ONE_MERGE, "the throw was swallowed without a word");
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it("wirePasteSurface_EveryPathButASuccessfulSave_LeavesTheHookAlone", async () => {
+    // Arrange — negative case, and the guarantee a reloading caller depends on. A hook fired
+    // from Cancel, from a refusal, or from a failed write would throw away the reader's reply
+    // immediately after they were told "what was already here is unchanged".
+    const NEVER = 0;
+    const GOOD = reply(block(SINGLE, { answer: "mine" }));
+
+    // Act & Assert — a refused reply.
+    let fake = recorder();
+    let hook = recording();
+    let view = bare(fake, hook);
+    view.text.value = "nothing that looks like a block";
+    view.read.click();
+    await settle();
+    assert.equal(hook.calls.length, NEVER, "a refused reply called the hook");
+
+    // Cancel, after a reply that would have changed something.
+    fake = recorder();
+    hook = recording();
+    view = bare(fake, hook);
+    view.text.value = GOOD;
+    view.read.click();
+    await settle();
+    view.cancel.click();
+    await settle();
+    assert.equal(hook.calls.length, NEVER, "cancelling called the hook");
+
+    // A store that cannot be read.
+    fake = recorder();
+    fake.failRead = true;
+    hook = recording();
+    view = bare(fake, hook);
+    view.text.value = GOOD;
+    view.read.click();
+    await settle();
+    assert.equal(hook.calls.length, NEVER, "an unreadable store called the hook");
+
+    // A write that fails.
+    fake = recorder();
+    fake.failMerge = true;
+    hook = recording();
+    view = bare(fake, hook);
+    view.text.value = GOOD;
+    view.read.click();
+    await settle();
+    view.go.click();
+    await settle();
+    assert.equal(hook.calls.length, NEVER, "a failed write called the hook");
+  });
+
+  it("wirePasteSurface_StandingItDownFromOutside_DropsThePlanTheReaderWasShown", async () => {
+    // Arrange — what the handle is for. A review is built from one read of the store, so a
+    // caller that hides the surface and brings it back must be able to drop it rather than
+    // offer Save over a plan measured against answers that have since changed.
+    const NOTHING_SAVED = 0;
+    const fake = recorder();
+    const hook = recording();
+    const view = bare(fake, hook);
+    view.text.value = reply(block(SINGLE, { answer: "mine" }));
+    view.read.click();
+    await settle();
+
+    // Act
+    view.surface.standDown();
+    view.go.click();
+    await settle();
+
+    // Assert
+    assert.equal(view.confirm.hidden, true, "the review stayed up");
+    assert.equal(view.go.getAttribute("aria-disabled"), "true", "Save stayed offered");
+    assert.equal(fake.merged.length, NOTHING_SAVED, "a plan the reader had been taken off was still saved");
+    assert.equal(hook.calls.length, NOTHING_SAVED, "the hook ran for a save that never happened");
+  });
+});
+
+describe("the box refusing to wire at all", () => {
+  it("wirePaste_MarkupMissingAnElementItDrives_RefusesAndSaysSo", async () => {
+    // Arrange — negative case, and the branch that had no test on either side of the split.
+    // The build emits all nine together, so a missing one means the markup and this module
+    // have drifted; the symptom without this is a paste box that quietly is not there.
+    // `paste-skipped` specifically, because `build/layout.test.ts` did not pin it.
+    const ONE_COMPLAINT = 1;
+    const NOTHING_SAVED = 0;
+    const fake = recorder();
+    const failures: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void failures.push(args);
+    try {
+      window.document.body.innerHTML = layout("<p>body</p>", "Assistant", "agent");
+      const document = window.document as unknown as Document;
+      document.getElementById("paste-skipped")?.remove();
+
+      // Act
+      wirePaste(document, storageWith("on"), () => Promise.resolve(fake.store));
+      const text = document.getElementById("paste-text") as HTMLTextAreaElement;
+      text.value = reply(block(SINGLE, { answer: "mine" }));
+      (document.getElementById("paste-read") as HTMLElement).click();
+      await settle();
+
+      // Assert
+      assert.equal(failures.length, ONE_COMPLAINT, "a drifted paste box was wired in silence");
+      assert.equal(
+        (document.getElementById("paste-confirm") as HTMLElement).hidden,
+        true,
+        "a half-built surface reviewed a reply",
+      );
+      assert.equal(fake.merged.length, NOTHING_SAVED);
+    } finally {
+      console.error = original;
+    }
   });
 });
