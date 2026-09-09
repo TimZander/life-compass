@@ -208,6 +208,9 @@ describe("the assistant page's controls", () => {
       'id="paste-confirm"',
       'id="paste-summary"',
       'id="paste-detail"',
+      // Absent from this list until #111, though `wirePaste` has always refused the whole box
+      // without it: renaming it left every test green and the paste box silently gone.
+      'id="paste-skipped"',
       'id="paste-go"',
       'id="paste-cancel"',
     ];
