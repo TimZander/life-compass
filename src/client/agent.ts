@@ -143,6 +143,35 @@ type Panel = {
 type ResolvedPart = { readonly group: string; readonly question: NonNullable<ReturnType<typeof findQuestion>> };
 
 /**
+ * Where the answers went, said so that it is true wherever they went.
+ *
+ * A reply routes by the group each block names (0015), so a panel is where a reader pastes and
+ * not where the answers necessarily land: a Day 4 reply pasted into Day 2's panel is saved
+ * under Day 4, and the reader is looking at Day 2 when the page comes back. The first version
+ * of this said "They are on this page now" every time, which is the commonest case and a lie in
+ * the rest of them — reported from use.
+ *
+ * Told by which questions were written rather than by counting answers per page: the counts
+ * would have to be split by something this does not know, and "some of them" is honest without
+ * arithmetic that can be wrong. "Elsewhere in the workbook" rather than a page name, because
+ * naming a page means deriving one from a source path, which 0011 keeps this codebase from
+ * doing anywhere else.
+ */
+export function savedNote(answers: number, written: readonly string[], here: ReadonlySet<string>): string {
+  const count = `Saved ${answers} ${answers === 1 ? "answer" : "answers"}.`;
+  const elsewhere = written.filter((group) => !here.has(group));
+  if (elsewhere.length === 0) {
+    return `${count} ${answers === 1 ? "It is" : "They are"} on this page now.`;
+  }
+  if (elsewhere.length === written.length) {
+    return answers === 1
+      ? `${count} It is saved elsewhere in the workbook, under the question it names.`
+      : `${count} They are saved elsewhere in the workbook, under the questions they name.`;
+  }
+  return `${count} Some are on this page; the rest are saved elsewhere in the workbook, under the questions they name.`;
+}
+
+/**
  * The half of the panel that brings a reply back: the box, and the review before it lands.
  *
  * Built here, driven by `paste.ts`. The review 0007 · C3 asks for is one piece of code however
@@ -240,8 +269,15 @@ function replyHalfFor(
     wiring ??= import("./paste.ts")
       .then(({ wirePasteSurface, strandedNote }) => {
         surface = wirePasteSurface(elements, options.openStore, {
-          onSaved: ({ answers, strandedBlocks }) => {
-            const line = `Saved ${answers} ${answers === 1 ? "answer" : "answers"}. They are on this page now.`;
+          onSaved: ({ answers, strandedBlocks, groups }) => {
+            // Read at the moment of saving rather than when the panel was built: what a page
+            // renders is fixed, but reading it here means nothing has to be kept in step.
+            const here = new Set(
+              [...document.querySelectorAll("[data-question]")].map(
+                (one) => one.getAttribute("data-question") ?? "",
+              ),
+            );
+            const line = savedNote(answers, groups, here);
             // Guarded here as well as in `paste.ts`, because the reload must happen either
             // way. Left to that backstop, a sentence that could not be stashed would take the
             // reload down with it — and a worksheet still showing blanks over answers that are

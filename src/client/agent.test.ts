@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
-import { wireAgentPage, wireQuestionControls, type BridgeOptions } from "./agent.ts";
+import { savedNote, wireAgentPage, wireQuestionControls, type BridgeOptions } from "./agent.ts";
 import type { Store } from "./store.ts";
 import { nameFor } from "./prompt.ts";
 import { renderQuestion } from "../../build/questions.ts";
@@ -1752,11 +1752,83 @@ describe("bringing a reply back where the prompt was copied", () => {
     // Assert
     assert.equal(fake.merged.length, ONE_WRITE, "the answers were not saved once");
     assert.deepEqual([...(fake.merged[0] ?? new Map())], [[EULOGY, ANSWER]]);
-    assert.deepEqual(said, ["Saved 1 answer. They are on this page now."]);
+    assert.deepEqual(said, ["Saved 1 answer. It is on this page now."]);
     assert.deepEqual(reloads, [ONE_WRITE], "the page was not started again");
     // Stashed BEFORE the reload, which is the only order that works: a message written after
     // the page has been told to start again is a message that may never be written at all.
     assert.deepEqual(order, ["said", "reloaded"]);
+  });
+
+  it("wireQuestionControls_AReplyForAnotherPage_DoesNotSayItLandedOnThisOne", async () => {
+    // Arrange — reported from use. Every block names its own question (0015), so a reply pasted
+    // into one panel routes to whatever it answers: this one is pasted on a page that renders
+    // `day4.who` and answers `day4.eulogy`, which is on another page. The first version said
+    // "They are on this page now" unconditionally — true in the common case and a lie here, in
+    // the one sentence a reader has to go looking for their answers by.
+    const ONE_WRITE = 1;
+    const said: string[] = [];
+    const fake = recorder();
+    const document = worksheet("day4.who");
+    wireQuestionControls(
+      document,
+      memoryStorage("on"),
+      bridgeReading(new Map(), {
+        openStore: () => Promise.resolve(fake.store),
+        onSaved: (message) => void said.push(message),
+      }),
+    );
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    (document.querySelector("button.agent-swap") as HTMLElement).click();
+    await loaded();
+    const text = document.querySelector(".agent-reply textarea") as HTMLTextAreaElement;
+    const button = (label: string) =>
+      [...document.querySelectorAll(".agent-reply button")].find(
+        (one) => one.textContent === label,
+      ) as HTMLElement;
+    text.value = reply(EULOGY, { answer: "That he showed up." });
+    text.blur();
+
+    // Act
+    button("Read this reply").click();
+    await loaded();
+    button("Save these answers").click();
+    await loaded();
+
+    // Assert — it did land, and it landed somewhere else.
+    assert.deepEqual([...(fake.merged[0] ?? new Map())], [[EULOGY, "That he showed up."]]);
+    assert.equal(fake.merged.length, ONE_WRITE);
+    assert.doesNotMatch(said[0] ?? "", /on this page/, `it claimed this page: ${said[0] ?? ""}`);
+    assert.match(said[0] ?? "", /^Saved 1 answer\. It is saved elsewhere in the workbook/);
+  });
+
+  it("savedNote_AnswersSplitAcrossPages_SaysSomeAreHereAndSomeAreNot", () => {
+    // Arrange — the third case, which neither of the two above reaches: one reply carrying
+    // blocks for this page and for another. Asserted on the function rather than through a
+    // panel, because building a reply that lands on both sides is a fixture about the wording
+    // rather than about the panel.
+    const BOTH = 3;
+    const here = new Set(["day4.who"]);
+
+    // Act
+    const note = savedNote(BOTH, ["day4.who", "day4.eulogy"], here);
+
+    // Assert
+    assert.equal(
+      note,
+      "Saved 3 answers. Some are on this page; the rest are saved elsewhere in the workbook, under the questions they name.",
+    );
+  });
+
+  it("savedNote_OneAnswerOnThisPage_ReadsAsOneAnswer", () => {
+    // Arrange — negative case for the plural, which the sentence changes in three places.
+    const ONE = 1;
+
+    // Act
+    const note = savedNote(ONE, ["day4.who"], new Set(["day4.who"]));
+
+    // Assert
+    assert.equal(note, "Saved 1 answer. It is on this page now.");
   });
 
   it("wireQuestionControls_SwappingBackAndForth_WiresTheReplyBoxOnceAndSavesOnce", async () => {
@@ -1812,7 +1884,7 @@ describe("bringing a reply back where the prompt was copied", () => {
     await loaded();
 
     // Assert
-    assert.match(said[0] ?? "", /^Saved 1 answer\. They are on this page now\./);
+    assert.match(said[0] ?? "", /^Saved 1 answer\. It is on this page now\./);
     assert.match(said[0] ?? "", /still named the example question/);
   });
 
