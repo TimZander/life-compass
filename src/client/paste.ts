@@ -150,7 +150,7 @@ function summarise(plan: Plan): string {
  * than inside the surface, because `wirePaste`'s ending needs it too and a second copy there
  * is exactly what this exists to prevent.
  */
-function strandedNote(count: number): string {
+export function strandedNote(count: number): string {
   return count === 1
     ? "One block of that reply still named the example question, so nothing in it could be matched. If a question you talked about is missing, that is the one — ask your assistant to send it again with the question's own name."
     : `${count} blocks of that reply still named the example question, so nothing in them could be matched. If questions you talked about are missing, those are the ones — ask your assistant to send them again with each question's own name.`;
@@ -199,6 +199,15 @@ export type PasteElements = {
 export type PasteResult = {
   readonly answers: number;
   readonly strandedBlocks: number;
+  /**
+   * The questions written to, in the order the blocks named them.
+   *
+   * Here because a caller cannot work it out and must not guess it. Every block names its own
+   * question (0015), so a reply pasted into one panel routes to whatever it answers — a Day 4
+   * reply pasted on Day 2 is saved under Day 4. A caller that assumed otherwise told the reader
+   * their answers were on the page in front of them when they were on another one.
+   */
+  readonly groups: readonly string[];
 };
 
 export type PasteOptions = {
@@ -520,6 +529,7 @@ export function wirePasteSurface(
         options.onSaved({
           answers: applying.changes.length + applying.additions.length,
           strandedBlocks: applyingStranded,
+          groups: applying.groups,
         });
       } catch (error) {
         console.error("life-compass: the save could not be announced", error);

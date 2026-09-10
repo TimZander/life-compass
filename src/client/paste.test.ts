@@ -862,7 +862,9 @@ describe("the surface away from the page that carries it", () => {
     await settle();
 
     // Assert
-    assert.deepEqual(hook.calls, [{ answers: TWO_ANSWERS, strandedBlocks: ONE_BLOCK }]);
+    assert.deepEqual(hook.calls, [
+      { answers: TWO_ANSWERS, strandedBlocks: ONE_BLOCK, groups: [REPEAT] },
+    ]);
   });
 
   it("wirePasteSurface_ASaveHook_RunsOnceTheSurfaceHasAlreadyStoodDown", async () => {

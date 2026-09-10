@@ -295,6 +295,23 @@ th{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spac
 .agent-note{font-family:var(--sans);font-size:.86rem;color:var(--ink);margin:0 0 .7em}
 .agent-panel button{font-family:var(--sans);font-size:.92rem;padding:.6em 1.15em;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
 .agent-panel button:focus-visible{outline:2px solid var(--accent-dark);outline-offset:3px}
+/* The reply half (#110). A swap between the two halves is not the action the panel is for, so
+   it does not wear the filled treatment Copy and Save do — two primary-looking buttons side by
+   side say neither is the one to press. Outlined is what `.agent-open` already means on this
+   page: a way in rather than the thing being done.
+
+   Qualified by the panel, and that is the whole of why it works: `.agent-panel button` above is
+   (0,1,1) and a lone `.agent-swap` is (0,1,0), so the filled background won and the swap looked
+   exactly like Save. Found on a phone, which is the third time a rule on this stylesheet has
+   been written without checking what it was competing with — and `margin-top` applying while
+   the colours did not is what made it look plausible in the diff. */
+.agent-panel .agent-swap{background:transparent;color:var(--accent-dark);margin-top:.5em}
+.agent-panel .agent-swap:hover{background:var(--accent);color:#fff}
+.agent-reply textarea{display:block;width:100%;box-sizing:border-box;font-family:var(--sans);font-size:.95rem;line-height:1.5;padding:.6em .7em;margin:.3em 0 .7em;background:var(--bg);border:1px solid var(--accent);border-radius:4px}
+.agent-reply textarea:focus-visible{outline:2px solid var(--accent-dark);outline-offset:2px}
+/* Reads as a heading without being one: a panel sits at whatever depth its worksheet put it,
+   so a fixed level would land wrong on most pages. */
+.agent-reply-heading{font-family:var(--sans);font-size:.95rem;font-weight:600;margin:.8em 0 .5em}
 /* A printed worksheet has no button to press, and 0010 · C3 asks for the absence of form
    controls on paper. Without this an opted-in reader prints an "Ask an assistant" button above
    every question — and any panel left open prints its own controls plus a preview that

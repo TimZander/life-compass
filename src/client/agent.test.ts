@@ -9,7 +9,8 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { after, before, describe, it } from "node:test";
-import { wireAgentPage, wireQuestionControls } from "./agent.ts";
+import { savedNote, wireAgentPage, wireQuestionControls, type BridgeOptions } from "./agent.ts";
+import type { Store } from "./store.ts";
 import { nameFor } from "./prompt.ts";
 import { renderQuestion } from "../../build/questions.ts";
 import { buildPages } from "../../build/build.ts";
@@ -68,9 +69,29 @@ async function settle(): Promise<void> {
   }
 }
 
-/** Panels read the store when they open, so a test hands over a reader rather than a map. */
-function entriesFrom(entries: ReadonlyMap<string, string>): () => Promise<ReadonlyMap<string, string>> {
-  return () => Promise.resolve(entries);
+/**
+ * Everything the bridge needs, built around a store that holds `entries`.
+ *
+ * Panels read the store when they open, so a test hands over a reader rather than a map. The
+ * three fields the paste half needs get harmless defaults: a test that never brings a reply
+ * back should not have to say what happens after a save, and a store that rejects is the
+ * honest stand-in for a fixture that has none.
+ */
+function bridgeReading(
+  entries: ReadonlyMap<string, string>,
+  overrides: Partial<BridgeOptions> = {},
+): BridgeOptions {
+  return {
+    readEntries: overrides.readEntries ?? (() => Promise.resolve(entries)),
+    openStore: overrides.openStore ?? (() => Promise.reject(new Error("this fixture has no store"))),
+    onSaved: overrides.onSaved ?? (() => undefined),
+    reload: overrides.reload ?? (() => undefined),
+  };
+}
+
+/** A bridge whose reader is spelled out, for the tests about slow or failing reads. */
+function bridgeWith(readEntries: BridgeOptions["readEntries"]): BridgeOptions {
+  return bridgeReading(new Map(), { readEntries });
 }
 
 /** The live region the layout emits, so banner messages have somewhere to go. */
@@ -169,7 +190,7 @@ describe("the controls against what the build actually renders", () => {
     );
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert — five, and named for the five tasks the page prints.
     assert.deepEqual(namesOn(document), [
@@ -204,7 +225,7 @@ describe("the controls against what the build actually renders", () => {
       }
       window.document.body.innerHTML = REGION + page.html;
       const document = window.document as unknown as Document;
-      wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+      wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
       for (const control of document.querySelectorAll("button.agent-open")) {
         const panel = control.nextElementSibling;
         assert.ok(
@@ -249,7 +270,7 @@ describe("the controls against what the build actually renders", () => {
     const document = realPage(...OF_EACH);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.equal(document.querySelectorAll("button.agent-open").length, OF_EACH.length);
@@ -262,7 +283,7 @@ describe("the controls against what the build actually renders", () => {
     const document = realPage("day1.chapters");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const control = document.querySelector("button.agent-open");
     const question = document.querySelector("[data-question]");
 
@@ -276,7 +297,7 @@ describe("the controls against what the build actually renders", () => {
     // it sits above. Every panel could have carried the same group's payload and the count
     // would have been right.
     const document = realPage("day4.eulogy", "day1.chapters");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const controls = [...document.querySelectorAll("button.agent-open")];
     assert.equal(controls.length, 2);
 
@@ -300,7 +321,7 @@ describe("the controls against what the build actually renders", () => {
     // about one question. A reply to that is refused by `readBlocks` as a repeated group, so
     // the reader would interview, paste, and be told no.
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
@@ -425,7 +446,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day4.eulogy");
 
     // Act
-    wireQuestionControls(document, memoryStorage(), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage(), bridgeReading(new Map()));
 
     // Assert
     assert.equal(document.querySelectorAll("button").length, 0);
@@ -436,7 +457,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day4.eulogy", "day1.patterns");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     const EXPECTED = 2;
@@ -452,7 +473,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day1.chapters");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const control = document.querySelector("button.agent-open");
     const question = document.querySelector("[data-question]");
 
@@ -474,7 +495,7 @@ describe("the copy control on a question", () => {
     const document = worksheet(checklist);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.equal(document.querySelectorAll("button.agent-open").length, 0);
@@ -485,7 +506,7 @@ describe("the copy control on a question", () => {
     // question itself being in there is what #75 made possible and what the whole feature is
     // for; before it, this preview would have read "A single answer: **Eulogy**".
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement).click();
@@ -514,7 +535,7 @@ describe("the copy control on a question", () => {
         },
       },
     });
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
 
@@ -534,7 +555,7 @@ describe("the copy control on a question", () => {
     // somebody has to find.
     const WRITTEN = "That I showed up for the people who needed it.";
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map([["day4.eulogy", WRITTEN]])));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map([["day4.eulogy", WRITTEN]])));
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
 
@@ -560,7 +581,7 @@ describe("the copy control on a question", () => {
     wireQuestionControls(
       document,
       memoryStorage("on"),
-      entriesFrom(new Map([["day4.eulogy", MARKUP]])),
+      bridgeReading(new Map([["day4.eulogy", MARKUP]])),
     );
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
@@ -591,7 +612,7 @@ describe("the copy control on a question", () => {
     wireQuestionControls(
       document,
       memoryStorage("on"),
-      entriesFrom(new Map([["day4.eulogy", WRITTEN]])),
+      bridgeReading(new Map([["day4.eulogy", WRITTEN]])),
     );
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
@@ -619,7 +640,7 @@ describe("the copy control on a question", () => {
       configurable: true,
       value: { clipboard: { writeText: () => Promise.resolve() } },
     });
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
 
@@ -647,14 +668,14 @@ describe("the copy control on a question", () => {
     // a nullable to `never` at the call site and rejects it.
     let release = (): void => {};
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), () => {
+    wireQuestionControls(document, memoryStorage("on"), bridgeWith(() => {
       if (!hold) {
         return Promise.resolve(entries as ReadonlyMap<string, string>);
       }
       return new Promise<ReadonlyMap<string, string>>((resolve) => {
         release = () => resolve(entries);
       });
-    });
+    }));
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
     const include = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
@@ -690,9 +711,9 @@ describe("the copy control on a question", () => {
     const noisy = console.error;
     console.error = (): void => {};
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), () =>
+    wireQuestionControls(document, memoryStorage("on"), bridgeWith(() =>
       Promise.reject(new Error("the store would not open")),
-    );
+    ));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement).click();
@@ -714,18 +735,30 @@ describe("the copy control on a question", () => {
     // text it copies with the suite green, and the scroll note pointed "below" from underneath
     // the box it described.
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
     const panel = document.querySelector(".agent-panel") as HTMLElement;
-    const order = [...panel.children].map((child) =>
-      child.tagName === "BUTTON" ? "button" : (child.className || child.tagName.toLowerCase()),
-    );
+    const naming = (child: Element): string =>
+      child.tagName === "BUTTON" ? "button" : (child.className || child.tagName.toLowerCase());
+    const halves = [...panel.children].map(naming);
+    const prompt = document.querySelector(".agent-prompt") as HTMLElement;
+    const order = [...prompt.children].map(naming);
 
-    // Assert
-    assert.deepEqual(order, ["label", "agent-scroll", "agent-preview", "agent-note", "button"]);
+    // Assert — the guarantee is unchanged by #110 splitting the panel in two, it just sits one
+    // level down: the swap to the reply half is the last thing in the prompt half, after the
+    // control it is an alternative to.
+    assert.deepEqual(halves, ["agent-prompt", "agent-reply"]);
+    assert.deepEqual(order, [
+      "label",
+      "agent-scroll",
+      "agent-preview",
+      "agent-note",
+      "button",
+      "button",
+    ]);
   });
 
   it("wireQuestionControls_APayloadThatFits_DoesNotClaimThereIsMoreBelow", async () => {
@@ -734,7 +767,7 @@ describe("the copy control on a question", () => {
     // the one property of this panel only a real device can decide, and the note used to be
     // emitted unconditionally — telling a reader to scroll a box with nothing out of sight.
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement).click();
@@ -749,7 +782,7 @@ describe("the copy control on a question", () => {
     // Arrange — a table, because each of these was separately deletable with the suite green
     // and each is the kind of thing that reads as decoration until somebody is relying on it.
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const open = document.querySelector("button.agent-open") as HTMLElement;
 
     // Act
@@ -802,7 +835,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day5.career", "day5.money", "day5.place");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.deepEqual(namesOn(document), EXPECTED);
@@ -816,7 +849,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day2.shortlist_ten", "day2.shortlist_five", "day2.ranked");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const named = namesOn(document);
 
     // Assert
@@ -833,7 +866,7 @@ describe("the copy control on a question", () => {
     const document = worksheet(...GROUPS);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const named = namesOn(document);
 
     // Assert
@@ -856,7 +889,7 @@ describe("the copy control on a question", () => {
     ]);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     const controls = [...document.querySelectorAll("button.agent-open")];
@@ -880,7 +913,7 @@ describe("the copy control on a question", () => {
     );
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.deepEqual(namesOn(document), ["1. Unfair advantages (15 min)", "2. Who and what (20 min)"]);
@@ -896,7 +929,7 @@ describe("the copy control on a question", () => {
     // every assertion green, because membership was all that was checked.
     const IN_ORDER = ["day4.who", "day4.problem", "day4.changes"];
     const document = numbered(["2-who-and-what-20-min", "2. Who and what (20 min)", ...IN_ORDER]);
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
@@ -926,7 +959,7 @@ describe("the copy control on a question", () => {
       "day4.problem",
     ]);
     const stored = new Map([["day4.who", MINE], ["day4.problem", OTHER]]);
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(stored));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(stored));
 
     // Act — with the answers opted in.
     (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
@@ -954,14 +987,14 @@ describe("the copy control on a question", () => {
       ["1-unfair-advantages-15-min", "1. Unfair advantages (15 min)", "day4.skills"],
       ["2-who-and-what-20-min", "2. Who and what (20 min)", "day4.who"],
     );
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     // Take the SECOND item's control away, as though it had never been wired.
     const controls = [...document.querySelectorAll("button.agent-open")];
     controls[1]?.nextElementSibling?.remove();
     controls[1]?.remove();
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.equal(
@@ -982,7 +1015,7 @@ describe("the copy control on a question", () => {
     const document = numbered([SLUG, HEADING, "day4.who", "day4.problem"]);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     const control = document.querySelector("button.agent-open");
@@ -1007,7 +1040,7 @@ describe("the copy control on a question", () => {
     ]);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.deepEqual(namesOn(document), ["4. The hypothetical — weighted least (15 min)"]);
@@ -1020,7 +1053,7 @@ describe("the copy control on a question", () => {
     const document = numbered(["2-who-and-what-20-min", "   ", "day4.who", "day4.problem"]);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     const named = namesOn(document)[0] ?? "";
@@ -1046,7 +1079,7 @@ describe("the copy control on a question", () => {
     const document = window.document as unknown as Document;
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert — directly under the numbered heading, with everything the item holds below it.
     const control = document.querySelector("button.agent-open");
@@ -1070,7 +1103,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("values.additions");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     const named = namesOn(document);
@@ -1092,7 +1125,7 @@ describe("the copy control on a question", () => {
     ]);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
     await settle();
 
@@ -1114,7 +1147,7 @@ describe("the copy control on a question", () => {
     ]);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.equal([...document.querySelectorAll("button.agent-open")].length, NONE);
@@ -1130,7 +1163,7 @@ describe("the copy control on a question", () => {
       "day4.problem",
       "day4.changes",
     ]);
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement | null)?.click();
@@ -1159,7 +1192,7 @@ describe("the copy control on a question", () => {
     ]);
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const named = namesOn(document);
 
     // Assert
@@ -1177,7 +1210,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day1.drainers", "day1.patterns");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const named = namesOn(document);
 
     // Assert
@@ -1199,7 +1232,7 @@ describe("the copy control on a question", () => {
       new Promise<ReadonlyMap<string, string>>((resolve) => {
         release = resolve;
       });
-    wireQuestionControls(document, memoryStorage("on"), slow);
+    wireQuestionControls(document, memoryStorage("on"), bridgeWith(slow));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement).click();
@@ -1235,7 +1268,7 @@ describe("the copy control on a question", () => {
     // for and gets nothing at all. The guard existed and had no test.
     const document = worksheet("day4.eulogy");
     withClipboard(undefined);
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (await opened(document)).click();
@@ -1256,7 +1289,7 @@ describe("the copy control on a question", () => {
     // Arrange — negative case by the other route: the API exists and the write is denied.
     const document = worksheet("day4.eulogy");
     withClipboard({ writeText: () => Promise.reject(new Error("denied")) });
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (await opened(document)).click();
@@ -1275,7 +1308,7 @@ describe("the copy control on a question", () => {
         throw new Error("NotAllowedError");
       },
     });
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act & Assert
     const copy = await opened(document);
@@ -1292,9 +1325,9 @@ describe("the copy control on a question", () => {
     const WITHDRAWN = "An answer I decided not to share";
     const document = worksheet("day4.eulogy");
     const pending: ((value: ReadonlyMap<string, string>) => void)[] = [];
-    wireQuestionControls(document, memoryStorage("on"), () =>
+    wireQuestionControls(document, memoryStorage("on"), bridgeWith(() =>
       new Promise<ReadonlyMap<string, string>>((resolve) => pending.push(resolve)),
-    );
+    ));
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
     const include = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
@@ -1324,9 +1357,9 @@ describe("the copy control on a question", () => {
     const WRITTEN = "Something private";
     const document = worksheet("day4.eulogy");
     const pending: ((value: ReadonlyMap<string, string>) => void)[] = [];
-    wireQuestionControls(document, memoryStorage("on"), () =>
+    wireQuestionControls(document, memoryStorage("on"), bridgeWith(() =>
       new Promise<ReadonlyMap<string, string>>((resolve) => pending.push(resolve)),
-    );
+    ));
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
 
@@ -1348,7 +1381,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day4.eulogy");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.equal(
@@ -1365,7 +1398,7 @@ describe("the copy control on a question", () => {
 
     // Act & Assert
     assert.doesNotThrow(() =>
-      wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map())),
+      wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map())),
     );
     assert.equal(
       document.querySelectorAll("button.agent-open").length,
@@ -1381,8 +1414,8 @@ describe("the copy control on a question", () => {
     const document = worksheet("day4.eulogy");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Assert
     assert.equal(document.querySelectorAll("button.agent-open").length, 1);
@@ -1395,7 +1428,7 @@ describe("the copy control on a question", () => {
     const document = worksheet("day4.eulogy", "day1.patterns");
 
     // Act
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     const ids = [...document.querySelectorAll(".agent-panel")].map((one) => one.id);
     const controls = [...document.querySelectorAll("button.agent-open")].map(
       (one) => one.getAttribute("aria-controls") ?? "",
@@ -1419,7 +1452,7 @@ describe("the copy control on a question", () => {
     let release: (value: ReadonlyMap<string, string>) => void = () => {};
     const answers = new Map([["day4.eulogy", WRITTEN]]);
     let first = true;
-    wireQuestionControls(document, memoryStorage("on"), () => {
+    wireQuestionControls(document, memoryStorage("on"), bridgeWith(() => {
       if (first) {
         first = false;
         return Promise.resolve(answers);
@@ -1427,7 +1460,7 @@ describe("the copy control on a question", () => {
       return new Promise<ReadonlyMap<string, string>>((resolve) => {
         release = resolve;
       });
-    });
+    }));
     const copy = await opened(document);
 
     // Act — start a second rebuild and try to copy before it resolves.
@@ -1450,7 +1483,7 @@ describe("the copy control on a question", () => {
     // Arrange — 0007 · 3 and · 4: one sentence at the control, said once, rather than a
     // confirmation on every copy that trains people to dismiss it.
     const document = worksheet("day4.eulogy");
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
 
@@ -1477,7 +1510,7 @@ describe("the answers an item builds on", () => {
     wireQuestionControls(
       document,
       memoryStorage("on"),
-      entriesFrom(new Map([[BRAINSTORM, CIRCLED]])),
+      bridgeReading(new Map([[BRAINSTORM, CIRCLED]])),
     );
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
@@ -1503,7 +1536,7 @@ describe("the answers an item builds on", () => {
     wireQuestionControls(
       document,
       memoryStorage("on"),
-      entriesFrom(new Map([[BRAINSTORM, CIRCLED]])),
+      bridgeReading(new Map([[BRAINSTORM, CIRCLED]])),
     );
     (document.querySelector("button.agent-open") as HTMLElement).click();
     await settle();
@@ -1529,7 +1562,7 @@ describe("the answers an item builds on", () => {
     // tick covers grew with #105, so a label still saying only "what I have already written"
     // would describe half of what it does on the surface responsible for all of it.
     const document = numbered(["narrow", "2. Narrow to 10 (10 min)", TEN]);
-    wireQuestionControls(document, memoryStorage("on"), entriesFrom(new Map()));
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
 
     // Act
     (document.querySelector("button.agent-open") as HTMLElement).click();
@@ -1538,5 +1571,402 @@ describe("the answers an item builds on", () => {
     // Assert
     const label = document.querySelector(".agent-panel label");
     assert.match(label?.textContent ?? "", /builds on/, "the tick does not say what it now covers");
+  });
+});
+
+describe("bringing a reply back where the prompt was copied", () => {
+  const EULOGY = "day4.eulogy";
+
+  /** A store that records what it was asked to merge. */
+  function recorder(seed: ReadonlyMap<string, string> = new Map()) {
+    const merged: ReadonlyMap<string, string>[] = [];
+    return {
+      merged,
+      store: {
+        readAll: () => Promise.resolve(seed),
+        merge: (entries: ReadonlyMap<string, string>) => {
+          merged.push(new Map(entries));
+          return Promise.resolve();
+        },
+      } as unknown as Store,
+    };
+  }
+
+  /** A reply in the shape the prompt asks for, around the words an assistant would say. */
+  function reply(group: string, body: Record<string, unknown>): string {
+    const block = { format: "life-compass/agent-answers", version: 1, group, ...body };
+    return `Here you go.\n\n\`\`\`json\n${JSON.stringify(block)}\n\`\`\``;
+  }
+
+  /** A worksheet with one panel, opened, with the reply half reachable. */
+  async function panelOn(overrides: Partial<BridgeOptions> = {}) {
+    const document = worksheet(EULOGY);
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map(), overrides));
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    const swaps = [...document.querySelectorAll("button.agent-swap")] as HTMLElement[];
+    return {
+      document,
+      prompt: document.querySelector(".agent-prompt") as HTMLElement,
+      reply: document.querySelector(".agent-reply") as HTMLElement,
+      toReply: swaps[0] as HTMLElement,
+      back: swaps[1] as HTMLElement,
+      open: document.querySelector("button.agent-open") as HTMLElement,
+      text: document.querySelector(".agent-reply textarea") as HTMLTextAreaElement,
+      confirm: document.querySelector(".agent-reply div") as HTMLElement,
+      /** By the words on them, not by position: the review's buttons sit inside `confirm`. */
+      button: (label: string) =>
+        [...document.querySelectorAll(".agent-reply button")].find(
+          (one) => one.textContent === label,
+        ) as HTMLElement,
+      banner: () => document.getElementById("banner-region")?.textContent ?? "",
+    };
+  }
+
+  /** Let the dynamic import of paste.ts and the read-then-plan chain settle. */
+  async function loaded(): Promise<void> {
+    const TURNS = 24;
+    for (let turn = 0; turn < TURNS; turn += 1) {
+      await Promise.resolve();
+    }
+  }
+
+  it("wireQuestionControls_APanelJustOpened_ShowsThePromptAndNotTheReplyBox", async () => {
+    // Arrange — #110 asks for the reply to come back where the prompt was copied, not for a
+    // second box beside it. Both halves at once doubles the panel on the phone this is used
+    // from, which is the clutter the two-phase shape exists to avoid.
+    // Act
+    const view = await panelOn();
+
+    // Assert
+    assert.equal(view.prompt.hidden, false, "the prompt half is not showing");
+    assert.equal(view.reply.hidden, true, "the reply box is showing before it was asked for");
+    assert.equal(view.toReply.getAttribute("aria-expanded"), "false");
+  });
+
+  it("wireQuestionControls_TheSwap_ShowsOneHalfAtATimeAndSaysWhich", async () => {
+    // Arrange
+    const view = await panelOn();
+
+    // Act — forward, then back.
+    view.toReply.click();
+    await loaded();
+    const forward = { prompt: view.prompt.hidden, reply: view.reply.hidden };
+    view.back.click();
+    await settle();
+
+    // Assert
+    assert.deepEqual(forward, { prompt: true, reply: false }, "the swap did not change halves");
+    assert.equal(view.toReply.getAttribute("aria-expanded"), "false", "the swap still reads as open");
+    assert.equal(view.prompt.hidden, false, "the prompt did not come back");
+    assert.equal(view.reply.hidden, true, "the reply box stayed up");
+  });
+
+  it("wireQuestionControls_TheReviewsParts_AreAllInsideTheOneElementThatHidesThem", async () => {
+    // Arrange — `PasteElements` states this and cannot check it: the surface hides the review
+    // by hiding `confirm` alone, so a sibling would leave "What this would change" standing
+    // over a review that had been emptied.
+    const view = await panelOn();
+    view.toReply.click();
+    await loaded();
+
+    // Act
+    const inside = [...view.confirm.children].map((child) => child.tagName.toLowerCase());
+
+    // Assert
+    assert.deepEqual(inside, ["p", "p", "p", "div", "button", "button"]);
+    assert.equal(view.confirm.hidden, true, "the review is showing before anything was read");
+  });
+
+  it("wireQuestionControls_ReadTappedBeforeTheModuleLands_SaysSoRatherThanDoingNothing", async () => {
+    // Arrange — negative case. The button is on screen the moment the half is revealed, and
+    // `paste.ts` arrives on that tap; a control that appears to do nothing in the gap is the
+    // silence 0008 forbids.
+    const view = await panelOn();
+
+    // Act — revealed, and read tapped in the same turn, before the import can resolve.
+    view.toReply.click();
+    // Blurred first, because a tap moves focus to the button it lands on. `banner.ts` holds a
+    // message back while the reader is mid-input, and happy-dom's `click()` leaves focus in the
+    // textarea `enter()` put it in — so without this the fixture models a state a finger cannot
+    // reach and the message is queued rather than said.
+    view.text.blur();
+    view.button("Read this reply").click();
+    await settle();
+
+    // Assert
+    assert.match(view.banner(), /still getting ready/i);
+  });
+
+  it("wireQuestionControls_APanelJustOpened_HasNotOpenedTheStore", async () => {
+    // Arrange — `paste.ts` reaches the reply reader and the planner, and the store behind
+    // them. A reader who opens a panel to copy a prompt and never pastes anything pays for
+    // none of it.
+    let opens = 0;
+    const NEVER = 0;
+
+    // Act
+    await panelOn({
+      openStore: () => {
+        opens += 1;
+        return Promise.reject(new Error("not wanted"));
+      },
+    });
+
+    // Assert
+    assert.equal(opens, NEVER, "opening a panel opened the store");
+  });
+
+  it("wireQuestionControls_AReplySavedFromThePanel_WritesItAndStartsThePageAgain", async () => {
+    // Arrange — the whole of #110. `bindAnswers` fills a blank only while it is empty, so the
+    // answers just saved are in the store and nowhere on screen until the page starts again —
+    // which is what `wireRestore` and `wireErase` already do for the same reason.
+    const ANSWER = "That I showed up for the people who needed it.";
+    const ONE_WRITE = 1;
+    const said: string[] = [];
+    const reloads: number[] = [];
+    const order: string[] = [];
+    const fake = recorder();
+    const view = await panelOn({
+      openStore: () => Promise.resolve(fake.store),
+      onSaved: (message) => {
+        said.push(message);
+        order.push("said");
+      },
+      reload: () => {
+        reloads.push(1);
+        order.push("reloaded");
+      },
+    });
+    view.toReply.click();
+    await loaded();
+    view.text.value = reply(EULOGY, { answer: ANSWER });
+
+    // Act
+    view.text.blur();
+    view.button("Read this reply").click();
+    await loaded();
+    view.button("Save these answers").click();
+    await loaded();
+
+    // Assert
+    assert.equal(fake.merged.length, ONE_WRITE, "the answers were not saved once");
+    assert.deepEqual([...(fake.merged[0] ?? new Map())], [[EULOGY, ANSWER]]);
+    assert.deepEqual(said, ["Saved 1 answer. It is on this page now."]);
+    assert.deepEqual(reloads, [ONE_WRITE], "the page was not started again");
+    // Stashed BEFORE the reload, which is the only order that works: a message written after
+    // the page has been told to start again is a message that may never be written at all.
+    assert.deepEqual(order, ["said", "reloaded"]);
+  });
+
+  it("wireQuestionControls_AReplyForAnotherPage_DoesNotSayItLandedOnThisOne", async () => {
+    // Arrange — reported from use. Every block names its own question (0015), so a reply pasted
+    // into one panel routes to whatever it answers: this one is pasted on a page that renders
+    // `day4.who` and answers `day4.eulogy`, which is on another page. The first version said
+    // "They are on this page now" unconditionally — true in the common case and a lie here, in
+    // the one sentence a reader has to go looking for their answers by.
+    const ONE_WRITE = 1;
+    const said: string[] = [];
+    const fake = recorder();
+    const document = worksheet("day4.who");
+    wireQuestionControls(
+      document,
+      memoryStorage("on"),
+      bridgeReading(new Map(), {
+        openStore: () => Promise.resolve(fake.store),
+        onSaved: (message) => void said.push(message),
+      }),
+    );
+    (document.querySelector("button.agent-open") as HTMLElement).click();
+    await settle();
+    (document.querySelector("button.agent-swap") as HTMLElement).click();
+    await loaded();
+    const text = document.querySelector(".agent-reply textarea") as HTMLTextAreaElement;
+    const button = (label: string) =>
+      [...document.querySelectorAll(".agent-reply button")].find(
+        (one) => one.textContent === label,
+      ) as HTMLElement;
+    text.value = reply(EULOGY, { answer: "That he showed up." });
+    text.blur();
+
+    // Act
+    button("Read this reply").click();
+    await loaded();
+    button("Save these answers").click();
+    await loaded();
+
+    // Assert — it did land, and it landed somewhere else.
+    assert.deepEqual([...(fake.merged[0] ?? new Map())], [[EULOGY, "That he showed up."]]);
+    assert.equal(fake.merged.length, ONE_WRITE);
+    assert.doesNotMatch(said[0] ?? "", /on this page/, `it claimed this page: ${said[0] ?? ""}`);
+    assert.match(said[0] ?? "", /^Saved 1 answer\. It is saved elsewhere in the workbook/);
+  });
+
+  it("savedNote_AnswersSplitAcrossPages_SaysSomeAreHereAndSomeAreNot", () => {
+    // Arrange — the third case, which neither of the two above reaches: one reply carrying
+    // blocks for this page and for another. Asserted on the function rather than through a
+    // panel, because building a reply that lands on both sides is a fixture about the wording
+    // rather than about the panel.
+    const BOTH = 3;
+    const here = new Set(["day4.who"]);
+
+    // Act
+    const note = savedNote(BOTH, ["day4.who", "day4.eulogy"], here);
+
+    // Assert
+    assert.equal(
+      note,
+      "Saved 3 answers. Some are on this page; the rest are saved elsewhere in the workbook, under the questions they name.",
+    );
+  });
+
+  it("savedNote_OneAnswerOnThisPage_ReadsAsOneAnswer", () => {
+    // Arrange — negative case for the plural, which the sentence changes in three places.
+    const ONE = 1;
+
+    // Act
+    const note = savedNote(ONE, ["day4.who"], new Set(["day4.who"]));
+
+    // Assert
+    assert.equal(note, "Saved 1 answer. It is on this page now.");
+  });
+
+  it("wireQuestionControls_SwappingBackAndForth_WiresTheReplyBoxOnceAndSavesOnce", async () => {
+    // Arrange — negative case. `wirePasteSurface` requires one wiring per element set: a second
+    // attaches a second set of listeners, each with its own pending plan, so one tap of Save
+    // would merge twice. Swapping is exactly the shape that invites re-wiring.
+    const ONE_WRITE = 1;
+    const fake = recorder();
+    const view = await panelOn({ openStore: () => Promise.resolve(fake.store) });
+
+    // Act — in and out three times before doing anything.
+    for (let turn = 0; turn < 3; turn += 1) {
+      view.toReply.click();
+      await loaded();
+      view.back.click();
+      await settle();
+    }
+    view.toReply.click();
+    await loaded();
+    view.text.value = reply(EULOGY, { answer: "mine" });
+    view.text.blur();
+    view.button("Read this reply").click();
+    await loaded();
+    view.button("Save these answers").click();
+    await loaded();
+
+    // Assert
+    assert.equal(fake.merged.length, ONE_WRITE, "the reply box was wired more than once");
+  });
+
+  it("wireQuestionControls_AReplyLeavingBlocksBehind_SaysSoInTheSentenceItStashes", async () => {
+    // Arrange — the stranded half of the message is `paste.ts`'s wording, built where that
+    // wording lives. A count carried out to `app.ts` would put a second copy of it in a third
+    // file.
+    const said: string[] = [];
+    const fake = recorder();
+    const view = await panelOn({
+      openStore: () => Promise.resolve(fake.store),
+      onSaved: (message) => void said.push(message),
+    });
+    view.toReply.click();
+    await loaded();
+    view.text.value = [
+      reply(EULOGY, { answer: "mine" }),
+      reply("example.not_a_real_group", { answer: "left on the placeholder" }),
+    ].join("\n\n");
+
+    // Act
+    view.text.blur();
+    view.button("Read this reply").click();
+    await loaded();
+    view.button("Save these answers").click();
+    await loaded();
+
+    // Assert
+    assert.match(said[0] ?? "", /^Saved 1 answer\. It is on this page now\./);
+    assert.match(said[0] ?? "", /still named the example question/);
+  });
+
+  it("wireQuestionControls_GoingBackToThePrompt_DropsThePlanTheReaderWasShown", async () => {
+    // Arrange — a review is built from one read of the store, so one left standing while the
+    // reader returns to the prompt and dictates is a Save button offering a plan measured
+    // against answers that have since changed. That is #83's staleness, at the altitude only
+    // the thing owning both halves can see.
+    const NOTHING_SAVED = 0;
+    const fake = recorder();
+    const view = await panelOn({ openStore: () => Promise.resolve(fake.store) });
+    view.toReply.click();
+    await loaded();
+    view.text.value = reply(EULOGY, { answer: "mine" });
+    view.text.blur();
+    view.button("Read this reply").click();
+    await loaded();
+    const reviewed = view.confirm.hidden;
+
+    // Act
+    view.back.click();
+    view.toReply.click();
+    await loaded();
+    view.button("Save these answers").click();
+    await loaded();
+
+    // Assert
+    assert.equal(reviewed, false, "the review never opened, so this proves nothing");
+    assert.equal(view.confirm.hidden, true, "the review survived going back to the prompt");
+    assert.equal(fake.merged.length, NOTHING_SAVED, "a plan the reader had been taken off was saved");
+  });
+
+  it("wireQuestionControls_ClosingThePanel_DropsThePlanToo", async () => {
+    // Arrange — negative case for the other way out. Closing the panel is the commoner one:
+    // the reader taps the control that opened it rather than the swap.
+    const NOTHING_SAVED = 0;
+    const fake = recorder();
+    const view = await panelOn({ openStore: () => Promise.resolve(fake.store) });
+    view.toReply.click();
+    await loaded();
+    view.text.value = reply(EULOGY, { answer: "mine" });
+    view.text.blur();
+    view.button("Read this reply").click();
+    await loaded();
+
+    // Act
+    view.open.click();
+    view.open.click();
+    await loaded();
+
+    // Assert
+    assert.equal(view.confirm.hidden, true, "the review survived the panel closing");
+    assert.equal(view.prompt.hidden, false, "the panel reopened on the reply half");
+    view.button("Save these answers").click();
+    await loaded();
+    assert.equal(fake.merged.length, NOTHING_SAVED, "a plan behind a closed panel was still saved");
+  });
+
+  it("wireQuestionControls_EveryPanelOnAPage_HasItsOwnReplyBoxAndItsOwnName", async () => {
+    // Arrange — one panel per numbered item, up to eight on a page. A screen reader listing
+    // this page's buttons would otherwise find one "Paste a reply" per item with nothing
+    // saying which is which (0001).
+    const document = numbered(
+      ["who", "2. Who and what (20 min)", "day4.who"],
+      ["drafts", "4. Draft three purpose statements (20 min)", "day4.statements"],
+    );
+    const TWO = 2;
+
+    // Act
+    wireQuestionControls(document, memoryStorage("on"), bridgeReading(new Map()));
+    const swaps = [...document.querySelectorAll("button.agent-swap")].filter(
+      (one) => one.textContent === "Paste a reply",
+    );
+    const labels = swaps.map((one) => one.getAttribute("aria-label"));
+
+    // Assert
+    assert.equal(swaps.length, TWO, "the items did not get one reply control each");
+    assert.equal(new Set(labels).size, TWO, `two controls read alike: ${labels.join(" / ")}`);
+    assert.equal(
+      new Set([...document.querySelectorAll(".agent-reply")].map((one) => one.id)).size,
+      TWO,
+      "two reply boxes share an id",
+    );
   });
 });
